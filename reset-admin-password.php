@@ -17,8 +17,8 @@ function prompt_secret(string $label): string {
 }
 
 try {
-    $new=prompt_secret('New admin password (min 12 chars): ');
-    if (strlen($new)<12) throw new RuntimeException('Password must be at least 12 characters.');
+    $new=prompt_secret('New admin password (min 8 chars): ');
+    if (strlen($new)<8) throw new RuntimeException('Password must be at least 8 characters.');
     $confirm=prompt_secret('Confirm new password: ');
     if ($new!==$confirm) throw new RuntimeException('Passwords do not match.');
     set_admin_password_hash(password_hash($new,PASSWORD_DEFAULT));
@@ -26,6 +26,10 @@ try {
     echo "✓ Admin password changed successfully.\n";
 } catch (Throwable $e) {
     if (function_exists('shell_exec')) { @shell_exec('stty echo'); }
-    fwrite(STDERR,"[ERROR] ".$e->getMessage()."\n");
+    $message=$e->getMessage();
+    if (stripos($message,'database is locked')!==false) {
+        $message='Database is busy/locked. Stop the RouteBox web/bot service temporarily, run this recovery command again, then start the service again.';
+    }
+    fwrite(STDERR,"[ERROR] ".$message."\n");
     exit(1);
 }
