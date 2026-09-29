@@ -116,14 +116,23 @@ if [[ "${has_token}" != 1 || "${has_servers}" == 0 ]]; then
     echo "==> Testing RouteBox API: ${RB_BASE}"
     CURL_ARGS=(); [[ ${RB_VERIFY_TLS} -eq 0 ]] && CURL_ARGS+=( -k )
     AUTH_ARGS=(); [[ -n "${RB_USER}" ]] && AUTH_ARGS+=( -u "${RB_USER}:${RB_PASS}" )
-    HTTP_CODE="$(curl -sS "${CURL_ARGS[@]}" --connect-timeout 8 --max-time 20 "${AUTH_ARGS[@]}" -o /tmp/rbt-status.$$ -w '%{http_code}' "${RB_BASE}/api/status" 2>/dev/null || true)"
-    if [[ "${HTTP_CODE}" != 2* ]]; then
-      echo "[ERROR] RouteBox API test failed (HTTP ${HTTP_CODE:-connection-error})."
-      rm -f /tmp/rbt-status.$$
-      server_no=$((server_no-1)); continue
-    fi
-    rm -f /tmp/rbt-status.$$
-    echo "✓ RouteBox API connection successful"
+
+    test_api(){
+      local path="$1" label="$2" code
+      code="$(curl -sS "${CURL_ARGS[@]}" --connect-timeout 8 --max-time 20 "${AUTH_ARGS[@]}" -o /tmp/rbt-test.$$ -w '%{http_code}' "${RB_BASE}${path}" 2>/dev/null || true)"
+      rm -f /tmp/rbt-test.$$
+      if [[ "${code}" != 2* ]]; then
+        echo "[ERROR] ${label} failed (HTTP ${code:-connection-error})."
+        return 1
+      fi
+      echo "✓ ${label} OK"
+    }
+
+    test_api "/api/status" "RouteBox status API" || { server_no=$((server_no-1)); continue; }
+    test_api "/api/awg/status" "AmneziaWG API" || { server_no=$((server_no-1)); continue; }
+    test_api "/api/awg/peers" "AmneziaWG peers API" || { server_no=$((server_no-1)); continue; }
+
+    echo "✓ RouteBox API and AmneziaWG endpoints are reachable and authenticated"
     UENC="$(enc "${RB_USER}")"; PENC="$(enc "${RB_PASS}")"
     [[ -n "$UENC" && -n "$PENC" ]] || fail "Could not encrypt RouteBox credentials."
     sqlite3 "${DB}" "INSERT INTO routebox_servers(name,base_url,user_enc,pass_enc,verify_tls,enabled,created_at) VALUES('$(sql "$RB_NAME")','$(sql "$RB_BASE")','$(sql "$UENC")','$(sql "$PENC")',${RB_VERIFY_TLS},1,$(date +%s));"
@@ -165,7 +174,7 @@ systemctl reload nginx
 php -l "${APP_DIR}/worker.php" >/dev/null || fail "worker.php syntax check failed."
 echo
 echo "✓ Installation completed successfully."
-echo "✓ Telegram and RouteBox were verified during setup."
+echo "✓ Telegram, RouteBox and AmneziaWG API endpoints were verified during setup."
 echo "✓ RouteBox mode, scheme, host and port are not separate inputs."
 echo "✓ Enter the exact URL you already use to open the RouteBox panel."
 echo "Admin panel: http://YOUR_SERVER_IP/"
