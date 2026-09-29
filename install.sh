@@ -133,7 +133,6 @@ if [[ "${NEW_INSTALL}" == "1" ]]; then
       echo "        Installation can continue; configure a valid token from the panel."
       TELEGRAM_TOKEN=""
     else
-      # Remove an old webhook so long-polling is not blocked by Telegram.
       curl -fsS --max-time 15 -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/deleteWebhook" \
         -d 'drop_pending_updates=false' >/dev/null || true
       echo "[OK] Telegram Bot Token validated."
@@ -170,16 +169,17 @@ if [[ "${NEW_INSTALL}" == "1" ]]; then
       fi
 
       echo "==> Testing RouteBox API..."
-      RB_TEST="$(curl -ksS --max-time 15 -u "${RB_USER}:${RB_PASS}" -H 'Accept: application/json' "${RB_URL%/}/api/status" || true)"
       if [[ "${RB_VERIFY}" == "1" ]]; then
         RB_TEST="$(curl -fsS --max-time 15 -u "${RB_USER}:${RB_PASS}" -H 'Accept: application/json' "${RB_URL%/}/api/status" || true)"
+      else
+        RB_TEST="$(curl -ksS --max-time 15 -u "${RB_USER}:${RB_PASS}" -H 'Accept: application/json' "${RB_URL%/}/api/status" || true)"
       fi
       if [[ -z "${RB_TEST}" ]]; then
         echo "[WARN] RouteBox API test failed. The server will not be added automatically."
         continue
       fi
 
-      RBT_NAME="${RB_NAME}" RBT_URL="${RB_URL%/}" RBT_USER="${RB_USER}" RBT_PASS="${RB_PASS}" RBT_TLS="${RB_VERIFY}" \
+      APP_DIR="${APP_DIR}" RBT_NAME="${RB_NAME}" RBT_URL="${RB_URL%/}" RBT_USER="${RB_USER}" RBT_PASS="${RB_PASS}" RBT_TLS="${RB_VERIFY}" \
       php -r '
         require getenv("APP_DIR") . "/src/bootstrap.php";
         $s=db()->prepare("INSERT INTO routebox_servers(name,base_url,user_enc,pass_enc,verify_tls,enabled,created_at) VALUES(?,?,?,?,?,?,?)");
@@ -201,7 +201,6 @@ if [[ "${NEW_INSTALL}" == "1" ]]; then
   echo "[OK] Initial configuration saved securely."
 fi
 
-# Never expose runtime configuration or SQLite through the web root.
 install -m 0644 "${APP_DIR}/systemd/routebox-telegram-bot.service" "/etc/systemd/system/${SERVICE_NAME}"
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
@@ -238,7 +237,6 @@ systemctl enable --now nginx
 systemctl restart nginx
 systemctl restart "${SERVICE_NAME}"
 
-# Verify the application syntax before declaring success.
 echo "==> Running PHP syntax checks..."
 while IFS= read -r -d '' file; do php -l "${file}" >/dev/null; done < <(find "${APP_DIR}" -type f -name '*.php' -print0)
 
