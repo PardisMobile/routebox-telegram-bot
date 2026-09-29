@@ -115,7 +115,7 @@ if [[ "${has_token}" != 1 || "${has_servers}" == 0 ]]; then
 
     echo "==> Testing RouteBox API: ${RB_BASE}"
     CURL_ARGS=(); [[ ${RB_VERIFY_TLS} -eq 0 ]] && CURL_ARGS+=( -k )
-    AUTH_ARGS=(); [[ -n "${RB_USER}" ]] && AUTH_ARGS+=( -u "${RB_USER}:${RB_PASS}" )
+    AUTH_ARGS=(); [[ -n "${RB_USER}" || -n "${RB_PASS}" ]] && AUTH_ARGS+=( -u "${RB_USER}:${RB_PASS}" )
 
     test_api(){
       local path="$1" label="$2" code
@@ -128,9 +128,11 @@ if [[ "${has_token}" != 1 || "${has_servers}" == 0 ]]; then
       echo "✓ ${label} OK"
     }
 
+    test_api "/api/health" "RouteBox health API" || { server_no=$((server_no-1)); continue; }
     test_api "/api/status" "RouteBox status API" || { server_no=$((server_no-1)); continue; }
     test_api "/api/awg/status" "AmneziaWG API" || { server_no=$((server_no-1)); continue; }
     test_api "/api/awg/peers" "AmneziaWG peers API" || { server_no=$((server_no-1)); continue; }
+    test_api "/api/settings" "RouteBox settings API" || { server_no=$((server_no-1)); continue; }
 
     echo "✓ RouteBox API and AmneziaWG endpoints are reachable and authenticated"
     UENC="$(enc "${RB_USER}")"; PENC="$(enc "${RB_PASS}")"
@@ -172,6 +174,7 @@ nginx -t
 systemctl reload nginx
 
 php -l "${APP_DIR}/worker.php" >/dev/null || fail "worker.php syntax check failed."
+php -l "${APP_DIR}/src/RouteBoxClient.php" >/dev/null || fail "RouteBoxClient.php syntax check failed."
 echo
 echo "✓ Installation completed successfully."
 echo "✓ Telegram, RouteBox and AmneziaWG API endpoints were verified during setup."
