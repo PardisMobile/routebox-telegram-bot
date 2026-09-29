@@ -138,7 +138,7 @@ https://panel.example.com
 
 You do **not** need to enter RouteBox mode, scheme, host, or port separately.
 
-The installer tests `<Panel URL>/api/status` before saving the server. You can add multiple RouteBox servers during installation.
+The installer derives the API base URL from the exact panel URL you provide.
 
 ### 🔌 RouteBox API Port
 
@@ -154,7 +154,45 @@ Typical examples are:
 
 Enter the URL exactly as it is opened in the browser. The installer derives the API base URL from that value.
 
-The bot uses RouteBox's documented HTTP Basic authentication support for scripts. This avoids needing to emulate a browser login session for every API request. RouteBox's protected REST endpoints remain protected by the credentials supplied to the bot.
+### 🔐 RouteBox Authentication
+
+Current RouteBox releases use **cookie-based login sessions** for the web panel and also accept **HTTP Basic authentication for scripts**. The Bot therefore uses the following order:
+
+```text
+POST /api/auth/login
+        ↓
+Session Cookie
+        ↓
+Protected RouteBox API requests
+        ↓
+If the session expires → re-login once → retry
+        ↓
+HTTP Basic fallback when session authentication is unavailable
+```
+
+This keeps the Bot compatible with the current RouteBox authentication model without depending on browser behavior. The session cookie is kept in process memory and is not stored in the Bot database.
+
+### 🧪 Installation Smoke Test
+
+Before a RouteBox server is saved, the installer verifies:
+
+```text
+GET /api/health
+GET /api/status
+GET /api/awg/status
+GET /api/awg/peers
+GET /api/settings
+```
+
+It then performs a temporary end-to-end AWG test:
+
+```text
+POST   /api/awg/peers
+GET    /api/awg/peers/{publicKey}/config
+DELETE /api/awg/peers/{publicKey}
+```
+
+The temporary peer is deleted immediately. This catches authentication, write permissions, AWG availability, key generation, configuration export, and public-key URL encoding problems during installation instead of after the first real customer request.
 
 ### 🔐 What Gets Stored
 
@@ -171,11 +209,12 @@ The installer automatically:
 3. 🗄️ Initializes SQLite.
 4. 🔐 Generates the application encryption key and administrator password.
 5. 🧙 Runs the Telegram + RouteBox setup wizard.
-6. 🧪 Tests Telegram and RouteBox connectivity before saving credentials.
-7. 🌐 Configures Nginx + PHP-FPM.
-8. ⚙️ Installs and enables the systemd service.
-9. 🧪 Runs PHP syntax validation.
-10. ❤️ Checks the Bot service status.
+6. 🧪 Tests Telegram and RouteBox authentication before saving credentials.
+7. 🧪 Runs a full temporary AWG create/export/delete smoke test.
+8. 🌐 Configures Nginx + PHP-FPM.
+9. ⚙️ Installs and enables the systemd service.
+10. 🧪 Runs PHP syntax validation.
+11. ❤️ Checks the Bot service status.
 
 The generated administrator password is displayed by the installer. Store it securely.
 
@@ -253,6 +292,7 @@ Additional planned features include:
 - [x] Telegram Bot foundation
 - [x] Independent web admin panel
 - [x] RouteBox API client
+- [x] RouteBox session authentication with Basic fallback
 - [x] Multiple RouteBox servers
 - [x] Same Telegram user identity across servers
 - [x] AWG Peer provisioning
@@ -264,6 +304,7 @@ Additional planned features include:
 - [x] Interactive installation wizard
 - [x] Telegram token validation
 - [x] RouteBox API connectivity validation
+- [x] Full AWG create/export/delete installation smoke test
 - [x] RouteBox Panel URL configuration
 - [x] Ubuntu 22.04+ installer
 - [x] Update / uninstall scripts
@@ -287,7 +328,9 @@ Additional planned features include:
 
 ## 🧩 RouteBox Compatibility
 
-This project is designed around the current RouteBox API architecture. Current RouteBox releases expose `/api/awg/*` endpoints for AWG status, peers, configuration retrieval, and expiration management. RouteBox documents `/api/status` and the protected REST API alongside its panel listener; HTTP Basic authentication remains accepted for scripts. citeturn1search0turn1search1
+This project is designed around the current RouteBox API architecture. RouteBox documents `/api/status`, `/api/settings`, and `/api/awg/*` alongside its panel listener. Protected endpoints use the panel authentication middleware; current RouteBox releases support cookie sessions and retain HTTP Basic authentication for scripts. The Bot prefers the session flow and keeps Basic as a compatibility fallback.
+
+The Bot also validates the real provisioning path during installation instead of assuming that read-only API access is sufficient.
 
 RouteBox may change its API between releases, so End-to-End testing against the RouteBox version installed on your server is part of the Beta process.
 
