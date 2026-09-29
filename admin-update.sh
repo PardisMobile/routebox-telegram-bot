@@ -4,6 +4,7 @@ set -Eeuo pipefail
 APP_DIR=/opt/routebox-telegram-bot
 SERVICE=routebox-telegram-bot.service
 WEB_SERVICE=routebox-telegram-bot-web
+TLS_SERVICE=routebox-telegram-bot-tls.service
 STATE_DIR=/etc/routebox-telegram-bot
 LOG_DIR="$APP_DIR/storage/logs"
 LOG_FILE="$LOG_DIR/admin-update.log"
@@ -17,8 +18,9 @@ exec >>"$LOG_FILE" 2>&1
 echo "===== Admin update started: $(date -Is) ====="
 cd "$APP_DIR"
 
-# Stop both application services before replacing the code. update.sh will
-# recreate/re-enable the web listener and restart the worker after the update.
+# Stop the application, PHP backend and the optional TLS frontend before the
+# update. The updater restores TLS automatically after the new code is live.
+systemctl stop "$TLS_SERVICE" >/dev/null 2>&1 || true
 systemctl stop "$SERVICE" >/dev/null 2>&1 || true
 PORT=$(cat "$STATE_DIR/web-port" 2>/dev/null || true)
 if [[ "$PORT" =~ ^[0-9]+$ ]]; then
