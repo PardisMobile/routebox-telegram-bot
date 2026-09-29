@@ -2,7 +2,7 @@
 
 > 🤖 Telegram Bot + 🖥️ Independent Web Admin Panel for RouteBox / AmneziaWG
 >
-> **Version: `0.1.0-beta.4` · Status: 🧪 Beta**
+> **Version: `0.1.0-beta.6` · Status: 🧪 Beta**
 
 ## ✨ What is it?
 
@@ -12,7 +12,7 @@ An independent backend for provisioning and managing **AmneziaWG peers** through
 📱 Telegram → 🤖 Bot Worker → 🖥️ Admin Panel → 🌐 RouteBox API → 🔐 AmneziaWG → 📄 .conf
 ```
 
-## 🤖 Current Features — Beta 4
+## ✨ Current Features — Beta 6
 
 - 🎁 Configurable free trial
 - 👤 Telegram user identity and service status
@@ -38,6 +38,7 @@ An independent backend for provisioning and managing **AmneziaWG peers** through
 - 📝 Application and provisioning logs
 - 🧪 End-to-end RouteBox validation before a server is accepted
 - 🔐 Encrypted Telegram and RouteBox credentials
+- 🔒 HTTPS Admin Panel using the existing RouteBox panel certificate when available
 
 ## 🧩 RouteBox Connection: one URL, no extra API port
 
@@ -74,16 +75,68 @@ Run this on the Ubuntu server; you do not need to clone the repository on your M
 bash <(curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh)
 ```
 
-The installer checks Ubuntu/PHP requirements, initializes SQLite and encryption, validates Telegram, validates RouteBox/AWG end-to-end, installs the Telegram worker, and starts the Admin Panel on its own free port (normally `8090`).
+The installer checks Ubuntu/PHP requirements, initializes SQLite and encryption, validates Telegram, validates RouteBox/AWG end-to-end, installs the Telegram worker, and starts the Admin Panel on its own free port (normally `8090`). If RouteBox exposes its panel certificate at the standard certificate-export path, the installer also enables the safe HTTPS integration described below.
 
 ### Why the Admin Panel does not use Nginx
 
-The Admin Panel uses PHP's own listener on `8090` (or the next free port). The installer does **not** install, start, stop, reload or configure Nginx/Apache for the Bot, so existing RouteBox/Apache/Nginx services on ports 80/443 remain untouched.
+The Admin Panel uses an independent PHP listener. The installer does **not** install, start, stop, reload or configure Nginx/Apache for the Bot, so existing RouteBox/Apache/Nginx services on ports 80/443 remain untouched.
 
 ```text
 Existing RouteBox / Apache / Nginx : untouched
-Bot Admin Panel                    : independent PHP service
-Bot Worker                         : systemd
+Bot Admin Panel                    : independent PHP backend
+Bot TLS frontend                   : dedicated TLS wrapper on the existing panel port
+Bot Worker                         : routebox-telegram-bot.service
+```
+
+## 🔒 HTTPS using RouteBox's existing ACME certificate
+
+When RouteBox is running its own ACME/manual TLS, it exports the current panel certificate to:
+
+```text
+/etc/routebox/panel-cert/fullchain.pem
+/etc/routebox/panel-cert/key.pem
+```
+
+Beta 6 can reuse that certificate for the Bot Admin Panel. The design is intentionally isolated:
+
+1. The existing Admin Panel port is kept (for example `8093`).
+2. PHP moves behind the TLS wrapper on `127.0.0.1` only.
+3. The TLS wrapper listens on the existing Admin Panel port and forwards locally to PHP.
+4. No Nginx or Apache configuration is changed.
+5. Ports `80` and `443` are never claimed by the Bot.
+6. A systemd timer checks the RouteBox certificate every five minutes and reloads the Bot TLS listener when RouteBox renews the certificate.
+
+So, for an existing `8093` installation, the public address becomes:
+
+```text
+https://YOUR-ROUTEBOX-DOMAIN:8093/
+```
+
+The browser sees the same trusted RouteBox/Let's Encrypt certificate. The Bot does not request a second certificate and does not run a second ACME client.
+
+If the RouteBox certificate export is not available, the installer leaves the Admin Panel on HTTP and does not break the installation.
+
+### Existing installation
+
+After pulling the new version, the one-command installer can apply the TLS integration automatically. You can also run the integration directly:
+
+```bash
+cd /opt/routebox-telegram-bot
+sudo bash setup-routebox-tls.sh
+```
+
+Useful checks:
+
+```bash
+sudo systemctl status routebox-telegram-bot.service
+sudo systemctl status routebox-telegram-bot-tls.service
+sudo systemctl status routebox-telegram-bot-tls-sync.timer
+```
+
+The Telegram worker remains:
+
+```bash
+sudo systemctl restart routebox-telegram-bot.service
 ```
 
 ## 🤖 Telegram Bot
@@ -112,21 +165,27 @@ Username: admin
 Password: <generated during installation>
 ```
 
-The selected port is stored in:
+The selected public panel port is stored in:
 
 ```text
 /etc/routebox-telegram-bot/web-port
 ```
 
-Open:
+Open HTTP only when TLS integration is unavailable:
 
 ```text
 http://YOUR_SERVER_IP:<PORT>/
 ```
 
-### ✨ Beta 4 Admin Panel
+When RouteBox TLS integration is enabled, use:
 
-The panel now includes:
+```text
+https://YOUR-ROUTEBOX-DOMAIN:<PORT>/
+```
+
+### ✨ Beta 6 Admin Panel
+
+The panel includes:
 
 - 🇮🇷 Persian / 🇬🇧 English interface
 - 🧭 Sidebar navigation
@@ -138,8 +197,9 @@ The panel now includes:
 - 🔐 Admin password change
 - ⬆️ In-panel software updater
 - 📱 Responsive mobile layout
+- 🔒 Optional safe HTTPS integration using the existing RouteBox panel certificate
 
-### 🌍 Server country and ping
+## 🌍 Server country and ping
 
 Each server can have a two-letter country code such as `US`, `DE` or `TR`. If the field is left empty, the panel attempts to detect the public IP country automatically. The panel also measures TCP connection latency to the configured RouteBox endpoint.
 
@@ -155,17 +215,6 @@ Update logs are stored at:
 /opt/routebox-telegram-bot/storage/logs/admin-update.log
 ```
 
-If the updater is not yet installed on an existing installation, run once:
-
-```bash
-cd /opt/routebox-telegram-bot
-sudo bash update.sh
-```
-
-## 🔐 HTTPS / Reverse Proxy
-
-The Bot Admin Panel does not take over ports 80/443. For production HTTPS, use the **existing RouteBox/Apache/Nginx TLS endpoint** and reverse-proxy internally to the Bot's local PHP listener. Do not install another web server configuration on an already-used 80/443 port.
-
 ## 🛒 Telegram Plans and Buttons
 
 Plans are managed from the Admin Panel. Each plan supports:
@@ -180,7 +229,7 @@ Enabled:     show/hide Telegram button
 
 Fixed Bot buttons such as **Free Trial**, **My Account** and **Language** have separate Persian/English labels that can be edited from the Admin Panel. Plan buttons are generated dynamically from the enabled Plans.
 
-Payment is not yet connected, so Beta 4 still provisions selected plans immediately for testing. Payment integration is the next phase.
+Payment is not yet connected, so Beta 6 still provisions selected plans immediately for testing. Payment integration is the next phase.
 
 ## 🌍 Multi-RouteBox
 
@@ -202,15 +251,15 @@ The Bot requests the real configuration from RouteBox and sends the resulting `.
 ## 🛠️ Management
 
 ```bash
-systemctl status routebox-telegram-bot
-journalctl -u routebox-telegram-bot -f
-bash /opt/routebox-telegram-bot/update.sh
-bash /opt/routebox-telegram-bot/uninstall.sh
+sudo systemctl status routebox-telegram-bot.service
+sudo journalctl -u routebox-telegram-bot.service -f
+sudo bash /opt/routebox-telegram-bot/update.sh
+sudo bash /opt/routebox-telegram-bot/uninstall.sh
 ```
 
 ## 💳 Payment & Subscription Roadmap
 
-Payment is **not implemented in Beta 4**.
+Payment is **not implemented in Beta 6**.
 
 Future updates will add Iranian Rial and cryptocurrency payment options, Persian/English checkout, subscription renewal/upgrades, invoices, coupons/referrals, server/region selection, usage dashboards, expiration notifications and subscription links/QR workflows.
 
@@ -242,6 +291,7 @@ Future updates will add Iranian Rial and cryptocurrency payment options, Persian
 - [x] Web password change + CLI recovery
 - [x] Admin Panel software updater
 - [x] Update / uninstall scripts
+- [x] RouteBox certificate reuse for Admin Panel HTTPS
 
 ### 🔜 Future
 
@@ -263,11 +313,12 @@ Future updates will add Iranian Rial and cryptocurrency payment options, Persian
 - 🗄️ SQLite and `config/config.php` are outside the public web root.
 - 🛡️ Admin POST actions use CSRF protection.
 - 🔐 The Admin Panel updater uses a dedicated fixed root wrapper instead of general sudo access.
+- 🔒 The HTTPS frontend reuses the RouteBox certificate and keeps the PHP backend on loopback.
 - 🚫 Never commit tokens, passwords, private keys or real `.conf` files.
 
 ## 🧪 Beta notice
 
-This is **Beta 4**. The installer is intentionally strict: it will not accept a RouteBox server until the real API + AmneziaWG create/export/delete smoke test succeeds.
+This is **Beta 6**. The installer is intentionally strict: it will not accept a RouteBox server until the real API + AmneziaWG create/export/delete smoke test succeeds.
 
 RouteBox API behavior can change between releases. Test the exact RouteBox version installed on your server before enabling real users or paid sales.
 
