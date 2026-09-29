@@ -2,48 +2,46 @@
 
 All notable changes to RouteBox Telegram Bot are documented here.
 
-## [0.1.0-beta.3] - 2026-09-29
+## 0.1.0-beta.4 — 2026-09-29
 
-### Added
+### Admin Panel
+- Modern responsive dashboard with sidebar navigation and cleaner cards/forms.
+- Persian and English panel UI with one-click language switching.
+- Dark/light theme with browser preference detection and saved theme choice.
+- Server cards now show country flag/code and measured TCP ping.
+- Automatic country detection is attempted for existing servers whose country is empty.
+- Editable Persian/English Telegram welcome messages.
+- Editable Persian/English labels for fixed Telegram buttons.
+- Plan management remains fully editable for duration and quota.
+- Admin password can be changed from the panel; minimum remains 8 characters.
+- Existing HTTPS/TLS architecture remains untouched; the panel does not bind 80/443.
+- Existing in-panel updater is retained.
 
-- 🛒 **Telegram plan/button manager** in the Admin Panel.
-  - Create, edit, enable/disable and delete buttons without editing PHP code.
-  - Each plan supports a duration in days and an optional traffic quota in GB.
-  - `0 GB` means unlimited traffic.
-  - Enabled plans appear automatically under `/start` in Telegram.
-- 📡 RouteBox server **TCP latency/ping** measurement in the Admin Panel.
-- 🌍 Optional two-letter **country code + flag** for each RouteBox server, with best-effort detection from the hostname when possible.
-- ☀️🌙 **Light/Dark mode** for the Admin Panel, remembered in the browser.
-- 🔐 Direct **Change Password** link from the dashboard.
-- 🔄 **Admin Panel software updater** with GitHub version checking and controlled service restart.
-  - Stops the Bot worker and Bot Admin Panel before replacing the application code.
-  - Runs the existing `update.sh` update path.
-  - Starts the services again after a successful update.
-  - Uses a restricted `sudo` rule for the fixed updater only; the web user is not granted general root access.
-- 📝 Release notes and update documentation for future versions.
-- ©️ Creator footer linking to **Amir Taheri** via Telegram phone deep link.
+### Telegram Bot
+- Added Persian/English user language support.
+- First-time users receive the language selector and can switch language later.
+- `/start`, `/menu`, `/account`, and `/language` commands are supported.
+- Welcome text is controlled from the Admin Panel.
+- Fixed buttons (free trial, account, language) are controlled from the Admin Panel.
+- Plan buttons continue to be generated from the editable Plans section.
 
-### Changed
+### Database
+- Added persistent user language field.
+- Added `telegram_buttons` table for editable bot button labels.
+- Added bilingual welcome-message settings.
+- Runtime migration is included so existing Beta 3 installations upgrade without manual database editing.
 
-- Provisioning now passes the selected plan's expiry and traffic quota to RouteBox when a plan button is used.
-- Telegram `/start` is now generated dynamically from enabled plans instead of being limited to two hard-coded buttons.
-- The Admin Panel UI was refreshed for Persian RTL usage and responsive mobile/desktop layouts.
-- Existing RouteBox/Nginx/Apache ports remain untouched by the Bot update architecture.
-- The README now identifies this release as **Beta 3** and documents the new Admin Panel updater.
+## 0.1.0-beta.3
 
-### Notes
+- Added restricted Admin Panel updater.
+- Added password reset/change support.
+- Added admin-panel update logs.
+- Added RouteBox/AmneziaWG repair documentation.
+- Added version and changelog handling.
 
-- Payment processing is intentionally **not** included in this release. Plan buttons provision immediately for testing; payment integration remains the next phase.
-- Users are still protected by the current one-provision-per-Telegram-account rule. Subscription renewal/upgrades will be added with the payment/subscription system.
+## 0.1.0-beta.2
 
-## [0.1.0-beta.2]
-
-- Independent PHP Admin Panel on a free local port.
-- RouteBox API session authentication with Basic fallback.
-- Full RouteBox + AmneziaWG create/config/delete smoke test.
-- Telegram token validation and encrypted credential storage.
-- Admin password recovery and 8-character minimum password policy.
-
----
-
-© 2026 [Amir Taheri](https://t.me/+918807085399) · RouteBox Telegram Bot
+- Stable RouteBox API integration.
+- Admin panel on an independent PHP listener.
+- No automatic Nginx/Apache reconfiguration.
+- RouteBox AWG create/export/delete smoke test during installation.
