@@ -7,7 +7,7 @@ SERVICE="${APP_NAME}.service"
 WEB_SERVICE="${APP_NAME}-web"
 TLS_SERVICE="${APP_NAME}-tls.service"
 STATE_DIR="/etc/${APP_NAME}"
-VERSION="0.1.0-beta.6"
+VERSION=""
 fail(){ echo "[ERROR] $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || fail "Run as root: sudo bash install-v2.sh"
 . /etc/os-release
@@ -24,6 +24,8 @@ systemctl stop "$TLS_SERVICE" >/dev/null 2>&1 || true
 if [[ -f "$STATE_DIR/web-port" ]]; then OLD_PORT="$(cat "$STATE_DIR/web-port" 2>/dev/null || true)"; if [[ "$OLD_PORT" =~ ^[0-9]+$ ]]; then systemctl disable --now "${WEB_SERVICE}@${OLD_PORT}.service" >/dev/null 2>&1 || true; fi; fi
 rm -f "/etc/nginx/sites-enabled/$APP_NAME" "/etc/nginx/sites-available/$APP_NAME" 2>/dev/null || true
 if [[ -d "$APP_DIR/.git" ]]; then git -C "$APP_DIR" fetch --prune origin; git -C "$APP_DIR" reset --hard origin/main; else [[ ! -e "$APP_DIR" || -z "$(find "$APP_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]] || fail "$APP_DIR is not empty."; rm -rf "$APP_DIR"; git clone --depth 1 "$REPO" "$APP_DIR"; fi
+VERSION="$(tr -d '[:space:]' < "$APP_DIR/VERSION" 2>/dev/null || true)"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || fail "Invalid or missing application VERSION in $APP_DIR/VERSION."
 mkdir -p "$APP_DIR/config" "$APP_DIR/storage/logs" "$STATE_DIR"
 chown root:www-data "$APP_DIR/config"; chmod 750 "$APP_DIR/config"
 if [[ ! -f "$APP_DIR/config/config.php" ]]; then
