@@ -26,6 +26,15 @@ if bash "$TMP" "$@"; then
     exit 1
   fi
 
+  # Keep the persistent config version aligned with the repository VERSION file.
+  APP_DIR=/opt/routebox-telegram-bot
+  if [[ -f "$APP_DIR/VERSION" && -f "$APP_DIR/config/config.php" ]]; then
+    REPO_VERSION="$(tr -d '[:space:]' < "$APP_DIR/VERSION")"
+    if [[ "$REPO_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+      sed -i -E "s/'version'=>'[^']*'/'version'=>'${REPO_VERSION}'/" "$APP_DIR/config/config.php"
+    fi
+  fi
+
   # Install the restricted updater used by the Admin Panel. The permission is
   # deliberately limited to one fixed root wrapper; www-data gets no general sudo access.
   if curl -fsSL --connect-timeout 10 --max-time 60 "$UPDATER_URL" -o "$UPDATER_TMP"; then
