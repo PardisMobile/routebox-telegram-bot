@@ -8,10 +8,12 @@ set -Eeuo pipefail
 SCRIPT_URL="https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install-v2.sh"
 REPAIR_URL="https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/repair-web.sh"
 UPDATER_URL="https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/admin-update.sh"
+TLS_URL="https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/setup-routebox-tls.sh"
 TMP="$(mktemp)"
 REPAIR_TMP="$(mktemp)"
 UPDATER_TMP="$(mktemp)"
-trap 'rm -f "$TMP" "$REPAIR_TMP" "$UPDATER_TMP"' EXIT
+TLS_TMP="$(mktemp)"
+trap 'rm -f "$TMP" "$REPAIR_TMP" "$UPDATER_TMP" "$TLS_TMP"' EXIT
 
 curl -fsSL --connect-timeout 10 --max-time 60 "$SCRIPT_URL" -o "$TMP"
 chmod 700 "$TMP"
@@ -48,6 +50,16 @@ EOF_SUDO
     echo "✓ Admin Panel updater installed."
   else
     echo "[WARN] Could not download the Admin Panel updater." >&2
+  fi
+
+  # If RouteBox exposes its current ACME/manual panel certificate at the
+  # canonical panel-cert path, reuse it for the Bot Admin Panel. This never
+  # touches ports 80/443 and never changes RouteBox/Apache/Nginx configuration.
+  if curl -fsSL --connect-timeout 10 --max-time 60 "$TLS_URL" -o "$TLS_TMP"; then
+    chmod 700 "$TLS_TMP"
+    bash "$TLS_TMP" || echo "[WARN] RouteBox TLS integration was not enabled; the HTTP panel remains available." >&2
+  else
+    echo "[WARN] Could not download the RouteBox TLS integration step." >&2
   fi
 else
   status=$?
