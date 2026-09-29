@@ -8,7 +8,7 @@ After logging in, open:
 
 `/account.php`
 
-Enter the current password and a new password of at least 12 characters. The new hash is stored in the SQLite `settings` table. The protected `config/config.php` does not need to become writable by `www-data`.
+Enter the current password and a new password of at least **8 characters**. The new hash is stored in the SQLite `settings` table. The protected `config/config.php` does not need to become writable by `www-data`.
 
 ## If the password is forgotten
 
@@ -19,6 +19,8 @@ sudo php /opt/routebox-telegram-bot/reset-admin-password.php
 ```
 
 It prompts for the new password twice without displaying it and stores only a secure password hash.
+
+If SQLite reports `database is locked`, the web/bot service is currently using the database. Stop the RouteBox service temporarily, run the recovery command, then start the service again. The application also uses a SQLite busy timeout to tolerate short concurrent writes.
 
 ### If the recovery tool is not installed yet
 
