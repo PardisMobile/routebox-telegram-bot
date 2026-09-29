@@ -1,0 +1,18 @@
+# Runtime / secrets
+config/config.php
+storage/*
+!storage/.gitkeep
+.env
+.env.*
+!.env.example
+
+# Logs / local state
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
