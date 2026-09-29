@@ -42,6 +42,11 @@ fi
 
 mkdir -p "$APP_DIR/config" "$APP_DIR/storage/logs" "$STATE_DIR"
 
+# www-data must be able to traverse config/ and read config.php, but secrets
+# remain inaccessible to other users.
+chown root:www-data "$APP_DIR/config"
+chmod 750 "$APP_DIR/config"
+
 if [[ ! -f "$APP_DIR/config/config.php" ]]; then
   APP_KEY="$(openssl rand -base64 32 | tr -d '\n')"
   ADMIN_PASSWORD="$(openssl rand -hex 12)"
@@ -102,7 +107,6 @@ if [[ "$has_token" != 1 || "$has_servers" == 0 ]]; then
     read -r -p "Server name [RouteBox-$n]: " RB_NAME; RB_NAME="${RB_NAME:-RouteBox-$n}"
     read -r -p "RouteBox Panel URL: " RB_BASE
     RB_BASE="$(printf '%s' "$RB_BASE" | sed 's/[[:space:]]//g; s#/$##')"
-    # Keep installation simple: accept a full URL, or host[:port] and infer https.
     if [[ "$RB_BASE" != http://* && "$RB_BASE" != https://* ]]; then RB_BASE="https://$RB_BASE"; fi
     [[ "$RB_BASE" =~ ^https?://[^/[:space:]]+$ ]] || { echo "[ERROR] Enter the RouteBox panel address, e.g. https://panel.example.com:8443"; n=$((n-1)); continue; }
     read -r -p "RouteBox username [admin]: " RB_USER; RB_USER="${RB_USER:-admin}"
@@ -129,10 +133,18 @@ if [[ "$has_token" != 1 || "$has_servers" == 0 ]]; then
   unset TELEGRAM_TOKEN TELEGRAM_ENC RB_PASS UENC PENC APP_KEY
 fi
 
-chown -R www-data:www-data "$APP_DIR/storage"
+chown root:www-data "$APP_DIR/config"
 chown root:www-data "$APP_DIR/config/config.php"
+chmod 750 "$APP_DIR/config"
+chown -R www-data:www-data "$APP_DIR/storage"
 chmod 640 "$APP_DIR/config/config.php" "$DB"
-chmod 750 "$APP_DIR/config" "$APP_DIR/storage"
+chmod 750 "$APP_DIR/storage"
+
+# Verify the same identity used by the web service before starting it.
+runuser -u www-data -- php -r 'require $argv[1]; echo "✓ www-data can load config.php\n";' "$APP_DIR/config/config.php" || {
+  namei -l "$APP_DIR/config/config.php" >&2 || true
+  fail "www-data cannot load config.php."
+}
 
 install -m 0644 "$APP_DIR/systemd/routebox-telegram-bot.service" "/etc/systemd/system/$SERVICE"
 systemctl daemon-reload
@@ -151,7 +163,9 @@ Type=simple
 User=www-data
 Group=www-data
 WorkingDirectory=$APP_DIR
-ExecStart=/usr/bin/php -S 0.0.0.0:%i -t $APP_DIR/public
+# PHP's built-in listener is HTTP only. HTTPS should terminate at the
+# existing Apache/Nginx/RouteBox TLS endpoint.
+ExecStart=/usr/bin/php -d open_basedir=$APP_DIR:/tmp -S 0.0.0.0:%i -t $APP_DIR/public
 Restart=always
 RestartSec=2
 NoNewPrivileges=true
@@ -172,12 +186,22 @@ php -l "$APP_DIR/worker.php" >/dev/null
 php -l "$APP_DIR/src/RouteBoxClient.php" >/dev/null
 php -l "$APP_DIR/public/index.php" >/dev/null
 
+HTTP_CODE="$(curl -sS -o /tmp/rbt-web-check.$$ -w '%{http_code}' "http://127.0.0.1:${ADMIN_PORT}/login.php" || true)"
+rm -f "/tmp/rbt-web-check.$$"
+[[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "302" ]] || {
+  journalctl -u "${WEB_SERVICE}@${ADMIN_PORT}.service" -n 40 --no-pager >&2 || true
+  fail "Admin Panel health check failed: HTTP ${HTTP_CODE:-000}"
+}
+
 echo
 echo "✓ Installation completed successfully."
 echo "✓ Telegram validation passed."
 echo "✓ RouteBox API + AWG create/export/delete smoke test passed."
+echo "✓ Admin Panel permission test passed as www-data."
+echo "✓ Admin Panel HTTP health check passed."
 echo "✓ Existing Apache/Nginx/RouteBox services were not started, stopped or reconfigured."
 echo "✓ Admin Panel: $ADMIN_URL"
 echo "  Port: $ADMIN_PORT"
 echo
-echo "Next: open the Admin Panel, then send /start to your Telegram bot."
+echo "Next: open the Admin Panel over HTTP, then send /start to your Telegram bot."
+echo "For public HTTPS, place the panel behind your existing Apache/Nginx/RouteBox TLS endpoint."
