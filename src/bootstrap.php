@@ -1,4 +1,5 @@
 <?php
+
 $configFile=__DIR__.'/../config/config.php';
 if(!is_file($configFile)){http_response_code(503);exit('Run install.sh first.');}
 $config=require $configFile;
@@ -10,4 +11,6 @@ function enc(string $plain):string{$key=base64_decode(app_config()['app_key'],tr
 function dec(string $cipher):string{$key=base64_decode(app_config()['app_key'],true);$raw=base64_decode($cipher,true);if(!$key||strlen($key)!==32||!$raw)throw new RuntimeException('Invalid secret');$iv=substr($raw,0,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);return sodium_crypto_secretbox_open(substr($raw,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),$iv,$key)?:'';}
 function log_event(string $level,string $message):void{$s=db()->prepare('INSERT INTO logs(level,message,created_at)VALUES(?,?,?)');$s->execute([$level,$message,time()]);}
 function require_admin():void{if(empty($_SESSION['admin'])){header('Location:/login.php');exit;}}
+function csrf_token():string{if(empty($_SESSION['csrf_token'])){$_SESSION['csrf_token']=bin2hex(random_bytes(32));}return (string)$_SESSION['csrf_token'];}
+function verify_csrf():void{$token=(string)($_POST['csrf_token']??'');$expected=(string)($_SESSION['csrf_token']??'');if($expected===''||$token===''||!hash_equals($expected,$token)){http_response_code(403);exit('Invalid CSRF token.');}}
 function json_response($data,int $status=200):never{http_response_code($status);header('Content-Type:application/json; charset=utf-8');echo json_encode($data,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
