@@ -18,15 +18,33 @@ function db():PDO{global $pdo;return $pdo;} function app_config():array{global $
 function enc(string $plain):string{$key=base64_decode(app_config()['app_key'],true);if(!$key||strlen($key)!==32)throw new RuntimeException('Invalid app key');$iv=random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);return base64_encode($iv.sodium_crypto_secretbox($plain,$iv,$key));}
 function dec(string $cipher):string{$key=base64_decode(app_config()['app_key'],true);$raw=base64_decode($cipher,true);if(!$key||strlen($key)!==32||!$raw)throw new RuntimeException('Invalid secret');$iv=substr($raw,0,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);return sodium_crypto_secretbox_open(substr($raw,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),$iv,$key)?:'';}
 function log_event(string $level,string $message):void{$s=db()->prepare('INSERT INTO logs(level,message,created_at)VALUES(?,?,?)');$s->execute([$level,$message,time()]);}
-function admin_password_hash():string{
-    $stored=db()->query("SELECT value FROM settings WHERE key='admin_password_hash'")->fetchColumn();
-    if(is_string($stored)&&$stored!=='') return $stored;
-    return (string)($GLOBALS['config']['admin_password_hash']??'');
-}
-function set_admin_password_hash(string $hash):void{
-    db()->prepare("INSERT INTO settings(key,value) VALUES('admin_password_hash',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")->execute([$hash]);
-}
+function admin_password_hash():string{$stored=db()->query("SELECT value FROM settings WHERE key='admin_password_hash'")->fetchColumn();if(is_string($stored)&&$stored!=='')return $stored;return (string)($GLOBALS['config']['admin_password_hash']??'');}
+function set_admin_password_hash(string $hash):void{db()->prepare("INSERT INTO settings(key,value) VALUES('admin_password_hash',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")->execute([$hash]);}
 function require_admin():void{if(empty($_SESSION['admin'])){header('Location:/login.php');exit;}}
-function csrf_token():string{if(empty($_SESSION['csrf_token'])){$_SESSION['csrf_token']=bin2hex(random_bytes(32));}return (string)$_SESSION['csrf_token'];}
+function csrf_token():string{if(empty($_SESSION['csrf_token']))$_SESSION['csrf_token']=bin2hex(random_bytes(32));return (string)$_SESSION['csrf_token'];}
 function verify_csrf():void{$token=(string)($_POST['csrf_token']??'');$expected=(string)($_SESSION['csrf_token']??'');if($expected===''||$token===''||!hash_equals($expected,$token)){http_response_code(403);exit('Invalid CSRF token.');}}
 function json_response($data,int $status=200):never{http_response_code($status);header('Content-Type:application/json; charset=utf-8');echo json_encode($data,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
+
+function ensure_runtime_schema():void{
+    $pdo=db();
+    $pdo->exec("CREATE TABLE IF NOT EXISTS telegram_buttons(id INTEGER PRIMARY KEY AUTOINCREMENT,action_key TEXT UNIQUE NOT NULL,text_fa TEXT NOT NULL,text_en TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,sort_order INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)");
+    $cols=$pdo->query("PRAGMA table_info(telegram_users)")->fetchAll(PDO::FETCH_ASSOC);
+    $hasLanguage=false;foreach($cols as $c){if(($c['name']??'')==='language'){$hasLanguage=true;break;}}
+    if(!$hasLanguage)$pdo->exec("ALTER TABLE telegram_users ADD COLUMN language TEXT NOT NULL DEFAULT ''");
+    $now=time();
+    $defaults=[
+        ['welcome_fa',"🚀 RouteBox Telegram Bot\n\nسلام 👋\nسرویس موردنظر را انتخاب کنید:"],
+        ['welcome_en',"🚀 RouteBox Telegram Bot\n\nHello 👋\nChoose a service:"],
+        ['panel_lang','fa'],
+    ];
+    $st=$pdo->prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)");
+    foreach($defaults as [$k,$v])$st->execute([$k,$v]);
+    $buttons=[
+        ['trial','🎁 دریافت تست رایگان','🎁 Get free trial',10],
+        ['account','👤 حساب من','👤 My account',20],
+        ['language','🌐 تغییر زبان','🌐 Language',30],
+    ];
+    $ins=$pdo->prepare("INSERT OR IGNORE INTO telegram_buttons(action_key,text_fa,text_en,enabled,sort_order,created_at,updated_at) VALUES(?,?,?,1,?,?,?)");
+    foreach($buttons as $b)$ins->execute([$b[0],$b[1],$b[2],$b[3],$now,$now]);
+}
+ensure_runtime_schema();
