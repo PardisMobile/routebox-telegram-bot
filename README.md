@@ -1,8 +1,12 @@
+<div dir="rtl" align="right">
+
 # 🚀 RouteBox Telegram Bot
 
 > 🤖 ربات تلگرام + 🖥️ پنل مدیریت مستقل برای RouteBox و AmneziaWG
 >
-> **Version: `0.1.0-beta.1` · وضعیت: 🧪 Beta**
+> **نسخه: `0.1.0-beta.1` · وضعیت: 🧪 Beta**
+
+</div>
 
 ![Status](https://img.shields.io/badge/status-BETA-orange?style=for-the-badge)
 ![Version](https://img.shields.io/badge/version-0.1.0--beta.1-blue?style=for-the-badge)
@@ -13,14 +17,20 @@
 
 ---
 
+<div dir="rtl" align="right">
+
 ## 🇮🇷 معرفی پروژه
 
 **RouteBox Telegram Bot** یک Backend مستقل برای مدیریت سرویس‌های AmneziaWG روی چند سرور RouteBox است. تنظیمات ربات از طریق یک پنل وب فارسی و RTL انجام می‌شود و RouteBox اصلی بدون دستکاری فایل‌های داخلی خودش به کار ادامه می‌دهد.
 
-نسخه فعلی **Beta** است و تمرکز آن روی یک مسیر پایدار و قابل تست است:
+نسخه فعلی **Beta** است و تمرکز آن روی یک مسیر پایدار و قابل تست است.
+
+### ✨ قابلیت‌های فعلی ربات
+
+</div>
 
 ```text
-👤 کاربر Telegram
+👤 Telegram User
         ↓
 🤖 Telegram Bot
         ↓
@@ -35,7 +45,7 @@
 📲 Telegram
 ```
 
-### ✨ قابلیت‌های فعلی ربات
+<div dir="rtl" align="right">
 
 - 🎁 **Trial رایگان** با مدت قابل تنظیم از پنل
 - 👤 **حساب کاربری** و نمایش سرویس فعال
@@ -47,8 +57,6 @@
 - 🛡️ جلوگیری از استفاده مجدد از Trial
 - 🔄 Rollback در صورت شکست Provisioning بین چند سرور
 - 📝 ثبت خطاها و رویدادهای مهم
-
----
 
 ## 🖥️ پنل مدیریت
 
@@ -74,6 +82,8 @@
 - Redirect خارجی و TLS verification قابل کنترل است؛ برای محیط Production استفاده از HTTPS توصیه می‌شود.
 - اطلاعات حساس نباید داخل Issue، Pull Request یا README قرار گیرند.
 
+</div>
+
 ---
 
 ## 🌍 Multi-Server Architecture
@@ -98,17 +108,21 @@
              AWG            AWG            AWG
 ```
 
-Backend فقط از API RouteBox استفاده می‌کند و فایل‌های داخلی پنل RouteBox را مستقیماً تغییر نمی‌دهد.
+<div dir="rtl" align="right">
 
----
+Backend فقط از API RouteBox استفاده می‌کند و فایل‌های داخلی پنل RouteBox را مستقیماً تغییر نمی‌دهد.
 
 ## 📦 نصب سریع — Ubuntu 22.04+
 
 روی یک VPS تمیز Ubuntu 22.04 یا بالاتر، فقط یک دستور لازم است:
 
+</div>
+
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh)
 ```
+
+<div dir="rtl" align="right">
 
 Installer به‌صورت خودکار:
 
@@ -125,6 +139,8 @@ Installer به‌صورت خودکار:
 
 ### 📋 دستورات مدیریت
 
+</div>
+
 ```bash
 # مشاهده لاگ Bot
 journalctl -u routebox-telegram-bot -f
@@ -139,11 +155,13 @@ bash /opt/routebox-telegram-bot/update.sh
 bash /opt/routebox-telegram-bot/uninstall.sh
 ```
 
+<div dir="rtl" align="right">
+
 > ⚠️ نسخه Beta است. قبل از استفاده عمومی، HTTPS، Firewall و دسترسی پنل را ایمن کنید.
 
----
-
 ## 🧪 مسیر تست Beta
+
+</div>
 
 ```text
 /start
@@ -165,6 +183,8 @@ bash /opt/routebox-telegram-bot/uninstall.sh
 📲 ارسال کانفیگ به Telegram
 ```
 
+<div dir="rtl" align="right">
+
 در Provisioning چندسروره، اگر یکی از مراحل شکست بخورد، Peerهایی که همین درخواست ایجاد کرده است تا حد امکان Rollback می‌شوند تا از Provision ناقص جلوگیری شود.
 
 ---
@@ -182,6 +202,8 @@ bash /opt/routebox-telegram-bot/uninstall.sh
 - 🧾 فاکتور و تاریخچه پرداخت
 - 🌍 انتخاب سرور یا Region
 - 📊 داشبورد مصرف و وضعیت سرویس
+
+</div>
 
 ### 🇬🇧 English
 
@@ -232,13 +254,13 @@ Future releases will add a complete sales and subscription layer, including:
 
 ---
 
-## 🧩 RouteBox API Compatibility
+<div dir="rtl" align="right">
+
+## 🧩 سازگاری با RouteBox
 
 این پروژه بر اساس API فعلی RouteBox طراحی شده است. RouteBox در نسخه‌های جدید APIهای `/api/awg/*` برای وضعیت، Peerها، دریافت کانفیگ و Expiration دارد. قابلیت‌های جدید AWG3 و `vpn://` نیز در نسخه‌های جدید RouteBox اضافه شده‌اند. برای جزئیات نسخه‌های RouteBox، مستندات و Changelog رسمی پروژه را بررسی کنید.
 
 > 🧪 چون RouteBox ممکن است در نسخه‌های آینده API خود را تغییر دهد، تست End-to-End با نسخه RouteBox نصب‌شده روی سرور شما بخشی از فرآیند Beta است.
-
----
 
 ## 🛠️ توسعه و مشارکت
 
@@ -254,14 +276,12 @@ Pull Request و Issue برای گزارش Bug، پیشنهاد قابلیت و �
 
 ❌ هرگز Bot Token، Password، Private Key یا فایل `.conf` واقعی را در Issue یا Pull Request قرار ندهید.
 
----
-
 ## ⚠️ وضعیت فعلی
 
 **این پروژه Beta است، نه نسخه Production نهایی.** هدف این نسخه تست واقعی زنجیره Telegram → Backend → RouteBox → AmneziaWG است. قابلیت‌های پرداخت و فروش در نسخه‌های بعدی اضافه خواهند شد.
 
----
-
-## 📄 License
+## 📄 مجوز
 
 License نهایی پروژه در حال تعیین است. پیش از استفاده تجاری یا Redistribute کردن پروژه، شرایط License Repository را بررسی کنید.
+
+</div>
