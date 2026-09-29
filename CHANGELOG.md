@@ -2,6 +2,15 @@
 
 All notable changes to RouteBox Telegram Bot are documented here.
 
+## 0.1.0-beta.5 — 2026-09-30
+
+### Admin Panel Hotfix
+- Fixed the PHP parse error that caused the Admin Panel to return HTTP 500.
+- Replaced the affected mixed `foreach`/alternative-syntax blocks with explicit, valid PHP blocks.
+- Fixed the missing TLS translation key in the bilingual panel.
+- Kept the existing RouteBox/TLS architecture unchanged; the panel does not bind or reconfigure ports 80/443.
+- Kept server country flag/ping display, bilingual UI, dark/light theme, editable welcome messages, editable bot buttons, plan management, password change, and in-panel updater functionality.
+
 ## 0.1.0-beta.4 — 2026-09-29
 
 ### Admin Panel
