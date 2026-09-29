@@ -25,20 +25,27 @@ This guide explains how to install and configure RouteBox Telegram Bot on a fres
 
 The Bot connects to the **same web-panel/API listener used by RouteBox**. There is **no separate Bot API port**.
 
-To keep installation simple, the wizard only asks for:
+To make installation as simple as possible, the wizard asks for the **exact RouteBox Panel URL you already use in your browser**.
+
+Examples:
 
 ```text
-Server name
-Panel/API host
-Panel/API port
-Username
-Password
-TLS verification preference
+https://panel.example.com:8443
+http://192.0.2.10:8080
+https://panel.example.com
 ```
 
-For the standard RouteBox VPS panel, the documented default is **HTTPS on port `8443`**. RouteBox can also be exposed through a reverse proxy, commonly on **HTTPS `443`**. citeturn0search0
+You do **not** need to choose:
 
-The installer therefore assumes **HTTPS** and does not ask for a scheme or a `VPS/Router` mode. This Bot is designed to manage RouteBox server APIs rather than configure a RouteBox home router.
+- VPS / Router mode
+- HTTP / HTTPS scheme separately
+- API port separately
+
+The URL already contains everything required to reach the RouteBox listener.
+
+RouteBox documents the standard VPS panel as HTTPS on port `8443`. Router-mode installations commonly expose the panel on HTTP port `8080`. Reverse-proxy deployments can expose the same panel through another external port such as `443`. citeturn0search0turn0search1
+
+The Bot therefore treats the RouteBox panel URL as the API base URL.
 
 ---
 
@@ -104,98 +111,122 @@ Invalid tokens are rejected before the setup continues.
 
 ## 5. RouteBox Configuration
 
-For each RouteBox server, the installer asks only for the information actually needed:
+For each RouteBox server, the installer keeps the setup intentionally small:
 
 ```text
-Server name
-Panel/API host
-Panel/API port [8443]
-RouteBox username [admin]
-RouteBox password
-Verify TLS certificate? [Y/n]
+Server name [RouteBox-1]:
+RouteBox Panel URL:
+RouteBox username [admin]:
+RouteBox password:
+Verify TLS certificate? [Y/n]:
 ```
 
-### Standard RouteBox VPS example
+### Standard RouteBox VPS
+
+If you open RouteBox in your browser at:
 
 ```text
-Server name: Germany
-Panel/API host: de.example.com
-Panel/API port [8443]: 8443
-RouteBox username [admin]: admin
-RouteBox password: ********
-Verify TLS certificate? [Y/n]: Y
+https://panel.example.com:8443
 ```
 
-The resulting API base URL is:
+enter exactly:
 
 ```text
-https://de.example.com:8443
+RouteBox Panel URL: https://panel.example.com:8443
+```
+
+### Router-mode / HTTP example
+
+If your RouteBox panel is opened at:
+
+```text
+http://192.0.2.10:8080
+```
+
+enter exactly:
+
+```text
+RouteBox Panel URL: http://192.0.2.10:8080
 ```
 
 ### Reverse proxy example
 
-If RouteBox is exposed through HTTPS on port 443:
+If you normally open the panel at:
 
 ```text
-Panel/API host: panel.example.com
-Panel/API port [8443]: 443
+https://panel.example.com
 ```
 
-The resulting API base URL is:
+enter exactly that URL.
+
+There is no separate port question because the port is part of the URL when a non-default port is used.
+
+### TLS verification
+
+The installer asks about TLS verification only when the supplied URL uses HTTPS.
+
+For production:
 
 ```text
-https://panel.example.com:443
+Verify TLS certificate? Y
 ```
 
-### Important
-
-Enter the host and port separately:
+If you are temporarily using a self-signed certificate:
 
 ```text
-Host: de.example.com
-Port: 8443
+Verify TLS certificate? n
 ```
 
-Do **not** enter:
-
-```text
-Host: https://de.example.com:8443
-Port: 8443
-```
-
-The installer constructs the HTTPS API base URL automatically.
+Using valid certificates with verification enabled is strongly recommended for production.
 
 ---
 
-## 6. RouteBox Connectivity Test
+## 6. RouteBox API Connectivity Test
 
-The installer does not accept a RouteBox server just because the TCP port is reachable.
+The installer does not accept a RouteBox server just because the panel URL responds.
 
-It performs an authenticated API request before saving the server configuration.
+It performs an authenticated request to:
+
+```text
+<your-panel-url>/api/status
+```
+
+For example:
+
+```text
+https://panel.example.com:8443/api/status
+```
+
+or:
+
+```text
+http://192.0.2.10:8080/api/status
+```
 
 The flow is:
 
 ```text
 Bot Server
     │
-    │ HTTPS
+    │ RouteBox Panel URL
     ▼
 RouteBox Panel/API Listener
     │
     │ Authenticated API request
     ▼
-API Response
+/api/status
     │
     ▼
 ✓ Server accepted
 ```
 
-RouteBox documents cookie-based login sessions for the panel and also explicitly keeps HTTP Basic authentication available for scripts. The Bot uses the supported Basic authentication path for scripted API access. citeturn0search1
+RouteBox documents that the REST API is served by the same panel listener. It also documents cookie-based panel sessions and explicitly keeps HTTP Basic authentication available for scripts. This project uses the supported Basic authentication path for scripted API access. citeturn0search0turn0search2
+
+There is therefore **no additional API port to discover or configure**.
 
 If the test fails, check:
 
-- Hostname/IP
-- Port
+- The exact URL you use to open the RouteBox panel
 - RouteBox username
 - RouteBox password
 - Firewall rules
@@ -203,7 +234,7 @@ If the test fails, check:
 - TLS certificate
 - RouteBox API availability
 
-The setup will ask you to correct the information instead of saving an unverified server.
+The setup will ask again instead of saving an unverified server.
 
 ---
 
@@ -214,9 +245,9 @@ You can add multiple RouteBox servers during the same installation.
 Example:
 
 ```text
-RouteBox #1 → Germany
-RouteBox #2 → Turkey
-RouteBox #3 → Netherlands
+RouteBox #1 → https://de.example.com:8443
+RouteBox #2 → https://tr.example.com:8443
+RouteBox #3 → https://nl.example.com
 ```
 
 When multi-server provisioning is enabled, the same Telegram customer identity can be provisioned across all enabled RouteBox servers.
@@ -300,23 +331,25 @@ Verify the Bot Token with @BotFather.
 
 ### RouteBox connection failed
 
-For the standard RouteBox VPS panel:
+Use the exact same URL that works in your browser.
+
+For example:
 
 ```bash
-curl -vk https://YOUR_ROUTEBOX_HOST:8443/
+curl -vk https://YOUR_ROUTEBOX_HOST:8443/api/status
 ```
 
-For a reverse proxy on 443:
+or:
 
 ```bash
-curl -vk https://YOUR_ROUTEBOX_HOST:443/
+curl -v http://YOUR_ROUTEBOX_HOST:8080/api/status
 ```
 
-A reachable port does not prove that authentication or the API is working. The installer performs an authenticated API test before accepting the server.
+A reachable URL does not prove that authentication or the API is working. The installer performs an authenticated API test before accepting the server.
 
 ### TLS errors
 
-If your RouteBox uses a self-signed certificate during testing, the installer can disable TLS certificate verification for that server. For production, a valid certificate and TLS verification are strongly recommended.
+If RouteBox uses a self-signed certificate during testing, disable TLS verification for that server during setup. For production, use a valid certificate and keep TLS verification enabled.
 
 ---
 
