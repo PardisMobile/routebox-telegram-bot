@@ -1,138 +1,267 @@
 # 🚀 RouteBox Telegram Bot
 
-> 🤖 Telegram Bot + 🖥️ Web Management Panel for RouteBox
+> 🤖 ربات تلگرام + 🖥️ پنل مدیریت مستقل برای RouteBox و AmneziaWG
+>
+> **Version: `0.1.0-beta.1` · وضعیت: 🧪 Beta**
 
 ![Status](https://img.shields.io/badge/status-BETA-orange?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-0.1.0--beta.1-blue?style=for-the-badge)
 ![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04%2B-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
-![PHP](https://img.shields.io/badge/PHP-8.2%2B-777BB4?style=for-the-badge&logo=php&logoColor=white)
+![PHP](https://img.shields.io/badge/PHP-8%2B-777BB4?style=for-the-badge&logo=php&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram-Bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)
+![RouteBox](https://img.shields.io/badge/RouteBox-API-111827?style=for-the-badge)
 
-## ⚠️ Beta
+---
 
-**RouteBox Telegram Bot is currently in Beta.** This release focuses on validating the complete Telegram → Backend → RouteBox API → AmneziaWG workflow before production features are enabled.
+## 🇮🇷 معرفی پروژه
 
-> 🧪 Test on your own RouteBox installation before production use.
+**RouteBox Telegram Bot** یک Backend مستقل برای مدیریت سرویس‌های AmneziaWG روی چند سرور RouteBox است. تنظیمات ربات از طریق یک پنل وب فارسی و RTL انجام می‌شود و RouteBox اصلی بدون دستکاری فایل‌های داخلی خودش به کار ادامه می‌دهد.
 
-## ✨ Features
-
-### 🤖 Telegram Bot
-- `/start` and help
-- 🎁 Trial service creation
-- 👤 User account status
-- 📄 AmneziaWG `.conf` delivery
-- ⏱️ Trial expiration
-- 🔑 Peer provisioning through RouteBox API
-
-### 🖥️ Independent Web Panel
-- 🔐 Configure Telegram Bot Token
-- ⏱️ Configure trial duration
-- 🌐 Add multiple RouteBox servers
-- 🔌 Test RouteBox connectivity
-- ⭐ Select default server
-- 🟢 Enable/disable servers
-- 👥 View Telegram users
-- 🔑 View created peers
-- 📝 Operation logs
-
-### 🌍 Multi-RouteBox Ready
+نسخه فعلی **Beta** است و تمرکز آن روی یک مسیر پایدار و قابل تست است:
 
 ```text
-                         Telegram
-                            │
-                            ▼
-                    ┌───────────────┐
-                    │ Telegram Bot  │
-                    └───────┬───────┘
-                            │
-                            ▼
-                    ┌───────────────┐
-                    │  Bot Backend  │
-                    │  Web Panel    │
-                    └───────┬───────┘
-                            │
-              ┌─────────────┼─────────────┐
-              ▼             ▼             ▼
-         RouteBox #1   RouteBox #2   RouteBox #3
-              │             │             │
-             AWG           AWG           AWG
+👤 کاربر Telegram
+        ↓
+🤖 Telegram Bot
+        ↓
+🖥️ Backend / Admin Panel
+        ↓
+🌐 RouteBox API
+        ↓
+🔐 AmneziaWG Peer
+        ↓
+📄 .conf
+        ↓
+📲 Telegram
 ```
 
-The Bot system communicates with RouteBox through its API and does not modify RouteBox's internal configuration files.
+### ✨ قابلیت‌های فعلی ربات
 
-## 🛡️ Security
+- 🎁 **Trial رایگان** با مدت قابل تنظیم از پنل
+- 👤 **حساب کاربری** و نمایش سرویس فعال
+- 🔑 **ساخت خودکار Peer** در RouteBox
+- 🌍 **Multi-RouteBox**؛ در صورت فعال بودن چند سرور، همان کاربر روی همه سرورها ایجاد می‌شود
+- 🆔 نام‌گذاری یکسان Peer بر اساس Telegram ID، مانند `user123456789`
+- ⏱️ **Expiration** برای Peer
+- 📄 ارسال مستقیم فایل **AmneziaWG `.conf`** برای کاربر
+- 🛡️ جلوگیری از استفاده مجدد از Trial
+- 🔄 Rollback در صورت شکست Provisioning بین چند سرور
+- 📝 ثبت خطاها و رویدادهای مهم
 
-- 🔒 Bot credentials are encrypted before storage.
-- 🔒 RouteBox credentials are encrypted before storage.
-- 🔑 Secrets are kept outside source code.
-- 🚫 RouteBox internal files are not directly modified.
-- 🌐 HTTPS is strongly recommended for the management panel.
+---
 
-## 📦 Ubuntu 22.04+
+## 🖥️ پنل مدیریت
 
-The target installation platform is Ubuntu 22.04 and newer.
+پنل مستقل است و برای تنظیم Bot لازم نیست وارد Telegram شوید.
 
-Planned one-command installer:
+### ⚙️ تنظیمات
+
+- 🤖 Telegram Bot Token
+- ⏱️ مدت Trial
+- 🌐 افزودن چند RouteBox
+- 🔌 تست اتصال هر RouteBox
+- 🟢 فعال/غیرفعال کردن سرورها
+- 👥 مشاهده کاربران
+- 📋 مشاهده وضعیت Provisioning
+- 📝 لاگ‌های سیستم
+
+### 🔐 امنیت
+
+- Token ربات و Credential سرورهای RouteBox با **libsodium SecretBox** رمزنگاری می‌شوند.
+- کلید برنامه در فایل Runtime محلی تولید می‌شود و داخل GitHub قرار نمی‌گیرد.
+- رمز مدیر هنگام نصب به‌صورت تصادفی تولید می‌شود.
+- فایل Database و تنظیمات Runtime خارج از Web Root نگهداری می‌شوند.
+- Redirect خارجی و TLS verification قابل کنترل است؛ برای محیط Production استفاده از HTTPS توصیه می‌شود.
+- اطلاعات حساس نباید داخل Issue، Pull Request یا README قرار گیرند.
+
+---
+
+## 🌍 Multi-Server Architecture
+
+```text
+                         📱 Telegram
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │  🤖 Bot Worker  │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │ 🖥️ Admin Panel  │
+                    └────────┬────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+        🌐 RouteBox #1  🌐 RouteBox #2  🌐 RouteBox #3
+              │              │              │
+             AWG            AWG            AWG
+```
+
+Backend فقط از API RouteBox استفاده می‌کند و فایل‌های داخلی پنل RouteBox را مستقیماً تغییر نمی‌دهد.
+
+---
+
+## 📦 نصب سریع — Ubuntu 22.04+
+
+روی یک VPS تمیز Ubuntu 22.04 یا بالاتر، فقط یک دستور لازم است:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh)
 ```
 
-> 🚧 The installer is being finalized and tested as part of the Beta release.
+Installer به‌صورت خودکار:
 
-### Requirements
+1. 📦 وابستگی‌ها را نصب می‌کند.
+2. 📥 پروژه را دریافت می‌کند.
+3. 🗄️ SQLite را آماده می‌کند.
+4. 🔐 کلید رمزنگاری و رمز مدیر را تولید می‌کند.
+5. 🌐 Nginx + PHP-FPM را تنظیم می‌کند.
+6. ⚙️ systemd service را فعال می‌کند.
+7. 🧪 Syntax check تمام فایل‌های PHP را اجرا می‌کند.
+8. ❤️ وضعیت سرویس Bot را بررسی می‌کند.
 
-- Ubuntu 22.04+
-- PHP 8.2+
-- cURL
-- SQLite
-- OpenSSL
-- Nginx
-- systemd
-- root/sudo access
+بعد از نصب، رمز مدیر فقط در خروجی Installer نمایش داده می‌شود؛ آن را ذخیره کنید.
 
-## 🧪 Beta Test Flow
+### 📋 دستورات مدیریت
+
+```bash
+# مشاهده لاگ Bot
+journalctl -u routebox-telegram-bot -f
+
+# بررسی وضعیت
+systemctl status routebox-telegram-bot
+
+# آپدیت
+bash /opt/routebox-telegram-bot/update.sh
+
+# حذف
+bash /opt/routebox-telegram-bot/uninstall.sh
+```
+
+> ⚠️ نسخه Beta است. قبل از استفاده عمومی، HTTPS، Firewall و دسترسی پنل را ایمن کنید.
+
+---
+
+## 🧪 مسیر تست Beta
 
 ```text
-Telegram /start
-      ↓
-🎁 Get Trial
-      ↓
-Bot Backend
-      ↓
-RouteBox API
-      ↓
-Create AWG Peer
-      ↓
-Set Expiration
-      ↓
-Get Configuration
-      ↓
-Telegram
-      ↓
-📄 AmneziaWG .conf
+/start
+  ↓
+🎁 دریافت تست رایگان
+  ↓
+بررسی Trial قبلی
+  ↓
+🌐 دریافت لیست RouteBoxهای فعال
+  ↓
+🔎 پیدا کردن Peer با نام user<TelegramID>
+  ↓
+➕ ساخت Peer در صورت نبودن
+  ↓
+⏱️ تعیین Expiration
+  ↓
+📄 دریافت .conf
+  ↓
+📲 ارسال کانفیگ به Telegram
 ```
+
+در Provisioning چندسروره، اگر یکی از مراحل شکست بخورد، Peerهایی که همین درخواست ایجاد کرده است تا حد امکان Rollback می‌شوند تا از Provision ناقص جلوگیری شود.
+
+---
+
+## 💳 برنامه توسعه پرداخت
+
+### 🇮🇷 فارسی
+
+در به‌روزرسانی‌های بعدی، سیستم فروش و تمدید سرویس به پروژه اضافه خواهد شد، از جمله:
+
+- 💰 **درگاه پرداخت ریالی**
+- 🪙 **پرداخت با ارزهای دیجیتال (Crypto)**
+- 🔄 تمدید و ارتقای سرویس
+- 🎟️ کد تخفیف و کمپین
+- 🧾 فاکتور و تاریخچه پرداخت
+- 🌍 انتخاب سرور یا Region
+- 📊 داشبورد مصرف و وضعیت سرویس
+
+### 🇬🇧 English
+
+Future releases will add a complete sales and subscription layer, including:
+
+- 💰 **Iranian Rial payment gateway**
+- 🪙 **Cryptocurrency / Crypto payments**
+- 🔄 Subscription renewal and upgrades
+- 🎟️ Discount and campaign codes
+- 🧾 Invoices and payment history
+- 🌍 Server / Region selection
+- 📊 Usage and service dashboards
+
+---
 
 ## 🗺️ Roadmap
 
-- [x] Initial RouteBox API client
-- [x] Independent management panel
-- [x] Basic Telegram Bot
-- [x] AWG peer creation
-- [x] Configuration delivery
-- [x] RouteBox server management
-- [x] Basic trial/expiration
-- [ ] Production Ubuntu installer
-- [ ] Service renewal
-- [ ] Payment gateway
-- [ ] Multi-server provisioning
-- [ ] Central subscription system
-- [ ] Traffic analytics
-- [ ] Advanced user management
+### v0.1.0-beta.1
 
-## 🤝 Contributing
+- [x] Telegram Bot foundation
+- [x] Independent RTL admin panel
+- [x] RouteBox API client
+- [x] Multiple RouteBox servers
+- [x] Same Telegram user identity across servers
+- [x] AWG Peer provisioning
+- [x] Expiration
+- [x] `.conf` delivery
+- [x] Encrypted credentials
+- [x] Trial abuse protection
+- [x] Partial provisioning rollback
+- [x] Ubuntu 22.04+ installer
+- [x] Update / uninstall scripts
+- [x] PHP syntax checks
 
-Issues and pull requests are welcome. During Beta, please include your RouteBox version, Ubuntu version, and relevant logs when reporting a problem. Never include Bot Tokens, passwords, private keys, or other secrets in an issue.
+### 🔜 Future Releases
+
+- [ ] 💳 Iranian Rial payment gateway
+- [ ] 🪙 Crypto payment gateway
+- [ ] 🔄 Subscription renewal
+- [ ] 🛒 Product / plan management
+- [ ] 🌍 Region selection
+- [ ] 📊 Traffic and usage dashboard
+- [ ] 👨‍💼 Advanced user management
+- [ ] 🎟️ Coupons and referral system
+- [ ] 🔔 Expiration notifications
+- [ ] 🌐 Full Persian / English Bot interface
+- [ ] 🔗 Subscription links / QR workflow
+
+---
+
+## 🧩 RouteBox API Compatibility
+
+این پروژه بر اساس API فعلی RouteBox طراحی شده است. RouteBox در نسخه‌های جدید APIهای `/api/awg/*` برای وضعیت، Peerها، دریافت کانفیگ و Expiration دارد. قابلیت‌های جدید AWG3 و `vpn://` نیز در نسخه‌های جدید RouteBox اضافه شده‌اند. برای جزئیات نسخه‌های RouteBox، مستندات و Changelog رسمی پروژه را بررسی کنید.
+
+> 🧪 چون RouteBox ممکن است در نسخه‌های آینده API خود را تغییر دهد، تست End-to-End با نسخه RouteBox نصب‌شده روی سرور شما بخشی از فرآیند Beta است.
+
+---
+
+## 🛠️ توسعه و مشارکت
+
+Pull Request و Issue برای گزارش Bug، پیشنهاد قابلیت و بهبود مستندات آزاد است.
+
+برای گزارش Bug بهتر است این موارد را ذکر کنید:
+
+- Ubuntu version
+- RouteBox version
+- Project version
+- PHP version
+- متن خطای `journalctl`
+
+❌ هرگز Bot Token، Password، Private Key یا فایل `.conf` واقعی را در Issue یا Pull Request قرار ندهید.
+
+---
+
+## ⚠️ وضعیت فعلی
+
+**این پروژه Beta است، نه نسخه Production نهایی.** هدف این نسخه تست واقعی زنجیره Telegram → Backend → RouteBox → AmneziaWG است. قابلیت‌های پرداخت و فروش در نسخه‌های بعدی اضافه خواهند شد.
+
+---
 
 ## 📄 License
 
-License terms are being finalized for the Beta release. Review the repository before commercial redistribution.
+License نهایی پروژه در حال تعیین است. پیش از استفاده تجاری یا Redistribute کردن پروژه، شرایط License Repository را بررسی کنید.
