@@ -48,10 +48,11 @@ Group=www-data
 WorkingDirectory=$APP_DIR
 # PHP's built-in listener is HTTP only. Keep it isolated on its own port;
 # HTTPS should terminate at the existing Apache/Nginx/RouteBox TLS endpoint.
-ExecStart=/usr/bin/php -d open_basedir=$APP_DIR:/tmp -S 0.0.0.0:%i -t $APP_DIR/public
+# Keep the PHP filesystem sandbox, but allow the panel to inspect and invoke
+# the dedicated root-owned updater through the restricted sudo rule.
+ExecStart=/usr/bin/php -d open_basedir=$APP_DIR:/tmp:/usr/local/sbin -S 0.0.0.0:%i -t $APP_DIR/public
 Restart=always
 RestartSec=2
-NoNewPrivileges=true
 ProtectHome=true
 ReadWritePaths=$APP_DIR/storage
 
