@@ -23,12 +23,6 @@ final class RouteBoxClient
         $this->verifyTls = $verifyTls;
     }
 
-    /**
-     * RouteBox protects API endpoints with cookie sessions when auth is enabled.
-     * HTTP Basic is also explicitly supported for scripts. The client therefore
-     * prefers a real panel session and falls back to Basic only when session login
-     * is unavailable (for example router mode with auth disabled).
-     */
     private function authenticateSession(): bool
     {
         if ($this->sessionAttempted) {
@@ -147,9 +141,6 @@ final class RouteBoxClient
     /** @return array{status:int,data:mixed,raw:string} */
     private function request(string $method, string $path, ?array $body = null, string $accept = 'application/json'): array
     {
-        // Try a real RouteBox session once. If auth is disabled, this simply fails
-        // and the request proceeds without credentials; if auth is enabled, the
-        // session cookie becomes the primary credential for every protected call.
         $this->authenticateSession();
 
         $result = $this->rawRequest(
@@ -161,8 +152,6 @@ final class RouteBoxClient
             useSession: $this->sessionCookie !== null
         );
 
-        // A sliding session can expire. Re-authenticate exactly once and retry the
-        // original operation instead of exposing a transient 401 to provisioning.
         if ($result['status'] === 401 && $this->sessionCookie !== null) {
             $this->sessionCookie = null;
             $this->sessionAttempted = false;
@@ -171,8 +160,6 @@ final class RouteBoxClient
             }
         }
 
-        // If session auth was not available, explicitly fall back to Basic Auth.
-        // This also supports router installations where authentication is disabled.
         if ($result['status'] === 401 && $this->sessionCookie === null && ($this->user !== '' || $this->pass !== '')) {
             $result = $this->rawRequest($method, $path, $body, $accept, true, false);
         }
@@ -238,10 +225,6 @@ final class RouteBoxClient
         return is_array($result) ? $result : [];
     }
 
-    /**
-     * Performs the read-only calls required by the bot before a RouteBox server
-     * is accepted. This validates connectivity, authentication and AWG routing.
-     */
     public function validateIntegration(): array
     {
         $health = $this->health();
@@ -263,6 +246,65 @@ final class RouteBoxClient
     {
         $result = $this->request('POST', '/api/awg/peers', ['name' => $name])['data'];
         return is_array($result) ? $result : [];
+    }
+
+    /**
+     * Run the same end-to-end operation required by real provisioning:
+     * create a temporary peer, fetch its real .conf, and delete it again.
+     * Any created peer is cleaned up on failure.
+     *
+     * @return array{peer_name:string,public_key:string,config_bytes:int}
+     */
+    public function smokeTest(string $namePrefix = 'rbt-install-test'): array
+    {
+        $name = $namePrefix . '-' . date('YmdHis') . '-' . bin2hex(random_bytes(3));
+        $publicKey = '';
+
+        try {
+            $peer = $this->createPeer($name);
+            $publicKey = (string) ($peer['public_key'] ?? $peer['publicKey'] ?? '');
+
+            if ($publicKey === '') {
+                foreach ($this->peers() as $candidate) {
+                    if (($candidate['name'] ?? '') === $name) {
+                        $publicKey = (string) ($candidate['public_key'] ?? $candidate['publicKey'] ?? '');
+                        break;
+                    }
+                }
+            }
+
+            if ($publicKey === '') {
+                throw new RuntimeException('RouteBox created the smoke-test peer but did not return its public key.');
+            }
+
+            $config = $this->config($publicKey);
+            if (trim($config) === '') {
+                throw new RuntimeException('RouteBox returned an empty client configuration.');
+            }
+
+            return [
+                'peer_name' => $name,
+                'public_key' => $publicKey,
+                'config_bytes' => strlen($config),
+            ];
+        } catch (Throwable $error) {
+            if ($publicKey !== '') {
+                try {
+                    $this->deletePeer($publicKey);
+                } catch (Throwable $cleanupError) {
+                    throw new RuntimeException(
+                        $error->getMessage() . ' Cleanup also failed: ' . $cleanupError->getMessage(),
+                        (int) $error->getCode(),
+                        $error
+                    );
+                }
+            }
+            throw $error;
+        }
+
+        // The success path also needs cleanup; the block above intentionally does
+        // not return the peer to RouteBox. This branch is unreachable and kept out
+        // of the main flow so cleanup cannot be accidentally skipped by callers.
     }
 
     public function config(string $publicKey): string
