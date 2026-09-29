@@ -1,0 +1,13 @@
+<?php
+$configFile=__DIR__.'/../config/config.php';
+if(!is_file($configFile)){http_response_code(503);exit('Run install.sh first.');}
+$config=require $configFile;
+date_default_timezone_set($config['timezone']??'UTC');
+if(session_status()!==PHP_SESSION_ACTIVE&&PHP_SAPI!=='cli'){session_name($config['security']['session_name']??'rbt_session');session_start(['cookie_httponly'=>true,'cookie_samesite'=>'Lax','cookie_secure'=>(bool)($config['security']['cookie_secure']??false)]);}
+$pdo=new PDO('sqlite:'.$config['db']);$pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);$pdo->exec('PRAGMA foreign_keys=ON');
+function db():PDO{global $pdo;return $pdo;} function app_config():array{global $config;return $config;} function h(string $s):string{return htmlspecialchars($s,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
+function enc(string $plain):string{$key=base64_decode(app_config()['app_key'],true);if(!$key||strlen($key)!==32)throw new RuntimeException('Invalid app key');$iv=random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);return base64_encode($iv.sodium_crypto_secretbox($plain,$iv,$key));}
+function dec(string $cipher):string{$key=base64_decode(app_config()['app_key'],true);$raw=base64_decode($cipher,true);if(!$key||strlen($key)!==32||!$raw)throw new RuntimeException('Invalid secret');$iv=substr($raw,0,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);return sodium_crypto_secretbox_open(substr($raw,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),$iv,$key)?:'';}
+function log_event(string $level,string $message):void{$s=db()->prepare('INSERT INTO logs(level,message,created_at)VALUES(?,?,?)');$s->execute([$level,$message,time()]);}
+function require_admin():void{if(empty($_SESSION['admin'])){header('Location:/login.php');exit;}}
+function json_response($data,int $status=200):never{http_response_code($status);header('Content-Type:application/json; charset=utf-8');echo json_encode($data,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
