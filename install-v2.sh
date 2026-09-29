@@ -6,7 +6,7 @@ REPO="https://github.com/PardisMobile/routebox-telegram-bot.git"
 SERVICE="${APP_NAME}.service"
 WEB_SERVICE="${APP_NAME}-web"
 STATE_DIR="/etc/${APP_NAME}"
-VERSION="0.1.0-beta.4"
+VERSION="0.1.0-beta.6"
 fail(){ echo "[ERROR] $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || fail "Run as root: sudo bash install-v2.sh"
 . /etc/os-release
@@ -68,4 +68,4 @@ EOF_WEB
 echo standalone > "$STATE_DIR/web-mode"; echo "$ADMIN_PORT" > "$STATE_DIR/web-port"; systemctl daemon-reload; systemctl enable --now "${WEB_SERVICE}@${ADMIN_PORT}.service"
 php -l "$APP_DIR/worker.php" >/dev/null; php -l "$APP_DIR/src/RouteBoxClient.php" >/dev/null; php -l "$APP_DIR/public/index.php" >/dev/null
 HTTP_CODE="$(curl -sS -o /tmp/rbt-web-check.$$ -w '%{http_code}' "http://127.0.0.1:${ADMIN_PORT}/login.php" || true)"; rm -f "/tmp/rbt-web-check.$$"; [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "302" ]] || { journalctl -u "${WEB_SERVICE}@${ADMIN_PORT}.service" -n 40 --no-pager >&2 || true; fail "Admin Panel health check failed: HTTP ${HTTP_CODE:-000}"; }
-echo; echo "✓ Installation completed successfully — $VERSION"; echo "✓ Telegram validation passed."; echo "✓ RouteBox API + AWG smoke test passed."; echo "✓ Admin Panel HTTP health check passed."; echo "✓ Existing Apache/Nginx/RouteBox services were not reconfigured."; echo "✓ Admin Panel port: $ADMIN_PORT"; echo "Next: open the Admin Panel over HTTP, then send /start to your Telegram bot."; echo "For public HTTPS, place the panel behind your existing RouteBox/Apache/Nginx TLS endpoint."
+echo; echo "✓ Installation completed successfully — $VERSION"; echo "✓ Telegram validation passed."; echo "✓ RouteBox API + AWG smoke test passed."; echo "✓ Admin Panel HTTP health check passed."; echo "✓ Existing Apache/Nginx/RouteBox services were not reconfigured."; echo "✓ Admin Panel port: $ADMIN_PORT"; echo "Next: open the Admin Panel over HTTP, then send /start to your Telegram bot."; echo "RouteBox TLS integration is installed separately after the health check when the RouteBox panel certificate is available."
