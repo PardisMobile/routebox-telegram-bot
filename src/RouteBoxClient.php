@@ -8,6 +8,8 @@ final class RouteBoxClient
     private string $user;
     private string $pass;
     private bool $verifyTls;
+    private ?string $sessionCookie = null;
+    private bool $sessionAttempted = false;
 
     public function __construct(string $base, string $user = '', string $pass = '', bool $verifyTls = true)
     {
@@ -21,9 +23,65 @@ final class RouteBoxClient
         $this->verifyTls = $verifyTls;
     }
 
-    /** @return array{status:int,data:mixed,raw:string} */
-    private function request(string $method, string $path, ?array $body = null, string $accept = 'application/json'): array
+    /**
+     * RouteBox protects API endpoints with cookie sessions when auth is enabled.
+     * HTTP Basic is also explicitly supported for scripts. The client therefore
+     * prefers a real panel session and falls back to Basic only when session login
+     * is unavailable (for example router mode with auth disabled).
+     */
+    private function authenticateSession(): bool
     {
+        if ($this->sessionAttempted) {
+            return $this->sessionCookie !== null;
+        }
+        $this->sessionAttempted = true;
+
+        if ($this->user === '' || $this->pass === '') {
+            return false;
+        }
+
+        $result = $this->rawRequest('POST', '/api/auth/login', [
+            'username' => $this->user,
+            'password' => $this->pass,
+        ], 'application/json', false, false);
+
+        if ($result['status'] < 200 || $result['status'] >= 300) {
+            return false;
+        }
+
+        $cookie = $this->extractSessionCookie($result['headers']);
+        if ($cookie === null) {
+            return false;
+        }
+        $this->sessionCookie = $cookie;
+        return true;
+    }
+
+    /** @param list<string> $headers */
+    private function extractSessionCookie(array $headers): ?string
+    {
+        foreach ($headers as $header) {
+            if (stripos($header, 'Set-Cookie:') !== 0) {
+                continue;
+            }
+            $value = trim(substr($header, strlen('Set-Cookie:')));
+            $pair = explode(';', $value, 2)[0];
+            if (str_contains($pair, '=')) {
+                return $pair;
+            }
+        }
+        return null;
+    }
+
+    /** @return array{status:int,data:mixed,raw:string,headers:list<string>} */
+    private function rawRequest(
+        string $method,
+        string $path,
+        ?array $body = null,
+        string $accept = 'application/json',
+        bool $useBasic = true,
+        bool $useSession = true
+    ): array {
         $url = $this->base . '/' . ltrim($path, '/');
         $ch = curl_init($url);
         if ($ch === false) {
@@ -34,9 +92,13 @@ final class RouteBoxClient
         if ($body !== null) {
             $headers[] = 'Content-Type: application/json';
         }
+        if ($useSession && $this->sessionCookie !== null) {
+            $headers[] = 'Cookie: ' . $this->sessionCookie;
+        }
 
         $options = [
             CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => true,
             CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_TIMEOUT => 25,
@@ -47,10 +109,7 @@ final class RouteBoxClient
             CURLOPT_MAXREDIRS => 0,
         ];
 
-        // RouteBox explicitly supports HTTP Basic authentication for scripts.
-        // If authentication is disabled on a router-mode install, empty
-        // credentials are valid and no Authorization header is sent.
-        if ($this->user !== '' || $this->pass !== '') {
+        if ($useBasic && $this->sessionCookie === null && ($this->user !== '' || $this->pass !== '')) {
             $options[CURLOPT_HTTPAUTH] = CURLAUTH_BASIC;
             $options[CURLOPT_USERPWD] = $this->user . ':' . $this->pass;
         }
@@ -63,15 +122,63 @@ final class RouteBoxClient
         }
 
         curl_setopt_array($ch, $options);
-        $raw = curl_exec($ch);
+        $rawWithHeaders = curl_exec($ch);
         $error = curl_error($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
         curl_close($ch);
 
-        if ($raw === false) {
+        if ($rawWithHeaders === false) {
             throw new RuntimeException('RouteBox connection failed: ' . ($error ?: 'unknown cURL error'));
         }
 
+        $headerBlock = substr($rawWithHeaders, 0, $headerSize);
+        $raw = substr($rawWithHeaders, $headerSize);
+        $headersOut = preg_split('/\r\n|\n|\r/', trim($headerBlock)) ?: [];
+
+        return [
+            'status' => $code,
+            'data' => $raw,
+            'raw' => $raw,
+            'headers' => array_values(array_filter($headersOut, static fn(string $h): bool => $h !== '')),
+        ];
+    }
+
+    /** @return array{status:int,data:mixed,raw:string} */
+    private function request(string $method, string $path, ?array $body = null, string $accept = 'application/json'): array
+    {
+        // Try a real RouteBox session once. If auth is disabled, this simply fails
+        // and the request proceeds without credentials; if auth is enabled, the
+        // session cookie becomes the primary credential for every protected call.
+        $this->authenticateSession();
+
+        $result = $this->rawRequest(
+            $method,
+            $path,
+            $body,
+            $accept,
+            useBasic: $this->sessionCookie === null,
+            useSession: $this->sessionCookie !== null
+        );
+
+        // A sliding session can expire. Re-authenticate exactly once and retry the
+        // original operation instead of exposing a transient 401 to provisioning.
+        if ($result['status'] === 401 && $this->sessionCookie !== null) {
+            $this->sessionCookie = null;
+            $this->sessionAttempted = false;
+            if ($this->authenticateSession()) {
+                $result = $this->rawRequest($method, $path, $body, $accept, false, true);
+            }
+        }
+
+        // If session auth was not available, explicitly fall back to Basic Auth.
+        // This also supports router installations where authentication is disabled.
+        if ($result['status'] === 401 && $this->sessionCookie === null && ($this->user !== '' || $this->pass !== '')) {
+            $result = $this->rawRequest($method, $path, $body, $accept, true, false);
+        }
+
+        $code = $result['status'];
+        $raw = (string) $result['raw'];
         if ($code < 200 || $code >= 300) {
             $json = json_decode($raw, true);
             $message = is_array($json)
@@ -132,8 +239,8 @@ final class RouteBoxClient
     }
 
     /**
-     * Performs the exact read-only calls required by the bot before a RouteBox
-     * server is accepted. This validates authentication as well as API routing.
+     * Performs the read-only calls required by the bot before a RouteBox server
+     * is accepted. This validates connectivity, authentication and AWG routing.
      */
     public function validateIntegration(): array
     {
