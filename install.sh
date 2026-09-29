@@ -7,14 +7,16 @@ set -Eeuo pipefail
 
 SCRIPT_URL="https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install-v2.sh"
 REPAIR_URL="https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/repair-web.sh"
+UPDATER_URL="https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/admin-update.sh"
 TMP="$(mktemp)"
 REPAIR_TMP="$(mktemp)"
-trap 'rm -f "$TMP" "$REPAIR_TMP"' EXIT
+UPDATER_TMP="$(mktemp)"
+trap 'rm -f "$TMP" "$REPAIR_TMP" "$UPDATER_TMP"' EXIT
 
 curl -fsSL --connect-timeout 10 --max-time 60 "$SCRIPT_URL" -o "$TMP"
 chmod 700 "$TMP"
 if bash "$TMP" "$@"; then
-  # Beta 2 uses an independent PHP listener. Run a final check as the actual
+  # Beta 2+ uses an independent PHP listener. Run a final check as the actual
   # web-service user so a successful package install can never hide a 503 panel.
   if curl -fsSL --connect-timeout 10 --max-time 60 "$REPAIR_URL" -o "$REPAIR_TMP"; then
     chmod 700 "$REPAIR_TMP"
@@ -22,6 +24,21 @@ if bash "$TMP" "$@"; then
   else
     echo "[WARN] Could not download the admin-panel health/repair step." >&2
     exit 1
+  fi
+
+  # Install the restricted updater used by the Admin Panel. The permission is
+  # deliberately limited to one fixed root wrapper; www-data gets no general sudo access.
+  if curl -fsSL --connect-timeout 10 --max-time 60 "$UPDATER_URL" -o "$UPDATER_TMP"; then
+    chmod 0755 "$UPDATER_TMP"
+    install -m 0755 "$UPDATER_TMP" /usr/local/sbin/routebox-telegram-bot-update
+    cat > /etc/sudoers.d/routebox-telegram-bot-update <<'EOF_SUDO'
+www-data ALL=(root) NOPASSWD: /usr/local/sbin/routebox-telegram-bot-update
+EOF_SUDO
+    chmod 0440 /etc/sudoers.d/routebox-telegram-bot-update
+    visudo -cf /etc/sudoers.d/routebox-telegram-bot-update >/dev/null
+    echo "✓ Admin Panel updater installed."
+  else
+    echo "[WARN] Could not download the Admin Panel updater." >&2
   fi
 else
   status=$?
