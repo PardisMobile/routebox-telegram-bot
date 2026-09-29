@@ -1,55 +1,68 @@
-# HTTPS for the Admin Panel without taking over 80/443
+# Admin Panel HTTPS / TLS
 
-Beta 3 keeps the Admin Panel as an independent local PHP service. It does **not** install, stop, reload or replace the existing RouteBox web server.
+## Current architecture — Beta 7
 
-The safe production model is:
+The Bot Admin Panel can reuse the certificate exported by RouteBox:
 
 ```text
-Internet HTTPS :443
-        │
-        ▼
-Existing RouteBox web server / reverse proxy
-        │
-        ▼
-127.0.0.1:<Bot panel port>
-        │
-        ▼
-RouteBox Telegram Bot PHP panel
+/etc/routebox/panel-cert/fullchain.pem
+/etc/routebox/panel-cert/key.pem
 ```
 
-The Bot panel port is stored in:
+The Bot keeps its existing public Admin Panel port and accepts **both HTTP and HTTPS on that same port**.
+
+For example, with Admin Panel port `8093`:
+
+```text
+http://SERVER-IP:8093/
+https://ROUTEBOX-DOMAIN:8093/
+```
+
+The HTTPS hostname must match the RouteBox certificate.
+
+## Internal flow
+
+```text
+                         ┌── HTTP ───────────────→ PHP
+Client → :8093 → HAProxy┤
+                         └── TLS → stunnel ──────→ PHP
+```
+
+- HAProxy is a Bot-owned dedicated instance.
+- PHP listens only on `127.0.0.1`.
+- stunnel listens only on `127.0.0.1`.
+- The public Bot port remains unchanged.
+- RouteBox's own listener remains untouched.
+- Ports `80/443` are not claimed by the Bot.
+- The Bot does not install or reconfigure Apache/Nginx.
+
+## Enable or repair
+
+Run as root on the Bot server:
 
 ```bash
-cat /etc/routebox-telegram-bot/web-port
+cd /opt/routebox-telegram-bot
+sudo bash setup-routebox-tls.sh
 ```
 
-## Important
+The script installs the required HAProxy/stunnel packages if needed, creates Bot-owned systemd units, copies the RouteBox certificate to a protected local directory, and performs HTTP and HTTPS health checks on the same public port.
 
-Do not start a second Nginx/Apache on ports 80 or 443. Do not copy RouteBox's ACME files into the Bot configuration just to make the PHP listener public.
+If the RouteBox certificate is unavailable, the script leaves the existing HTTP panel running and does not make the panel unavailable.
 
-Instead, use the **already-running TLS endpoint** as the reverse proxy and forward only the Bot's local port. This keeps certificate renewal with the existing RouteBox/web-server stack.
+## Certificate renewal
 
-### Nginx example
+RouteBox remains responsible for certificate issuance and renewal. The Bot runs a five-minute systemd timer that compares the RouteBox certificate with its local copy and reloads the Bot TLS terminator when the certificate changes.
 
-Add a dedicated location/server rule to the existing TLS configuration only after backing it up and validating it with `nginx -t`:
+## Services
 
-```nginx
-location /routebox-bot/ {
-    proxy_pass http://127.0.0.1:8093/;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
+```bash
+sudo systemctl status routebox-telegram-bot-mux.service
+sudo systemctl status routebox-telegram-bot-tls.service
+sudo systemctl status routebox-telegram-bot-tls-sync.timer
 ```
 
-> The application currently uses root-relative URLs such as `/login.php`. A dedicated subdomain is therefore cleaner than a path prefix unless the panel is later given a configurable base path.
+## Important: do not use the old reverse-proxy model
 
-### Preferred production layout
+Do **not** create a second Nginx/Apache listener for this purpose and do not move the Bot to another public port just to add HTTPS.
 
-Use a hostname already covered by the existing certificate, or a dedicated subdomain whose certificate is managed by the existing TLS server, and proxy that hostname to the Bot's local port.
-
-After changing the existing proxy configuration, validate it first and reload the existing service only if the configuration test succeeds.
-
-The Bot itself must never bind to 80/443.
+The intended Beta 7 model is same-port HTTP+HTTPS using the Bot-owned TCP multiplexer.
