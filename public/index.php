@@ -1,39 +1,277 @@
 <?php
 declare(strict_types=1);
-require __DIR__.'/../src/bootstrap.php'; require_admin(); require __DIR__.'/../src/RouteBoxClient.php';
-function telegramCheckAndPrepare(string $token):void{$ch=curl_init('https://api.telegram.org/bot'.$token.'/getMe');if($ch===false)throw new RuntimeException('Telegram connection unavailable.');curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>15,CURLOPT_CONNECTTIMEOUT=>8]);$raw=curl_exec($ch);$err=curl_error($ch);curl_close($ch);if($raw===false)throw new RuntimeException('Telegram connection failed: '.($err?:'unknown'));$j=json_decode($raw,true);if(!is_array($j)||empty($j['ok']))throw new RuntimeException('Invalid Telegram Bot Token.');$d=curl_init('https://api.telegram.org/bot'.$token.'/deleteWebhook');curl_setopt_array($d,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>['drop_pending_updates'=>'false'],CURLOPT_TIMEOUT=>15]);$r=curl_exec($d);curl_close($d);$dj=json_decode((string)$r,true);if(!is_array($dj)||empty($dj['ok']))throw new RuntimeException('Telegram webhook cleanup failed.');}
-function validateRouteBoxForAdmin(string $url,string $user,string $pass,bool $verify):void{$c=new RouteBoxClient($url,$user,$pass,$verify);$c->validateIntegration();$c->smokeTest('rbt-admin-test');}
-function routeBoxEndpoint(string $url):array{$p=parse_url($url);if(!is_array($p)||empty($p['host']))throw new RuntimeException('Invalid RouteBox URL.');return[(string)$p['host'],isset($p['port'])?(int)$p['port']:(($p['scheme']??'https')==='https'?443:80)];}
-function measureServerPing(string $url):?float{try{[$host,$port]=routeBoxEndpoint($url);$ip=gethostbyname($host);$target=$ip!==$host?$ip:$host;$start=microtime(true);$errno=0;$errstr='';$s=@fsockopen($target,$port,$errno,$errstr,3);if($s===false)return null;$ms=(microtime(true)-$start)*1000;fclose($s);return round($ms,1);}catch(Throwable){return null;}}
-function detectCountryCode(string $url):string{try{[$host]=routeBoxEndpoint($url);$ip=filter_var($host,FILTER_VALIDATE_IP)?$host:gethostbyname($host);if(!$ip)return ''; $ch=curl_init('https://ipapi.co/'.rawurlencode($ip).'/country/');curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>3,CURLOPT_CONNECTTIMEOUT=>2,CURLOPT_USERAGENT=>'RouteBox-Telegram-Bot']);$v=trim((string)curl_exec($ch));curl_close($ch);return preg_match('/^[A-Za-z]{2}$/',$v)?strtoupper($v):'';}catch(Throwable){return '';}}
-function countryFlag(string $code):string{$code=strtoupper(trim($code));if(!preg_match('/^[A-Z]{2}$/',$code)||!function_exists('mb_chr'))return '🌐';return mb_chr(127397+ord($code[0])).mb_chr(127397+ord($code[1]));}
-function q(float $n):string{return $n<=0?'∞':rtrim(rtrim(number_format($n,1,'.',''),'0'),'.').' GB';}
-function panelLang():string{if(isset($_GET['lang'])&&in_array($_GET['lang'],['fa','en'],true))$_SESSION['panel_lang']=$_GET['lang'];$v=(string)($_SESSION['panel_lang']??'fa');return $v==='en'?'en':'fa';}
-$lang=panelLang();
-$T=$lang==='fa'?['dash'=>'داشبورد','servers'=>'سرورها','bot'=>'ربات تلگرام','plans'=>'پلن‌ها','security'=>'امنیت','updates'=>'به‌روزرسانی','active'=>'فعال','offline'=>'غیرفعال','add'=>'افزودن','save'=>'ذخیره تغییرات','test'=>'تست اتصال','welcome'=>'پیام خوشامد','buttons'=>'دکمه‌های ربات','settings'=>'تنظیمات ربات','trial_hours'=>'مدت تست (ساعت)','token'=>'توکن ربات','name'=>'نام','url'=>'آدرس پنل RouteBox','username'=>'نام کاربری','password'=>'رمز عبور','country'=>'کشور','country_hint'=>'کد دوحرفی مثل US یا DE؛ اگر خالی باشد خودکار تشخیص داده می‌شود.','days'=>'روز','quota'=>'حجم (GB)','enabled'=>'فعال','disabled'=>'غیرفعال','theme_toggle'=>'تغییر تم','logout'=>'خروج','version'=>'نسخه','creator'=>'سازنده','update'=>'بررسی و به‌روزرسانی','updating'=>'آپدیت از داخل پنل سرویس را متوقف، کد جدید را دریافت و دوباره اجرا می‌کند.','users'=>'کاربران','footer'=>'ساخته شده توسط Amir Taheri','add_plan'=>'افزودن پلن','plan_name'=>'نام پلن','ping'=>'پینگ','bot_preview'=>'پیش‌نمایش منوی ربات','welcome_hint'=>'این پیام برای زبان انتخاب‌شده کاربر نمایش داده می‌شود.','button_hint'=>'متن دکمه‌های ثابت ربات را همین‌جا تغییر بده؛ پلن‌ها از بخش پلن‌ها مدیریت می‌شوند.','password_changed'=>'رمز پنل تغییر کرد.','bad_password'=>'رمزها یکسان نیستند یا کمتر از ۸ کاراکترند.','change_password'=>'تغییر رمز پنل','new_password'=>'رمز جدید','confirm_password'=>'تکرار رمز جدید','no_servers'=>'هنوز سروری اضافه نشده است.','no_plans'=>'هنوز پلنی ساخته نشده است.','server_list'=>'RouteBox های متصل','tls_note'=>'TLS از RouteBox/وب‌سرور فعلی استفاده می‌کند؛ این پنل پورت 80/443 را دستکاری نمی‌کند.','english'=>'English','persian'=>'فارسی']:['dash'=>'Dashboard','servers'=>'Servers','bot'=>'Telegram Bot','plans'=>'Plans','security'=>'Security','updates'=>'Updates','active'=>'Active','offline'=>'Offline','add'=>'Add','save'=>'Save changes','test'=>'Test connection','welcome'=>'Welcome message','buttons'=>'Bot buttons','settings'=>'Bot settings','trial_hours'=>'Trial duration (hours)','token'=>'Bot token','name'=>'Name','url'=>'RouteBox panel URL','username'=>'Username','password'=>'Password','country'=>'Country','country_hint'=>'Two-letter code such as US or DE. Leave blank for automatic detection.','days'=>'Days','quota'=>'Quota (GB)','enabled'=>'Enabled','disabled'=>'Disabled','theme_toggle'=>'Toggle theme','logout'=>'Sign out','version'=>'Version','creator'=>'Created by','update'=>'Check for updates','updating'=>'The updater stops the services, pulls the new code and starts them again.','users'=>'Users','footer'=>'Created by Amir Taheri','add_plan'=>'Add plan','plan_name'=>'Plan name','ping'=>'Ping','bot_preview'=>'Bot menu preview','welcome_hint'=>'This message is shown in the language selected by the user.','button_hint'=>'Edit the fixed bot buttons here; plans are managed separately.','password_changed'=>'Panel password changed.','bad_password'=>'Passwords do not match or are shorter than 8 characters.','change_password'=>'Change panel password','new_password'=>'New password','confirm_password'=>'Confirm password','no_servers'=>'No servers have been added yet.','no_plans'=>'No plans have been created yet.','server_list'=>'Connected RouteBox servers','tls_note'=>'TLS is terminated by your existing RouteBox/web-server setup; this panel does not touch ports 80/443.','english'=>'English','persian'=>'فارسی'];
-if($_SERVER['REQUEST_METHOD']==='POST'){verify_csrf();$action=(string)($_POST['action']??'');try{
-if($action==='add_server'){$name=trim((string)($_POST['name']??''));$url=rtrim(trim((string)($_POST['url']??'')),'/');$u=trim((string)($_POST['username']??''));$p=(string)($_POST['password']??'');$verify=isset($_POST['verify_tls'])?1:0;$country=strtoupper(trim((string)($_POST['country_code']??'')));if($country==='')$country=detectCountryCode($url);if($country!==''&&!preg_match('/^[A-Z]{2}$/',$country))throw new RuntimeException('Invalid country code.');if($name===''||mb_strlen($name)>80||!filter_var($url,FILTER_VALIDATE_URL))throw new RuntimeException('Invalid server name or URL.');validateRouteBoxForAdmin($url,$u,$p,(bool)$verify);db()->prepare('INSERT INTO routebox_servers(name,base_url,user_enc,pass_enc,verify_tls,enabled,created_at) VALUES(?,?,?,?,?,?,?)')->execute([$name,$url,enc($u),enc($p),$verify,1,time()]);$id=(int)db()->lastInsertId();db()->prepare('INSERT OR REPLACE INTO server_meta(server_id,country_code,ping_ms,ping_checked_at) VALUES(?,?,?,?)')->execute([$id,$country,measureServerPing($url),time()]);$_SESSION['flash']='✓ Server saved.';
-}elseif($action==='test_server'){$s=db()->prepare('SELECT * FROM routebox_servers WHERE id=?');$s->execute([(int)($_POST['id']??0)]);$server=$s->fetch(PDO::FETCH_ASSOC);if(!$server)throw new RuntimeException('Server not found.');validateRouteBoxForAdmin((string)$server['base_url'],dec((string)$server['user_enc']),dec((string)$server['pass_enc']),(bool)$server['verify_tls']);$country=detectCountryCode((string)$server['base_url']);$ping=measureServerPing((string)$server['base_url']);$old=db()->prepare('SELECT country_code FROM server_meta WHERE server_id=?');$old->execute([(int)$server['id']]);$country=$country?:((string)$old->fetchColumn());db()->prepare('INSERT OR REPLACE INTO server_meta(server_id,country_code,ping_ms,ping_checked_at) VALUES(?,?,?,?)')->execute([(int)$server['id'],$country,$ping,time()]);$_SESSION['flash']='✓ '.$T['test'].' OK';
-}elseif($action==='toggle_server'){db()->prepare('UPDATE routebox_servers SET enabled=1-enabled WHERE id=?')->execute([(int)($_POST['id']??0)]);
-}elseif($action==='save_settings'){$hours=max(1,min(720,(int)($_POST['trial_hours']??12)));db()->prepare("INSERT INTO settings(key,value) VALUES('trial_hours',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")->execute([(string)$hours]);$token=trim((string)($_POST['telegram_token']??''));if($token!==''){telegramCheckAndPrepare($token);db()->prepare("INSERT INTO settings(key,value) VALUES('telegram_token',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")->execute([enc($token)]);}foreach(['welcome_fa','welcome_en'] as $k)db()->prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")->execute([$k,(string)($_POST[$k]??'')]);$_SESSION['flash']='✓ '.$T['save'];
-}elseif($action==='save_button'){$id=(int)($_POST['id']??0);$fa=trim((string)($_POST['text_fa']??''));$en=trim((string)($_POST['text_en']??''));if($id<1||$fa===''||$en==='')throw new RuntimeException('Button text cannot be empty.');db()->prepare('UPDATE telegram_buttons SET text_fa=?,text_en=?,updated_at=? WHERE id=?')->execute([$fa,$en,time(),$id]);
-}elseif($action==='toggle_button'){db()->prepare('UPDATE telegram_buttons SET enabled=1-enabled,updated_at=? WHERE id=?')->execute([time(),(int)($_POST['id']??0)]);
-}elseif($action==='add_plan'||$action==='update_plan'){$id=(int)($_POST['id']??0);$name=trim((string)($_POST['plan_name']??''));$days=max(1,min(3650,(int)($_POST['duration_days']??30)));$quota=max(0,min(1024,(float)($_POST['quota_gb']??0)));if($name==='')throw new RuntimeException('Plan name is required.');if($action==='add_plan')db()->prepare('INSERT INTO plans(name,duration_days,quota_gb,enabled,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?)')->execute([$name,$days,$quota,1,0,time(),time()]);else db()->prepare('UPDATE plans SET name=?,duration_days=?,quota_gb=?,updated_at=? WHERE id=?')->execute([$name,$days,$quota,time(),$id]);
-}elseif($action==='toggle_plan'){db()->prepare('UPDATE plans SET enabled=1-enabled,updated_at=? WHERE id=?')->execute([time(),(int)($_POST['id']??0)]);
-}elseif($action==='delete_plan'){db()->prepare('DELETE FROM plans WHERE id=?')->execute([(int)($_POST['id']??0)]);
-}elseif($action==='password'){$a=(string)($_POST['new_password']??'');$b=(string)($_POST['confirm_password']??'');if(strlen($a)<8||$a!==$b)throw new RuntimeException($T['bad_password']);set_admin_password_hash(password_hash($a,PASSWORD_DEFAULT));$_SESSION['flash']='✓ '.$T['password_changed'];
-}elseif($action==='update_now'){if(!is_file('/usr/local/sbin/routebox-telegram-bot-update'))throw new RuntimeException('Updater is not installed. Run update.sh once from SSH.');session_write_close();header('Content-Type:text/plain; charset=utf-8');echo "Update started. The panel will restart briefly.\n";if(function_exists('fastcgi_finish_request'))fastcgi_finish_request();shell_exec('nohup sudo -n /usr/local/sbin/routebox-telegram-bot-update >/dev/null 2>&1 &');exit;
-}else throw new RuntimeException('Invalid request.');}catch(Throwable $e){$_SESSION['flash']='❌ '.$e->getMessage();log_event('error','Admin action failed: '.$e->getMessage());}header('Location:/');exit;}
-$servers=db()->query('SELECT s.*,m.country_code,m.ping_ms,m.ping_checked_at FROM routebox_servers s LEFT JOIN server_meta m ON m.server_id=s.id ORDER BY s.id')->fetchAll(PDO::FETCH_ASSOC);foreach($servers as &$sv){if(trim((string)$sv['country_code'])===''){ $c=detectCountryCode((string)$sv['base_url']);if($c!==''){db()->prepare('INSERT OR REPLACE INTO server_meta(server_id,country_code,ping_ms,ping_checked_at) VALUES(?,?,?,?)')->execute([(int)$sv['id'],$c,$sv['ping_ms'],$sv['ping_checked_at']]);$sv['country_code']=$c;}}}unset($sv);
-$users=(int)db()->query('SELECT COUNT(*) FROM telegram_users')->fetchColumn();$plans=db()->query('SELECT * FROM plans ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);$buttons=db()->query('SELECT * FROM telegram_buttons ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);$trial=(int)(db()->query("SELECT value FROM settings WHERE key='trial_hours'")->fetchColumn()?:12);$wf=(string)(db()->query("SELECT value FROM settings WHERE key='welcome_fa'")->fetchColumn()?:'🚀 RouteBox Telegram Bot\n\nسلام 👋\nسرویس موردنظر را انتخاب کنید:');$we=(string)(db()->query("SELECT value FROM settings WHERE key='welcome_en'")->fetchColumn()?:'🚀 RouteBox Telegram Bot\n\nHello 👋\nChoose a service:');$hasToken=(bool)db()->query("SELECT value FROM settings WHERE key='telegram_token'")->fetchColumn();$version=is_file(__DIR__.'/../VERSION')?trim((string)file_get_contents(__DIR__.'/../VERSION')):'0.1.0-beta.4';$flash=(string)($_SESSION['flash']??'');unset($_SESSION['flash']);
-?><!doctype html><html lang="<?=h($lang)?>" dir="<?=$lang==='fa'?'rtl':'ltr'?>"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b1220"><title>RouteBox Admin</title><style>
-:root{color-scheme:dark;--bg:#07101f;--panel:#0d1728;--panel2:#111d31;--text:#e7eef8;--muted:#8fa3bc;--line:#24344c;--primary:#3b82f6;--primary2:#2563eb;--ok:#34d399;--danger:#fb7185;--shadow:0 20px 60px rgba(0,0,0,.28)}:root.light{color-scheme:light;--bg:#f3f6fb;--panel:#fff;--panel2:#f8fafc;--text:#0f172a;--muted:#64748b;--line:#dbe4ef;--primary:#2563eb;--primary2:#1d4ed8;--ok:#059669;--danger:#e11d48;--shadow:0 18px 45px rgba(15,23,42,.08)}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 10% 0,#17315c 0,transparent 35%),var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;min-height:100vh}.app{display:grid;grid-template-columns:250px 1fr;min-height:100vh}.side{position:sticky;top:0;height:100vh;padding:22px 15px;background:rgba(7,16,31,.82);border-inline-end:1px solid var(--line);backdrop-filter:blur(16px)}:root.light .side{background:rgba(255,255,255,.86)}.brand{display:flex;align-items:center;gap:10px;padding:8px 10px 24px}.brand-icon{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(135deg,#60a5fa,#7c3aed);font-size:22px}.brand b{display:block}.brand small{color:var(--muted)}.nav{display:grid;gap:7px}.nav a{display:flex;gap:11px;align-items:center;padding:11px 12px;border-radius:12px;color:var(--muted);text-decoration:none}.nav a:hover,.nav a.active{background:linear-gradient(135deg,rgba(59,130,246,.2),rgba(124,58,237,.12));color:var(--text)}.side-bottom{position:absolute;bottom:18px;left:15px;right:15px}.main{padding:25px;max-width:1500px;width:100%;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}.top h1{margin:5px 0;font-size:28px}.muted{color:var(--muted)}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pill{border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--muted);font-size:12px;text-decoration:none}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:18px 0}.stat{padding:17px;border:1px solid var(--line);background:var(--panel);border-radius:16px}.stat b{font-size:25px;display:block;margin-top:6px}.card{background:linear-gradient(145deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:20px;padding:20px;margin:16px 0;box-shadow:var(--shadow)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{margin-bottom:11px}.field label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}input,textarea{width:100%;border:1px solid #33445e;background:rgba(2,8,23,.45);color:var(--text);border-radius:11px;padding:11px 12px;outline:none;font:inherit}textarea{min-height:110px;resize:vertical}:root.light input,:root.light textarea{background:#fff;border-color:#d7e0eb}input:focus,textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.12)}button{border:0;border-radius:10px;padding:10px 14px;background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;font-weight:700;cursor:pointer}button.secondary{background:#334155}.danger{background:#be123c!important}.iconbtn{width:42px;height:42px;padding:0}.flash{padding:13px 15px;border-radius:12px;border:1px solid #2563eb;background:rgba(37,99,235,.12);margin:15px 0}.section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}.section-head h2{font-size:19px;margin:0}.server{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:15px 0;border-top:1px solid var(--line)}.server:first-child{border-top:0}.server-title{display:flex;gap:9px;align-items:center;font-weight:800}.flag{font-size:21px}.server-url{direction:ltr;text-align:left;color:var(--muted);font-size:12px;margin-top:5px;word-break:break-all}.ping{font-variant-numeric:tabular-nums;white-space:nowrap}.btnrow{display:flex;gap:7px;flex-wrap:wrap}.plan{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px;margin:10px 0}.preview{border-radius:18px;padding:18px;background:linear-gradient(160deg,#172033,#0d1525);border:1px solid #293853}.preview .msg{background:#252039;border-radius:16px;padding:15px;white-space:pre-wrap}.preview .pbtn{display:inline-block;background:#334155;border-radius:10px;padding:8px 10px;margin:7px 4px 0 0;font-size:12px}.help{font-size:12px;color:var(--muted);line-height:1.7}.footer{padding:30px 0;color:var(--muted);text-align:center;font-size:12px}.footer a{color:#60a5fa;text-decoration:none}.mobile-menu{display:none}@media(max-width:900px){.app{grid-template-columns:1fr}.side{display:none;height:auto;position:fixed;z-index:20;width:260px;box-shadow:var(--shadow)}.side.open{display:block}.mobile-menu{display:inline-block}.main{padding:18px}.stats{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.server{grid-template-columns:1fr}.side-bottom{position:static;margin-top:25px}}
-</style></head><body><div class="app"><aside class="side" id="side"><div class="brand"><div class="brand-icon">🚀</div><div><b>RouteBox</b><small>Telegram Bot</small></div></div><nav class="nav"><a class="active" href="#overview">📊 <?=$T['dash']?></a><a href="#servers">🌐 <?=$T['servers']?></a><a href="#bot">🤖 <?=$T['bot']?></a><a href="#plans">📦 <?=$T['plans']?></a><a href="#security">🔐 <?=$T['security']?></a><a href="#updates">⬆️ <?=$T['updates']?></a></nav><div class="side-bottom help"><?=$T['tls_note']?></div></aside><main class="main"><div class="top"><div><div class="actions"><button class="iconbtn mobile-menu" onclick="document.getElementById('side').classList.toggle('open')">☰</button><span class="pill">v<?=h($version)?></span><span class="pill"><?=$hasToken?'🟢 '.$T['active']:'🔴 '.$T['offline']?></span></div><h1><?=$T['dash']?></h1><div class="muted"><?=$T['creator']?> <a href="https://t.me/+918807085399" target="_blank">Amir Taheri</a></div></div><div class="actions"><a class="pill" href="?lang=<?=$lang==='fa'?'en':'fa'?>"><?=$lang==='fa'?'🇬🇧 English':'🇮🇷 فارسی'?></a><button class="iconbtn" title="<?=$T['theme_toggle']?>" onclick="toggleTheme()">🌓</button><form method="post" action="/logout.php"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><button class="secondary"><?=$T['logout']?></button></form></div></div><?php if($flash):?><div class="flash"><?=h($flash)?></div><?php endif;?><section id="overview" class="stats"><div class="stat">🌐 <span class="muted"><?=$T['servers']?></span><b><?=count($servers)?></b></div><div class="stat">👥 <span class="muted"><?=$T['users']?></span><b><?=$users?></b></div><div class="stat">📦 <span class="muted"><?=$T['plans']?></span><b><?=count($plans)?></b></div><div class="stat">🎁 <span class="muted"><?=$T['trial_hours']?></span><b><?=$trial?>h</b></div></section>
-<section id="servers" class="card"><div class="section-head"><h2>🌐 <?=$T['server_list']?></h2><span class="pill"><?=count(array_filter($servers,fn($s)=>(int)$s['enabled']===1))?> <?=$T['active']?></span></div><?php if(!$servers):?><div class="muted"><?=$T['no_servers']?></div><?php endif;?><?php foreach($servers as $s):?><div class="server"><div><div class="server-title"><span class="flag"><?=countryFlag((string)$s['country_code'])?></span><?=h((string)$s['name'])?><span class="pill"><?=((int)$s['enabled']===1)?'🟢 '.$T['active']:'⚪ '.$T['disabled']?></span></div><div class="server-url"><?=h((string)$s['base_url'])?></div></div><div><div class="ping">📡 <?=$T['ping']?>: <b><?=is_null($s['ping_ms'])?'—':h((string)$s['ping_ms']).' ms'?></b></div><div class="muted" style="font-size:11px"><?=h((string)$s['country_code']?:'--')?></div></div><div class="btnrow"><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="test_server"><input type="hidden" name="id" value="<?=$s['id']?>"><button><?=$T['test']?></button></form><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="toggle_server"><input type="hidden" name="id" value="<?=$s['id']?>"><button class="secondary"><?=((int)$s['enabled']===1)?$T['disabled']:$T['enabled']?></button></form></div></div><?php endforeach;?></section>
+
+require __DIR__ . '/../src/bootstrap.php';
+require_admin();
+require __DIR__ . '/../src/RouteBoxClient.php';
+
+function telegramCheckAndPrepare(string $token): void
+{
+    $ch = curl_init('https://api.telegram.org/bot' . $token . '/getMe');
+    if ($ch === false) throw new RuntimeException('Telegram connection unavailable.');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_CONNECTTIMEOUT => 8]);
+    $raw = curl_exec($ch);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($raw === false) throw new RuntimeException('Telegram connection failed: ' . ($err ?: 'unknown'));
+    $j = json_decode($raw, true);
+    if (!is_array($j) || empty($j['ok'])) throw new RuntimeException('Invalid Telegram Bot Token.');
+
+    $d = curl_init('https://api.telegram.org/bot' . $token . '/deleteWebhook');
+    curl_setopt_array($d, [CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_POSTFIELDS => ['drop_pending_updates' => 'false'], CURLOPT_TIMEOUT => 15]);
+    $r = curl_exec($d);
+    curl_close($d);
+    $dj = json_decode((string)$r, true);
+    if (!is_array($dj) || empty($dj['ok'])) throw new RuntimeException('Telegram webhook cleanup failed.');
+}
+
+function validateRouteBoxForAdmin(string $url, string $user, string $pass, bool $verify): void
+{
+    $c = new RouteBoxClient($url, $user, $pass, $verify);
+    $c->validateIntegration();
+    $c->smokeTest('rbt-admin-test');
+}
+
+function routeBoxEndpoint(string $url): array
+{
+    $p = parse_url($url);
+    if (!is_array($p) || empty($p['host'])) throw new RuntimeException('Invalid RouteBox URL.');
+    return [(string)$p['host'], isset($p['port']) ? (int)$p['port'] : (($p['scheme'] ?? 'https') === 'https' ? 443 : 80)];
+}
+
+function measureServerPing(string $url): ?float
+{
+    try {
+        [$host, $port] = routeBoxEndpoint($url);
+        $ip = gethostbyname($host);
+        $target = $ip !== $host ? $ip : $host;
+        $start = microtime(true);
+        $errno = 0;
+        $errstr = '';
+        $s = @fsockopen($target, $port, $errno, $errstr, 3);
+        if ($s === false) return null;
+        $ms = (microtime(true) - $start) * 1000;
+        fclose($s);
+        return round($ms, 1);
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+function detectCountryCode(string $url): string
+{
+    try {
+        [$host] = routeBoxEndpoint($url);
+        $ip = filter_var($host, FILTER_VALIDATE_IP) ? $host : gethostbyname($host);
+        if (!$ip) return '';
+        $ch = curl_init('https://ipapi.co/' . rawurlencode($ip) . '/country/');
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 3, CURLOPT_CONNECTTIMEOUT => 2, CURLOPT_USERAGENT => 'RouteBox-Telegram-Bot']);
+        $v = trim((string)curl_exec($ch));
+        curl_close($ch);
+        return preg_match('/^[A-Za-z]{2}$/', $v) ? strtoupper($v) : '';
+    } catch (Throwable) {
+        return '';
+    }
+}
+
+function countryFlag(string $code): string
+{
+    $code = strtoupper(trim($code));
+    if (!preg_match('/^[A-Z]{2}$/', $code) || !function_exists('mb_chr')) return '🌐';
+    return mb_chr(127397 + ord($code[0])) . mb_chr(127397 + ord($code[1]));
+}
+
+function q(float $n): string
+{
+    return $n <= 0 ? '∞' : rtrim(rtrim(number_format($n, 1, '.', ''), '0'), '.') . ' GB';
+}
+
+function panelLang(): string
+{
+    if (isset($_GET['lang']) && in_array($_GET['lang'], ['fa', 'en'], true)) $_SESSION['panel_lang'] = $_GET['lang'];
+    return (string)($_SESSION['panel_lang'] ?? 'fa') === 'en' ? 'en' : 'fa';
+}
+
+$lang = panelLang();
+$T = $lang === 'fa'
+    ? [
+        'dash'=>'داشبورد','servers'=>'سرورها','bot'=>'ربات تلگرام','plans'=>'پلن‌ها','security'=>'امنیت','updates'=>'به‌روزرسانی',
+        'active'=>'فعال','offline'=>'غیرفعال','add'=>'افزودن','save'=>'ذخیره تغییرات','test'=>'تست اتصال','welcome'=>'پیام خوشامد',
+        'buttons'=>'دکمه‌های ربات','settings'=>'تنظیمات ربات','trial_hours'=>'مدت تست (ساعت)','token'=>'توکن ربات','name'=>'نام',
+        'url'=>'آدرس پنل RouteBox','username'=>'نام کاربری','password'=>'رمز عبور','country'=>'کشور','country_hint'=>'کد دوحرفی مثل US یا DE؛ اگر خالی باشد خودکار تشخیص داده می‌شود.',
+        'days'=>'روز','quota'=>'حجم (GB)','enabled'=>'فعال','disabled'=>'غیرفعال','theme_toggle'=>'تغییر تم','logout'=>'خروج','version'=>'نسخه',
+        'creator'=>'سازنده','update'=>'بررسی و به‌روزرسانی','updating'=>'آپدیت از داخل پنل سرویس را متوقف، کد جدید را دریافت و دوباره اجرا می‌کند.',
+        'users'=>'کاربران','footer'=>'ساخته شده توسط Amir Taheri','add_plan'=>'افزودن پلن','plan_name'=>'نام پلن','ping'=>'پینگ','bot_preview'=>'پیش‌نمایش منوی ربات',
+        'welcome_hint'=>'این پیام برای زبان انتخاب‌شده کاربر نمایش داده می‌شود.','button_hint'=>'متن دکمه‌های ثابت ربات را همین‌جا تغییر بده؛ پلن‌ها از بخش پلن‌ها مدیریت می‌شوند.',
+        'password_changed'=>'رمز پنل تغییر کرد.','bad_password'=>'رمزها یکسان نیستند یا کمتر از ۸ کاراکترند.','change_password'=>'تغییر رمز پنل',
+        'new_password'=>'رمز جدید','confirm_password'=>'تکرار رمز جدید','no_servers'=>'هنوز سروری اضافه نشده است.','no_plans'=>'هنوز پلنی ساخته نشده است.',
+        'server_list'=>'RouteBox های متصل','tls_note'=>'TLS از RouteBox/وب‌سرور فعلی استفاده می‌کند؛ این پنل پورت 80/443 را دستکاری نمی‌کند.',
+        'english'=>'English','persian'=>'فارسی','verify_tls'=>'اعتبارسنجی TLS'
+    ]
+    : [
+        'dash'=>'Dashboard','servers'=>'Servers','bot'=>'Telegram Bot','plans'=>'Plans','security'=>'Security','updates'=>'Updates',
+        'active'=>'Active','offline'=>'Offline','add'=>'Add','save'=>'Save changes','test'=>'Test connection','welcome'=>'Welcome message',
+        'buttons'=>'Bot buttons','settings'=>'Bot settings','trial_hours'=>'Trial duration (hours)','token'=>'Bot token','name'=>'Name',
+        'url'=>'RouteBox panel URL','username'=>'Username','password'=>'Password','country'=>'Country','country_hint'=>'Two-letter code such as US or DE. Leave blank for automatic detection.',
+        'days'=>'Days','quota'=>'Quota (GB)','enabled'=>'Enabled','disabled'=>'Disabled','theme_toggle'=>'Toggle theme','logout'=>'Sign out','version'=>'Version',
+        'creator'=>'Created by','update'=>'Check for updates','updating'=>'The updater stops the services, pulls the new code and starts them again.',
+        'users'=>'Users','footer'=>'Created by Amir Taheri','add_plan'=>'Add plan','plan_name'=>'Plan name','ping'=>'Ping','bot_preview'=>'Bot menu preview',
+        'welcome_hint'=>'This message is shown in the language selected by the user.','button_hint'=>'Edit the fixed bot buttons here; plans are managed separately.',
+        'password_changed'=>'Panel password changed.','bad_password'=>'Passwords do not match or are shorter than 8 characters.','change_password'=>'Change panel password',
+        'new_password'=>'New password','confirm_password'=>'Confirm new password','no_servers'=>'No servers have been added yet.','no_plans'=>'No plans have been created yet.',
+        'server_list'=>'Connected RouteBox servers','tls_note'=>'TLS is terminated by your existing RouteBox/web-server setup; this panel does not touch ports 80/443.',
+        'english'=>'English','persian'=>'فارسی','verify_tls'=>'Verify TLS certificate'
+    ];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $action = (string)($_POST['action'] ?? '');
+    try {
+        if ($action === 'add_server') {
+            $name = trim((string)($_POST['name'] ?? ''));
+            $url = rtrim(trim((string)($_POST['url'] ?? '')), '/');
+            $u = trim((string)($_POST['username'] ?? ''));
+            $p = (string)($_POST['password'] ?? '');
+            $verify = isset($_POST['verify_tls']) ? 1 : 0;
+            $country = strtoupper(trim((string)($_POST['country_code'] ?? '')));
+            if ($country === '') $country = detectCountryCode($url);
+            if ($country !== '' && !preg_match('/^[A-Z]{2}$/', $country)) throw new RuntimeException('Invalid country code.');
+            if ($name === '' || mb_strlen($name) > 80 || !filter_var($url, FILTER_VALIDATE_URL)) throw new RuntimeException('Invalid server name or URL.');
+            validateRouteBoxForAdmin($url, $u, $p, (bool)$verify);
+            db()->prepare('INSERT INTO routebox_servers(name,base_url,user_enc,pass_enc,verify_tls,enabled,created_at) VALUES(?,?,?,?,?,?,?)')->execute([$name,$url,enc($u),enc($p),$verify,1,time()]);
+            $id = (int)db()->lastInsertId();
+            db()->prepare('INSERT OR REPLACE INTO server_meta(server_id,country_code,ping_ms,ping_checked_at) VALUES(?,?,?,?)')->execute([$id,$country,measureServerPing($url),time()]);
+            $_SESSION['flash'] = '✓ Server saved.';
+        } elseif ($action === 'test_server') {
+            $s = db()->prepare('SELECT * FROM routebox_servers WHERE id=?');
+            $s->execute([(int)($_POST['id'] ?? 0)]);
+            $server = $s->fetch(PDO::FETCH_ASSOC);
+            if (!$server) throw new RuntimeException('Server not found.');
+            validateRouteBoxForAdmin((string)$server['base_url'], dec((string)$server['user_enc']), dec((string)$server['pass_enc']), (bool)$server['verify_tls']);
+            $country = detectCountryCode((string)$server['base_url']);
+            $ping = measureServerPing((string)$server['base_url']);
+            $old = db()->prepare('SELECT country_code FROM server_meta WHERE server_id=?');
+            $old->execute([(int)$server['id']]);
+            $country = $country ?: (string)$old->fetchColumn();
+            db()->prepare('INSERT OR REPLACE INTO server_meta(server_id,country_code,ping_ms,ping_checked_at) VALUES(?,?,?,?)')->execute([(int)$server['id'],$country,$ping,time()]);
+            $_SESSION['flash'] = '✓ ' . $T['test'] . ' OK';
+        } elseif ($action === 'toggle_server') {
+            db()->prepare('UPDATE routebox_servers SET enabled=1-enabled WHERE id=?')->execute([(int)($_POST['id'] ?? 0)]);
+        } elseif ($action === 'save_settings') {
+            $hours = max(1, min(720, (int)($_POST['trial_hours'] ?? 12)));
+            db()->prepare("INSERT INTO settings(key,value) VALUES('trial_hours',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")->execute([(string)$hours]);
+            $token = trim((string)($_POST['telegram_token'] ?? ''));
+            if ($token !== '') {
+                telegramCheckAndPrepare($token);
+                db()->prepare("INSERT INTO settings(key,value) VALUES('telegram_token',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")->execute([enc($token)]);
+            }
+            foreach (['welcome_fa','welcome_en'] as $k) {
+                db()->prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")->execute([$k,(string)($_POST[$k] ?? '')]);
+            }
+            $_SESSION['flash'] = '✓ ' . $T['save'];
+        } elseif ($action === 'save_button') {
+            $id = (int)($_POST['id'] ?? 0);
+            $fa = trim((string)($_POST['text_fa'] ?? ''));
+            $en = trim((string)($_POST['text_en'] ?? ''));
+            if ($id < 1 || $fa === '' || $en === '') throw new RuntimeException('Button text cannot be empty.');
+            db()->prepare('UPDATE telegram_buttons SET text_fa=?,text_en=?,updated_at=? WHERE id=?')->execute([$fa,$en,time(),$id]);
+        } elseif ($action === 'toggle_button') {
+            db()->prepare('UPDATE telegram_buttons SET enabled=1-enabled,updated_at=? WHERE id=?')->execute([time(),(int)($_POST['id'] ?? 0)]);
+        } elseif ($action === 'add_plan' || $action === 'update_plan') {
+            $id = (int)($_POST['id'] ?? 0);
+            $name = trim((string)($_POST['plan_name'] ?? ''));
+            $days = max(1, min(3650, (int)($_POST['duration_days'] ?? 30)));
+            $quota = max(0, min(1024, (float)($_POST['quota_gb'] ?? 0)));
+            if ($name === '') throw new RuntimeException('Plan name is required.');
+            if ($action === 'add_plan') db()->prepare('INSERT INTO plans(name,duration_days,quota_gb,enabled,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?)')->execute([$name,$days,$quota,1,0,time(),time()]);
+            else db()->prepare('UPDATE plans SET name=?,duration_days=?,quota_gb=?,updated_at=? WHERE id=?')->execute([$name,$days,$quota,time(),$id]);
+        } elseif ($action === 'toggle_plan') {
+            db()->prepare('UPDATE plans SET enabled=1-enabled,updated_at=? WHERE id=?')->execute([time(),(int)($_POST['id'] ?? 0)]);
+        } elseif ($action === 'delete_plan') {
+            db()->prepare('DELETE FROM plans WHERE id=?')->execute([(int)($_POST['id'] ?? 0)]);
+        } elseif ($action === 'password') {
+            $a = (string)($_POST['new_password'] ?? '');
+            $b = (string)($_POST['confirm_password'] ?? '');
+            if (strlen($a) < 8 || $a !== $b) throw new RuntimeException($T['bad_password']);
+            set_admin_password_hash(password_hash($a, PASSWORD_DEFAULT));
+            $_SESSION['flash'] = '✓ ' . $T['password_changed'];
+        } elseif ($action === 'update_now') {
+            if (!is_file('/usr/local/sbin/routebox-telegram-bot-update')) throw new RuntimeException('Updater is not installed. Run update.sh once from SSH.');
+            session_write_close();
+            header('Content-Type:text/plain; charset=utf-8');
+            echo "Update started. The panel will restart briefly.\n";
+            if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+            shell_exec('nohup sudo -n /usr/local/sbin/routebox-telegram-bot-update >/dev/null 2>&1 &');
+            exit;
+        } else {
+            throw new RuntimeException('Invalid request.');
+        }
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = '❌ ' . $e->getMessage();
+        log_event('error', 'Admin action failed: ' . $e->getMessage());
+    }
+    header('Location:/');
+    exit;
+}
+
+$servers = db()->query('SELECT s.*,m.country_code,m.ping_ms,m.ping_checked_at FROM routebox_servers s LEFT JOIN server_meta m ON m.server_id=s.id ORDER BY s.id')->fetchAll(PDO::FETCH_ASSOC);
+foreach ($servers as &$sv) {
+    if (trim((string)$sv['country_code']) === '') {
+        $c = detectCountryCode((string)$sv['base_url']);
+        if ($c !== '') {
+            db()->prepare('INSERT OR REPLACE INTO server_meta(server_id,country_code,ping_ms,ping_checked_at) VALUES(?,?,?,?)')->execute([(int)$sv['id'],$c,$sv['ping_ms'],$sv['ping_checked_at']]);
+            $sv['country_code'] = $c;
+        }
+    }
+}
+unset($sv);
+
+$users = (int)db()->query('SELECT COUNT(*) FROM telegram_users')->fetchColumn();
+$plans = db()->query('SELECT * FROM plans ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
+$buttons = db()->query('SELECT * FROM telegram_buttons ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
+$trial = (int)(db()->query("SELECT value FROM settings WHERE key='trial_hours'")->fetchColumn() ?: 12);
+$wf = (string)(db()->query("SELECT value FROM settings WHERE key='welcome_fa'")->fetchColumn() ?: "🚀 RouteBox Telegram Bot\n\nسلام 👋\nسرویس موردنظر را انتخاب کنید:");
+$we = (string)(db()->query("SELECT value FROM settings WHERE key='welcome_en'")->fetchColumn() ?: "🚀 RouteBox Telegram Bot\n\nHello 👋\nChoose a service:");
+$hasToken = (bool)db()->query("SELECT value FROM settings WHERE key='telegram_token'")->fetchColumn();
+$version = is_file(__DIR__.'/../VERSION') ? trim((string)file_get_contents(__DIR__.'/../VERSION')) : '0.1.0-beta.5';
+$flash = (string)($_SESSION['flash'] ?? '');
+unset($_SESSION['flash']);
+?>
+<!doctype html>
+<html lang="<?=h($lang)?>" dir="<?=$lang==='fa'?'rtl':'ltr'?>">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b1220"><title>RouteBox Admin</title>
+<style>
+:root{color-scheme:dark;--bg:#07101f;--panel:#0d1728;--panel2:#111d31;--text:#e7eef8;--muted:#8fa3bc;--line:#24344c;--primary:#3b82f6;--primary2:#2563eb;--danger:#fb7185;--shadow:0 20px 60px rgba(0,0,0,.28)}
+:root.light{color-scheme:light;--bg:#f3f6fb;--panel:#fff;--panel2:#f8fafc;--text:#0f172a;--muted:#64748b;--line:#dbe4ef;--primary:#2563eb;--primary2:#1d4ed8;--danger:#e11d48;--shadow:0 18px 45px rgba(15,23,42,.08)}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 10% 0,#17315c 0,transparent 35%),var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;min-height:100vh}.app{display:grid;grid-template-columns:250px 1fr;min-height:100vh}.side{position:sticky;top:0;height:100vh;padding:22px 15px;background:rgba(7,16,31,.82);border-inline-end:1px solid var(--line);backdrop-filter:blur(16px)}:root.light .side{background:rgba(255,255,255,.86)}.brand{display:flex;align-items:center;gap:10px;padding:8px 10px 24px}.brand-icon{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(135deg,#60a5fa,#7c3aed);font-size:22px}.brand b{display:block}.brand small{color:var(--muted)}.nav{display:grid;gap:7px}.nav a{display:flex;gap:11px;align-items:center;padding:11px 12px;border-radius:12px;color:var(--muted);text-decoration:none}.nav a:hover,.nav a.active{background:linear-gradient(135deg,rgba(59,130,246,.2),rgba(124,58,237,.12));color:var(--text)}.side-bottom{position:absolute;bottom:18px;left:15px;right:15px}.main{padding:25px;max-width:1500px;width:100%;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}.top h1{margin:5px 0;font-size:28px}.muted{color:var(--muted)}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pill{border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--muted);font-size:12px;text-decoration:none}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:18px 0}.stat{padding:17px;border:1px solid var(--line);background:var(--panel);border-radius:16px}.stat b{font-size:25px;display:block;margin-top:6px}.card{background:linear-gradient(145deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:20px;padding:20px;margin:16px 0;box-shadow:var(--shadow)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{margin-bottom:11px}.field label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}input,textarea{width:100%;border:1px solid #33445e;background:rgba(2,8,23,.45);color:var(--text);border-radius:11px;padding:11px 12px;outline:none;font:inherit}textarea{min-height:110px;resize:vertical}:root.light input,:root.light textarea{background:#fff;border-color:#d7e0eb}input:focus,textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.12)}button{border:0;border-radius:10px;padding:10px 14px;background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;font-weight:700;cursor:pointer}button.secondary{background:#334155}.danger{background:#be123c!important}.iconbtn{width:42px;height:42px;padding:0}.flash{padding:13px 15px;border-radius:12px;border:1px solid #2563eb;background:rgba(37,99,235,.12);margin:15px 0}.section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}.section-head h2{font-size:19px;margin:0}.server{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:15px 0;border-top:1px solid var(--line)}.server:first-child{border-top:0}.server-title{display:flex;gap:9px;align-items:center;font-weight:800}.flag{font-size:21px}.server-url{direction:ltr;text-align:left;color:var(--muted);font-size:12px;margin-top:5px;word-break:break-all}.ping{font-variant-numeric:tabular-nums;white-space:nowrap}.btnrow{display:flex;gap:7px;flex-wrap:wrap}.plan{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px;margin:10px 0}.preview{border-radius:18px;padding:18px;background:linear-gradient(160deg,#172033,#0d1525);border:1px solid #293853}.preview .msg{background:#252039;border-radius:16px;padding:15px;white-space:pre-wrap}.preview .pbtn{display:inline-block;background:#334155;border-radius:10px;padding:8px 10px;margin:7px 4px 0 0;font-size:12px}.help{font-size:12px;color:var(--muted);line-height:1.7}.footer{padding:30px 0;color:var(--muted);text-align:center;font-size:12px}.footer a{color:#60a5fa;text-decoration:none}.mobile-menu{display:none}@media(max-width:900px){.app{grid-template-columns:1fr}.side{display:none;height:auto;position:fixed;z-index:20;width:260px;box-shadow:var(--shadow)}.side.open{display:block}.mobile-menu{display:inline-block}.main{padding:18px}.stats{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.server{grid-template-columns:1fr}.side-bottom{position:static;margin-top:25px}}
+</style></head>
+<body><div class="app">
+<aside class="side" id="side"><div class="brand"><div class="brand-icon">🚀</div><div><b>RouteBox</b><small>Telegram Bot</small></div></div><nav class="nav"><a class="active" href="#overview">📊 <?=$T['dash']?></a><a href="#servers">🌐 <?=$T['servers']?></a><a href="#bot">🤖 <?=$T['bot']?></a><a href="#plans">📦 <?=$T['plans']?></a><a href="#security">🔐 <?=$T['security']?></a><a href="#updates">⬆️ <?=$T['updates']?></a></nav><div class="side-bottom help"><?=$T['tls_note']?></div></aside>
+<main class="main">
+<div class="top"><div><div class="actions"><button class="iconbtn mobile-menu" onclick="document.getElementById('side').classList.toggle('open')">☰</button><span class="pill">v<?=h($version)?></span><span class="pill"><?=$hasToken?'🟢 '.$T['active']:'🔴 '.$T['offline']?></span></div><h1><?=$T['dash']?></h1><div class="muted"><?=$T['creator']?> <a href="https://t.me/+918807085399" target="_blank">Amir Taheri</a></div></div><div class="actions"><a class="pill" href="?lang=<?=$lang==='fa'?'en':'fa'?>"><?=$lang==='fa'?'🇬🇧 English':'🇮🇷 فارسی'?></a><button class="iconbtn" title="<?=$T['theme_toggle']?>" onclick="toggleTheme()">🌓</button><form method="post" action="/logout.php"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><button class="secondary"><?=$T['logout']?></button></form></div></div>
+<?php if ($flash !== '') { ?><div class="flash"><?=h($flash)?></div><?php } ?>
+<section id="overview" class="stats"><div class="stat">🌐 <span class="muted"><?=$T['servers']?></span><b><?=count($servers)?></b></div><div class="stat">👥 <span class="muted"><?=$T['users']?></span><b><?=$users?></b></div><div class="stat">📦 <span class="muted"><?=$T['plans']?></span><b><?=count($plans)?></b></div><div class="stat">🎁 <span class="muted"><?=$T['trial_hours']?></span><b><?=$trial?>h</b></div></section>
+
+<section id="servers" class="card"><div class="section-head"><h2>🌐 <?=$T['server_list']?></h2><span class="pill"><?=count(array_filter($servers, fn($s)=>(int)$s['enabled']===1))?> <?=$T['active']?></span></div>
+<?php if (!$servers) { ?><div class="muted"><?=$T['no_servers']?></div><?php } ?>
+<?php foreach ($servers as $s) { ?><div class="server"><div><div class="server-title"><span class="flag"><?=countryFlag((string)$s['country_code'])?></span><?=h((string)$s['name'])?><span class="pill"><?=((int)$s['enabled']===1)?'🟢 '.$T['active']:'⚪ '.$T['disabled']?></span></div><div class="server-url"><?=h((string)$s['base_url'])?></div></div><div><div class="ping">📡 <?=$T['ping']?>: <b><?=is_null($s['ping_ms'])?'—':h((string)$s['ping_ms']).' ms'?></b></div><div class="muted" style="font-size:11px"><?=h((string)$s['country_code'] ?: '--')?></div></div><div class="btnrow"><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="test_server"><input type="hidden" name="id" value="<?=$s['id']?>"><button><?=$T['test']?></button></form><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="toggle_server"><input type="hidden" name="id" value="<?=$s['id']?>"><button class="secondary"><?=((int)$s['enabled']===1)?$T['disabled']:$T['enabled']?></button></form></div></div><?php } ?></section>
+
 <section class="card"><div class="section-head"><h2>➕ <?=$T['add']?> RouteBox</h2></div><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="add_server"><div class="grid"><div class="field"><label><?=$T['name']?></label><input name="name" placeholder="RouteBox-USA" required></div><div class="field"><label><?=$T['url']?></label><input dir="ltr" name="url" placeholder="https://panel.example.com:8093" required></div><div class="field"><label><?=$T['username']?></label><input name="username" value="admin"></div><div class="field"><label><?=$T['password']?></label><input type="password" name="password"></div><div class="field"><label><?=$T['country']?></label><input name="country_code" maxlength="2" placeholder="US"><div class="help"><?=$T['country_hint']?></div></div><div class="field" style="padding-top:26px"><label><input type="checkbox" name="verify_tls" checked> <?=$T['verify_tls']?></label></div></div><button><?=$T['add']?></button></form></section>
+
 <section id="bot" class="card"><div class="section-head"><h2>🤖 <?=$T['settings']?></h2></div><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="save_settings"><div class="grid"><div class="field"><label><?=$T['trial_hours']?></label><input type="number" min="1" max="720" name="trial_hours" value="<?=$trial?>"></div><div class="field"><label><?=$T['token']?></label><input dir="ltr" type="password" name="telegram_token" placeholder="<?=$hasToken?'••••••••••••':'123456:ABC...'?>"><div class="help">Leave blank to keep the current token.</div></div></div><div class="grid"><div class="field"><label>🇮🇷 <?=$T['welcome']?> — فارسی</label><textarea name="welcome_fa"><?=h($wf)?></textarea></div><div class="field"><label>🇬🇧 <?=$T['welcome']?> — English</label><textarea name="welcome_en"><?=h($we)?></textarea></div></div><div class="help">💡 <?=$T['welcome_hint']?></div><br><button><?=$T['save']?></button></form></section>
-<section class="card"><div class="section-head"><h2>🎛️ <?=$T['buttons']?></h2><span class="pill"><?=$T['bot_preview']?></span></div><div class="grid"><div><?php foreach($buttons as $b):?><div class="plan"><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="save_button"><input type="hidden" name="id" value="<?=$b['id']?>"><div class="field"><label><?=h((string)$b['action_key'])?></label><input name="text_fa" value="<?=h((string)$b['text_fa'])?>"><input name="text_en" value="<?=h((string)$b['text_en'])?>"></div><button><?=$T['save']?></button></form><form method="post" style="display:inline"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="toggle_button"><input type="hidden" name="id" value="<?=$b['id']?>"><button class="secondary"><?=((int)$b['enabled']===1)?$T['disabled']:$T['enabled']?></button></form></div><?php endforeach;?></div><div class="preview"><div class="msg"><?=h($lang==='fa'?$wf:$we)?></div><?php foreach($buttons as $b)if((int)$b['enabled']===1):?><span class="pbtn"><?=h((string)($lang==='fa'?$b['text_fa']:$b['text_en']))?></span><?php endforeach;?><?php foreach($plans as $p)if((int)$p['enabled']===1):?><span class="pbtn">🚀 <?=h((string)$p['name'])?> • <?=$p['duration_days']?>d • <?=q((float)$p['quota_gb'])?></span><?php endforeach;?></div></div><div class="help">💡 <?=$T['button_hint']?></div></section>
-<section id="plans" class="card"><div class="section-head"><h2>📦 <?=$T['plans']?></h2></div><form method="post" class="grid"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="add_plan"><div class="field"><label><?=$T['plan_name']?></label><input name="plan_name" placeholder="USA 30 Days"></div><div class="field"><label><?=$T['days']?></label><input type="number" name="duration_days" value="30" min="1" max="3650"></div><div class="field"><label><?=$T['quota']?></label><input type="number" step="0.1" name="quota_gb" value="0" min="0" max="1024"></div><div style="padding-top:25px"><button><?=$T['add_plan']?></button></div></form><?php foreach($plans as $p):?><div class="plan"><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="update_plan"><input type="hidden" name="id" value="<?=$p['id']?>"><div class="grid"><div class="field"><label><?=$T['plan_name']?></label><input name="plan_name" value="<?=h((string)$p['name'])?>"></div><div class="field"><label><?=$T['days']?></label><input type="number" name="duration_days" value="<?=$p['duration_days']?>"></div><div class="field"><label><?=$T['quota']?></label><input type="number" step="0.1" name="quota_gb" value="<?=$p['quota_gb']?>"></div><div style="padding-top:25px"><button><?=$T['save']?></button></form><form method="post" style="display:inline"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="toggle_plan"><input type="hidden" name="id" value="<?=$p['id']?>"><button class="secondary"><?=((int)$p['enabled']===1)?$T['disabled']:$T['enabled']?></button></form><form method="post" style="display:inline" onsubmit="return confirm('Delete this plan?')"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="delete_plan"><input type="hidden" name="id" value="<?=$p['id']?>"><button class="danger">🗑️</button></form></div></div></div><?php endforeach;?></section>
+
+<section class="card"><div class="section-head"><h2>🎛️ <?=$T['buttons']?></h2><span class="pill"><?=$T['bot_preview']?></span></div><div class="grid"><div>
+<?php foreach ($buttons as $b) { ?><div class="plan"><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="save_button"><input type="hidden" name="id" value="<?=$b['id']?>"><div class="field"><label><?=h((string)$b['action_key'])?></label><input name="text_fa" value="<?=h((string)$b['text_fa'])?>"><input name="text_en" value="<?=h((string)$b['text_en'])?>"></div><button><?=$T['save']?></button></form><form method="post" style="display:inline"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="toggle_button"><input type="hidden" name="id" value="<?=$b['id']?>"><button class="secondary"><?=((int)$b['enabled']===1)?$T['disabled']:$T['enabled']?></button></form></div><?php } ?></div>
+<div class="preview"><div class="msg"><?=h($lang==='fa'?$wf:$we)?></div><?php foreach ($buttons as $b) { if ((int)$b['enabled'] === 1) { ?><span class="pbtn"><?=h((string)($lang==='fa'?$b['text_fa']:$b['text_en']))?></span><?php } } ?><?php foreach ($plans as $p) { if ((int)$p['enabled'] === 1) { ?><span class="pbtn">🚀 <?=h((string)$p['name'])?> • <?=$p['duration_days']?>d • <?=q((float)$p['quota_gb'])?></span><?php } } ?></div></div><div class="help">💡 <?=$T['button_hint']?></div></section>
+
+<section id="plans" class="card"><div class="section-head"><h2>📦 <?=$T['plans']?></h2></div><form method="post" class="grid"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="add_plan"><div class="field"><label><?=$T['plan_name']?></label><input name="plan_name" placeholder="USA 30 Days"></div><div class="field"><label><?=$T['days']?></label><input type="number" name="duration_days" value="30" min="1" max="3650"></div><div class="field"><label><?=$T['quota']?></label><input type="number" step="0.1" name="quota_gb" value="0" min="0" max="1024"></div><div style="padding-top:25px"><button><?=$T['add_plan']?></button></div></form>
+<?php foreach ($plans as $p) { ?><div class="plan"><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="update_plan"><input type="hidden" name="id" value="<?=$p['id']?>"><div class="grid"><div class="field"><label><?=$T['plan_name']?></label><input name="plan_name" value="<?=h((string)$p['name'])?>"></div><div class="field"><label><?=$T['days']?></label><input type="number" name="duration_days" value="<?=$p['duration_days']?>"></div><div class="field"><label><?=$T['quota']?></label><input type="number" step="0.1" name="quota_gb" value="<?=$p['quota_gb']?>"></div><div style="padding-top:25px"><button><?=$T['save']?></button></div></div></form><div class="btnrow"><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="toggle_plan"><input type="hidden" name="id" value="<?=$p['id']?>"><button class="secondary"><?=((int)$p['enabled']===1)?$T['disabled']:$T['enabled']?></button></form><form method="post" onsubmit="return confirm('Delete this plan?')"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="delete_plan"><input type="hidden" name="id" value="<?=$p['id']?>"><button class="danger">🗑️</button></form></div></div><?php } ?></section>
+
 <section id="security" class="card"><div class="section-head"><h2>🔐 <?=$T['change_password']?></h2></div><form method="post" class="grid"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="password"><div class="field"><label><?=$T['new_password']?></label><input type="password" name="new_password" minlength="8" required></div><div class="field"><label><?=$T['confirm_password']?></label><input type="password" name="confirm_password" minlength="8" required></div><div><button><?=$T['change_password']?></button></div></form></section>
+
 <section id="updates" class="card"><div class="section-head"><h2>⬆️ <?=$T['updates']?></h2><span class="pill">v<?=h($version)?></span></div><p class="muted"><?=$T['updating']?></p><div class="actions"><form method="post" onsubmit="return confirm('Start update now? The panel will restart briefly.')"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="update_now"><button>⬆️ <?=$T['update']?></button></form><a class="pill" href="https://github.com/PardisMobile/routebox-telegram-bot/blob/main/CHANGELOG.md" target="_blank">CHANGELOG</a></div></section>
-<footer class="footer">© <?=date('Y')?> <?=$T['footer']?> · <a href="https://t.me/+918807085399" target="_blank">Telegram</a> · v<?=h($version)?></footer></main></div><script>const root=document.documentElement;const saved=localStorage.getItem('rbt-theme');if(saved==='light'||saved==='dark')root.classList.toggle('light',saved==='light');function toggleTheme(){const light=root.classList.toggle('light');localStorage.setItem('rbt-theme',light?'light':'dark')}if(!saved&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)root.classList.add('light');</script></body></html>
+<footer class="footer">© <?=date('Y')?> <?=$T['footer']?> · <a href="https://t.me/+918807085399" target="_blank">Telegram</a> · v<?=h($version)?></footer>
+</main></div>
+<script>const root=document.documentElement;const saved=localStorage.getItem('rbt-theme');if(saved==='light'||saved==='dark')root.classList.toggle('light',saved==='light');function toggleTheme(){const light=root.classList.toggle('light');localStorage.setItem('rbt-theme',light?'light':'dark')}if(!saved&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches)root.classList.add('light');</script>
+</body></html>
