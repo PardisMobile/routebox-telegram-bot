@@ -1,20 +1,6 @@
 <?php
 require __DIR__.'/../src/bootstrap.php';
 if(!empty($_SESSION['admin'])){header('Location:/');exit;}
-$err='';
-if($_SERVER['REQUEST_METHOD']==='POST'){
-    try{
-        verify_csrf();
-        if(hash_equals((string)$config['admin_user'],(string)($_POST['user']??''))&&password_verify((string)($_POST['password']??''),admin_password_hash())){
-            session_regenerate_id(true);
-            $_SESSION['admin']=true;
-            $_SESSION['csrf_token']=bin2hex(random_bytes(32));
-            header('Location:/');exit;
-        }
-        $err='Invalid username or password.';
-    }catch(Throwable $e){
-        http_response_code(403);
-        $err='Invalid security token. Reload the page and try again.';
-    }
-}
-?><!doctype html><html lang="en" dir="ltr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Login</title><style>body{background:#0b1120;color:#fff;font-family:sans-serif;display:grid;place-items:center;height:100vh}.box{width:min(360px,90%);background:#111827;padding:25px;border-radius:18px}input,button{box-sizing:border-box;width:100%;padding:12px;margin:7px 0;border-radius:9px;border:1px solid #374151}input{background:#0f172a;color:#fff}button{background:#2563eb;color:#fff;border:0}.err{color:#fb7185}</style><div class="box"><h2>🚀 RouteBox Telegram Bot</h2><div>🛡️ Administrator Login</div><?php if($err):?><p class="err"><?=h($err)?></p><?php endif;?><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input name="user" placeholder="Username" required><input name="password" type="password" placeholder="Password" required><button type="submit">Sign in</button></form></div>
+$lang=(isset($_GET['lang'])&&$_GET['lang']==='en')?'en':'fa';$err='';
+if($_SERVER['REQUEST_METHOD']==='POST'){try{verify_csrf();if(hash_equals((string)$config['admin_user'],(string)($_POST['user']??''))&&password_verify((string)($_POST['password']??''),admin_password_hash())){session_regenerate_id(true);$_SESSION['admin']=true;$_SESSION['csrf_token']=bin2hex(random_bytes(32));$_SESSION['panel_lang']=$lang;header('Location:/');exit;}$err=$lang==='fa'?'نام کاربری یا رمز عبور نادرست است.':'Invalid username or password.';}catch(Throwable $e){http_response_code(403);$err=$lang==='fa'?'توکن امنیتی نامعتبر است. صفحه را دوباره باز کنید.':'Invalid security token. Reload the page and try again.';}}
+?><!doctype html><html lang="<?=$lang?>" dir="<?=$lang==='fa'?'rtl':'ltr'?>"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RouteBox Admin</title><style>:root{color-scheme:dark;--bg:#07101f;--card:#0e1a2d;--text:#edf4ff;--muted:#91a4bd;--line:#263a56;--blue:#3b82f6}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#17345f,#07101f 55%);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial}.box{width:min(420px,90vw);padding:30px;border:1px solid var(--line);border-radius:24px;background:rgba(14,26,45,.9);box-shadow:0 30px 90px rgba(0,0,0,.35);backdrop-filter:blur(18px)}.logo{width:54px;height:54px;border-radius:17px;display:grid;place-items:center;background:linear-gradient(135deg,#60a5fa,#7c3aed);font-size:28px}.head{display:flex;align-items:center;gap:13px;margin-bottom:24px}.head h1{font-size:21px;margin:0}.head small{color:var(--muted)}label{display:block;color:var(--muted);font-size:13px;margin:13px 0 6px}input,button{width:100%;box-sizing:border-box;padding:13px;border-radius:11px;border:1px solid var(--line);font:inherit}input{background:#091426;color:var(--text)}button{margin-top:15px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;border:0;font-weight:800;cursor:pointer}.err{color:#fb7185;background:#3b0d1d;padding:10px;border-radius:10px}.lang{display:block;text-align:center;margin-top:18px;color:#60a5fa;text-decoration:none;font-size:13px}</style></head><body><div class="box"><div class="head"><div class="logo">🚀</div><div><h1>RouteBox Telegram Bot</h1><small><?=$lang==='fa'?'ورود مدیر پنل':'Administrator Login'?></small></div></div><?php if($err):?><div class="err"><?=h($err)?></div><?php endif;?><form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><label><?=$lang==='fa'?'نام کاربری':'Username'?></label><input name="user" autocomplete="username" required><label><?=$lang==='fa'?'رمز عبور':'Password'?></label><input name="password" type="password" autocomplete="current-password" required><button><?=$lang==='fa'?'ورود به پنل':'Sign in'?></button></form><a class="lang" href="?lang=<?=$lang==='fa'?'en':'fa'?>"><?=$lang==='fa'?'🇬🇧 English':'🇮🇷 فارسی'?></a></div></body></html>
