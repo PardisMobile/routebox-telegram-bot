@@ -45,7 +45,12 @@ systemctl reload nginx
 
 echo "==> Running validation..."
 while IFS= read -r -d '' file; do php -l "${file}" >/dev/null; done < <(find . -type f -name '*.php' -not -path './.git/*' -print0)
-bash -n install.sh update.sh uninstall.sh
+bash -n install.sh install-v2.sh update.sh uninstall.sh
+
+grep -q '/api/auth/login' src/RouteBoxClient.php
+grep -q 'sessionCookie' src/RouteBoxClient.php
+
+echo "✓ PHP and RouteBox integration validation passed."
 
 systemctl restart "${SERVICE}"
 sleep 1
