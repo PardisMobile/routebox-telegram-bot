@@ -102,8 +102,6 @@ if [[ "${has_token}" != 1 || "${has_servers}" == 0 ]]; then
       echo "[ERROR] Enter the complete RouteBox Panel URL, including http:// or https:// and optional port."; server_no=$((server_no-1)); continue
     fi
     RB_SCHEME="${RB_BASE%%://*}"
-    RB_HOSTPORT="${RB_BASE#*://}"
-    [[ -n "${RB_HOSTPORT}" ]] || { echo "[ERROR] Invalid RouteBox URL."; server_no=$((server_no-1)); continue; }
 
     read -r -p "RouteBox username [admin]: " RB_USER; RB_USER="${RB_USER:-admin}"
     read -r -s -p "RouteBox password (leave empty if authentication is disabled): " RB_PASS; echo
@@ -124,7 +122,7 @@ if [[ "${has_token}" != 1 || "${has_servers}" == 0 ]]; then
       rm -f /tmp/rbt-status.$$
       server_no=$((server_no-1)); continue
     fi
-    rm -f /tmp/rbt-status.$$$$
+    rm -f /tmp/rbt-status.$$
     echo "✓ RouteBox API connection successful"
     UENC="$(enc "${RB_USER}")"; PENC="$(enc "${RB_PASS}")"
     [[ -n "$UENC" && -n "$PENC" ]] || fail "Could not encrypt RouteBox credentials."
