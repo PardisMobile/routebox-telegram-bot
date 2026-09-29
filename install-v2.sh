@@ -63,10 +63,11 @@ Type=simple
 User=www-data
 Group=www-data
 WorkingDirectory=$APP_DIR
-ExecStart=/usr/bin/php -d open_basedir=$APP_DIR:/tmp -S 0.0.0.0:%i -t $APP_DIR/public
+# Keep the PHP filesystem sandboxed, but allow the panel to see the
+# root-owned updater path used by the restricted sudo rule.
+ExecStart=/usr/bin/php -d open_basedir=$APP_DIR:/tmp:/usr/local/sbin -S 0.0.0.0:%i -t $APP_DIR/public
 Restart=always
 RestartSec=2
-NoNewPrivileges=true
 ProtectHome=true
 ReadWritePaths=$APP_DIR/storage
 [Install]
