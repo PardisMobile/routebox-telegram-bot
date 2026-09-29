@@ -8,6 +8,7 @@ TLS_DIR="${STATE_DIR}/tls"
 CERT_SOURCE="/etc/routebox/panel-cert/fullchain.pem"
 KEY_SOURCE="/etc/routebox/panel-cert/key.pem"
 TLS_SERVICE="${APP_NAME}-tls.service"
+MUX_SERVICE="${APP_NAME}-mux.service"
 SYNC_SERVICE="${APP_NAME}-tls-sync.service"
 SYNC_TIMER="${APP_NAME}-tls-sync.timer"
 
@@ -32,24 +33,43 @@ if [[ ! -s "$CERT_SOURCE" || ! -s "$KEY_SOURCE" ]]; then
   exit 0
 fi
 
+# The Bot must keep ONE public Admin Panel port and accept BOTH protocols on it.
+# A raw PHP listener cannot speak TLS, and stunnel alone would make the port
+# HTTPS-only. HAProxy is therefore used only as a small TCP protocol multiplexer:
+#   HTTP  -> PHP loopback listener
+#   TLS   -> local stunnel TLS terminator -> PHP loopback listener
+# The public port never changes.
+if ! command -v haproxy >/dev/null 2>&1; then
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y haproxy
+fi
 if ! command -v stunnel4 >/dev/null 2>&1; then
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y stunnel4
 fi
 
-TLS_PORT="$PORT"
-BACKEND_PORT=$((PORT + 1))
-while ss -ltnH "sport = :$BACKEND_PORT" 2>/dev/null | grep -q .; do
-  BACKEND_PORT=$((BACKEND_PORT + 1))
-done
+# Never touch a system-wide HAProxy configuration/service. We run a dedicated
+# Bot-owned HAProxy instance with its own config and systemd unit.
+systemctl stop "$MUX_SERVICE" >/dev/null 2>&1 || true
+systemctl disable "$MUX_SERVICE" >/dev/null 2>&1 || true
+systemctl stop "$TLS_SERVICE" >/dev/null 2>&1 || true
+systemctl disable "$TLS_SERVICE" >/dev/null 2>&1 || true
 
 WEB_INSTANCE="${APP_NAME}-web@${PORT}.service"
 DROPIN_DIR="/etc/systemd/system/${APP_NAME}-web@${PORT}.service.d"
-mkdir -p "$DROPIN_DIR" "$TLS_DIR"
+mkdir -p "$DROPIN_DIR" "$TLS_DIR" "$STATE_DIR"
 
-# Keep the public Admin Panel port unchanged. Move only the PHP backend to
-# loopback so TLS can own the existing panel port. The Telegram worker service
-# routebox-telegram-bot.service is deliberately untouched.
+# Pick two private backend ports. They are never exposed publicly.
+free_port(){
+  local p="$1"
+  while ss -ltnH "sport = :$p" 2>/dev/null | grep -q .; do p=$((p+1)); done
+  printf '%s' "$p"
+}
+BACKEND_PORT="$(free_port $((PORT + 1)))"
+TLS_BACKEND_PORT="$(free_port $((BACKEND_PORT + 1)))"
+
+# Keep the PHP application on loopback only. The public Admin Panel port remains
+# exactly the value already stored in web-port (for example 8093).
 cat > "${DROPIN_DIR}/backend.conf" <<EOF_BACKEND
 [Service]
 ExecStart=
@@ -57,7 +77,8 @@ ExecStart=/usr/bin/php -d open_basedir=${APP_DIR}:/tmp -S 127.0.0.1:${BACKEND_PO
 EOF_BACKEND
 
 echo "$BACKEND_PORT" > "${STATE_DIR}/web-backend-port"
-echo "routebox-panel-acme" > "${STATE_DIR}/web-tls-mode"
+echo "$TLS_BACKEND_PORT" > "${STATE_DIR}/web-tls-backend-port"
+echo "routebox-panel-acme-multiplex" > "${STATE_DIR}/web-tls-mode"
 
 # Copy the live RouteBox certificate/key into a dedicated location readable by
 # the unprivileged stunnel process. The sync timer refreshes these files after
@@ -91,14 +112,16 @@ fi
 EOF_SYNC
 chmod 0750 "${STATE_DIR}/sync-tls-cert.sh"
 
+# TLS terminator: loopback only. It receives already-classified TLS traffic
+# from HAProxy and forwards decrypted HTTP to the PHP listener.
 cat > "/etc/stunnel/${APP_NAME}.conf" <<EOF_STUNNEL
 foreground = yes
 setuid = stunnel4
 setgid = stunnel4
 pid =
 
-[admin-panel]
-accept = 0.0.0.0:${TLS_PORT}
+[admin-panel-tls]
+accept = 127.0.0.1:${TLS_BACKEND_PORT}
 connect = 127.0.0.1:${BACKEND_PORT}
 cert = ${TLS_DIR}/fullchain.pem
 key = ${TLS_DIR}/key.pem
@@ -108,7 +131,7 @@ chmod 0644 "/etc/stunnel/${APP_NAME}.conf"
 
 cat > "/etc/systemd/system/${TLS_SERVICE}" <<EOF_TLS
 [Unit]
-Description=RouteBox Telegram Bot Admin Panel TLS
+Description=RouteBox Telegram Bot Admin Panel TLS terminator
 After=network-online.target ${WEB_INSTANCE}
 Wants=network-online.target
 Requires=${WEB_INSTANCE}
@@ -128,6 +151,62 @@ ReadWritePaths=${TLS_DIR}
 [Install]
 WantedBy=multi-user.target
 EOF_TLS
+
+# Dedicated HAProxy instance. It inspects only the first client bytes:
+# HTTP is sent directly to PHP; a TLS ClientHello is sent to stunnel.
+# HAProxy's inspect-delay does not add a 5-second delay when the protocol is
+# recognized immediately (HTTP or TLS).
+cat > "${STATE_DIR}/haproxy.cfg" <<EOF_HAPROXY
+global
+    user haproxy
+    group haproxy
+    maxconn 4096
+
+defaults
+    mode tcp
+    timeout connect 5s
+    timeout client 1h
+    timeout server 1h
+
+frontend rbt_admin_mux
+    bind 0.0.0.0:${PORT}
+    tcp-request inspect-delay 5s
+    tcp-request content accept if HTTP
+    tcp-request content accept if { req.ssl_hello_type 1 }
+    use_backend rbt_tls if { req.ssl_hello_type 1 }
+    default_backend rbt_http
+
+backend rbt_http
+    mode tcp
+    server php 127.0.0.1:${BACKEND_PORT}
+
+backend rbt_tls
+    mode tcp
+    server stunnel 127.0.0.1:${TLS_BACKEND_PORT}
+EOF_HAPROXY
+chmod 0644 "${STATE_DIR}/haproxy.cfg"
+
+cat > "/etc/systemd/system/${MUX_SERVICE}" <<EOF_MUX
+[Unit]
+Description=RouteBox Telegram Bot Admin Panel HTTP+HTTPS multiplexer
+After=network-online.target ${WEB_INSTANCE} ${TLS_SERVICE}
+Wants=network-online.target
+Requires=${WEB_INSTANCE} ${TLS_SERVICE}
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/haproxy -db -f ${STATE_DIR}/haproxy.cfg
+ExecReload=/usr/sbin/haproxy -c -f ${STATE_DIR}/haproxy.cfg
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=${STATE_DIR}
+
+[Install]
+WantedBy=multi-user.target
+EOF_MUX
 
 cat > "/etc/systemd/system/${SYNC_SERVICE}" <<EOF_SYNC_UNIT
 [Unit]
@@ -152,26 +231,33 @@ Unit=${SYNC_SERVICE}
 WantedBy=timers.target
 EOF_SYNC_TIMER
 
+# Validate configuration before starting anything public.
+/usr/sbin/haproxy -c -f "${STATE_DIR}/haproxy.cfg" >/dev/null || fail "HAProxy configuration validation failed."
+
 systemctl daemon-reload
 systemctl stop "$WEB_INSTANCE" >/dev/null 2>&1 || true
 systemctl enable --now "$WEB_INSTANCE"
 systemctl enable --now "$TLS_SERVICE"
+systemctl enable --now "$MUX_SERVICE"
 systemctl enable --now "$SYNC_TIMER"
 
-# One immediate sync after both services are up.
+# One immediate certificate sync after all services are up.
 "${STATE_DIR}/sync-tls-cert.sh"
 
-# Local health checks. The HTTP backend must stay loopback-only and the TLS
-# frontend must own the original panel port.
-curl -fsS --max-time 10 "http://127.0.0.1:${BACKEND_PORT}/login.php" >/dev/null || fail "Admin Panel HTTP backend health check failed on 127.0.0.1:${BACKEND_PORT}."
+# Local health checks for BOTH protocols on the SAME public port.
+HTTP_CODE="$(curl -sS -o /tmp/rbt-http-check.$$ -w '%{http_code}' "http://127.0.0.1:${PORT}/login.php" || true)"
+rm -f "/tmp/rbt-http-check.$$"
+[[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "302" ]] || fail "Admin Panel HTTP health check failed on :${PORT}: HTTP ${HTTP_CODE:-000}."
 
-if ! timeout 8 bash -c "</dev/tcp/127.0.0.1/${TLS_PORT}" 2>/dev/null; then
-  fail "TLS listener is not accepting connections on ${TLS_PORT}."
-fi
+HTTPS_CODE="$(curl -ksS -o /tmp/rbt-https-check.$$ -w '%{http_code}' "https://127.0.0.1:${PORT}/login.php" || true)"
+rm -f "/tmp/rbt-https-check.$$"
+[[ "$HTTPS_CODE" == "200" || "$HTTPS_CODE" == "302" ]] || fail "Admin Panel HTTPS health check failed on :${PORT}: HTTP ${HTTPS_CODE:-000}."
 
 printf '\n✓ RouteBox panel certificate is reused for the Bot Admin Panel.\n'
-printf '✓ Public Admin Panel: https://<RouteBox-domain>:%s/\n' "$TLS_PORT"
+printf '✓ SAME public Admin Panel port: %s\n' "$PORT"
+printf '✓ HTTP:  http://<server-ip>:%s/\n' "$PORT"
+printf '✓ HTTPS: https://<RouteBox-domain>:%s/\n' "$PORT"
 printf '✓ PHP backend: 127.0.0.1:%s (not public)\n' "$BACKEND_PORT"
-printf '✓ Ports 80/443 were not changed.\n'
-printf '✓ routebox-telegram-bot.service was not modified.\n'
+printf '✓ TLS terminator: 127.0.0.1:%s (not public)\n' "$TLS_BACKEND_PORT"
+printf '✓ Ports 80/443 and RouteBox/Apache/Nginx were not changed.\n'
 printf '✓ Certificate renewal sync timer: %s\n' "$SYNC_TIMER"
