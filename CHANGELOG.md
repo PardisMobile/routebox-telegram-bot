@@ -4,6 +4,40 @@ All notable changes to RouteBox Telegram Bot are documented here.
 
 The repository version is defined by [`VERSION`](./VERSION). Release notes below describe the important user-visible and operational changes for each beta.
 
+## 0.1.0-beta.9 — 2026-09-30
+
+### Admin Panel UX / UI
+
+- Rebuilt the Admin Panel visual layer with a cleaner, more professional control-center layout.
+- Replaced the basic emoji-style navigation with inline SVG icons and consistent active/hover/focus states.
+- Fixed sidebar selection so the current section remains highlighted after navigation and actions.
+- Fixed post-action scrolling: mutations now return to the section that was just edited instead of jumping to the end of the page.
+- Improved responsive navigation for smaller screens.
+- Added clearer cards, status badges, buttons, forms, empty states and update status blocks.
+- Added visible keyboard focus states and reduced-motion support for smoother, more accessible interaction.
+- Replaced the old TLS informational note with a direct **Contact Support** Telegram button.
+
+### Update Manager
+
+- Dashboard now distinguishes installed version, GitHub version and updater readiness.
+- Update Manager explicitly reports when the installed version is already the latest available version.
+- Update actions now report a successful updater launch instead of only exposing a generic updater error.
+- Updater availability detection also probes the executable through the system path, avoiding false "Updater is not installed" messages caused by PHP filesystem visibility.
+- Existing restricted `sudo` updater architecture is preserved.
+
+### Telegram Bot / Bilingual Preview
+
+- Bot Menu Preview now shows **Persian and English side-by-side** instead of only the current/English view.
+- Fixed literal `/n`, `\\n` and escaped newline text in welcome messages and fixed bot buttons.
+- Button and welcome-message saves normalize newline representations before storing them.
+- The Telegram worker also normalizes stored text at send time, so existing records containing `/n` are rendered correctly without manual re-entry.
+
+### Compatibility
+
+- RouteBox API integration, server credentials, plans, Telegram provisioning, SQLite schema and existing service architecture are preserved.
+- No changes to RouteBox public ports `80/443`.
+- Existing Apache/Nginx/RouteBox services remain outside the Bot Admin Panel's configuration scope.
+
 ## 0.1.0-beta.8 — 2026-09-30
 
 ### Admin Panel Updater
