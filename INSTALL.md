@@ -1,56 +1,40 @@
 # 📦 RouteBox Telegram Bot — Installation Guide
 
-**Version:** `0.1.0-beta.1`  
-**Status:** 🧪 Beta  
-**Platform:** Ubuntu 22.04+
+**Version:** `0.1.0-beta.1` · **Status:** 🧪 Beta · **Platform:** Ubuntu 22.04+
 
-This guide installs the Bot and verifies the complete Telegram → RouteBox → AmneziaWG path before a RouteBox server is accepted.
+This guide installs the Bot and validates the complete Telegram → RouteBox → AmneziaWG path before a RouteBox server is accepted.
 
 > ⚠️ Beta software. Test it on your own RouteBox installation before production or commercial use.
 
----
-
 ## 1. Requirements
-
-### Bot server
 
 - Ubuntu 22.04 or newer
 - Root or sudo access
 - Internet access to Telegram and GitHub
 - PHP 8+
-- A reachable hostname or public IP
+- A reachable RouteBox Panel URL
 
-The installer installs Nginx, PHP-FPM, SQLite and the required PHP extensions automatically.
+### Important: port 80
 
-### RouteBox
+The installer checks port 80 **before** starting Nginx.
 
-The Bot connects to the **same HTTP(S) listener used by the RouteBox web panel**. There is no separate Bot/API port.
-
-Enter the exact URL that opens the RouteBox panel, for example:
+If RouteBox already owns port 80, the installer leaves RouteBox untouched and starts the Bot Admin Panel on a separate free port, normally `8090`.
 
 ```text
-https://panel.example.com:8443
-http://192.0.2.10:8080
-https://panel.example.com
+RouteBox :80              ← untouched
+Bot Admin Panel :8090    ← independent service
+Bot Worker                ← systemd
 ```
 
-The installer does not ask for RouteBox mode, scheme, host and port separately.
-
-RouteBox's upstream documentation describes `8443` as the usual VPS panel listener and `8080` as the usual router listener. A reverse proxy may expose the panel on `443`. These are deployment details; the Bot only needs the actual Panel URL.
-
----
+If port 80 is free, the installer can use Nginx + PHP-FPM normally.
 
 ## 2. Create the Telegram Bot
 
 1. Open Telegram.
 2. Open **@BotFather**.
 3. Run `/newbot`.
-4. Choose a name and username.
-5. Copy the Bot Token.
-
-Keep the token private.
-
----
+4. Choose the Bot name and username.
+5. Keep the Bot Token private.
 
 ## 3. Install
 
@@ -60,24 +44,19 @@ Run on the Ubuntu server:
 bash <(curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh)
 ```
 
-The installer automatically:
+The installer:
 
 1. Checks Ubuntu 22.04+.
-2. Installs dependencies.
-3. Downloads the current repository.
-4. Initializes SQLite.
-5. Generates the application encryption key.
-6. Generates the admin password.
-7. Starts the interactive setup wizard.
-8. Validates Telegram.
-9. Validates every RouteBox server before saving it.
-10. Configures Nginx/PHP-FPM.
-11. Installs and enables the systemd worker.
-12. Runs final syntax and service checks.
-
-The generated administrator password is printed once. Save it securely.
-
----
+2. Detects port 80 ownership.
+3. Installs the required PHP/runtime packages.
+4. Downloads or updates the current Beta code.
+5. Initializes SQLite and the encryption key.
+6. Generates the Admin password on first installation.
+7. Validates Telegram with `getMe`.
+8. Validates every RouteBox with the **same `RouteBoxClient` used by the Bot**.
+9. Runs a real AWG create → config export → delete smoke test.
+10. Installs the Telegram worker.
+11. Starts the Admin Panel without interfering with RouteBox.
 
 ## 4. Telegram Setup
 
@@ -87,9 +66,9 @@ The wizard asks:
 Telegram Bot Token:
 ```
 
-It calls Telegram `getMe` before storing the token.
+The token is entered silently, checked with Telegram `getMe`, and stored encrypted. The full token is never printed back to the terminal.
 
-It also removes an existing Telegram webhook so the Bot's long-polling worker does not compete with a webhook.
+The installer also attempts to remove an existing Telegram webhook so long polling does not compete with it.
 
 Expected result:
 
@@ -97,11 +76,9 @@ Expected result:
 ✓ Telegram connection successful: @YourBot
 ```
 
----
-
 ## 5. RouteBox Setup
 
-For each RouteBox server the wizard asks:
+For each RouteBox:
 
 ```text
 Server name [RouteBox-1]:
@@ -111,71 +88,45 @@ RouteBox password:
 Verify TLS certificate? [Y/n]:
 ```
 
-Username and password may be empty when RouteBox authentication is disabled. If authentication is enabled, provide the same credentials used to enter the RouteBox panel.
-
-### VPS example
-
-If the panel opens at:
+Use the **exact URL that opens the RouteBox web panel**. Examples:
 
 ```text
 https://panel.example.com:8443
-```
-
-enter that exact URL.
-
-### Router example
-
-If the panel opens at:
-
-```text
 http://192.0.2.10:8080
-```
-
-enter that exact URL.
-
-### Reverse proxy example
-
-If the panel opens at:
-
-```text
 https://panel.example.com
 ```
 
-enter that exact URL.
+There is **no separate Bot/API port**. The Bot uses the same HTTP(S) listener as the RouteBox panel.
 
-There is no separate API port.
+The installer does not ask for VPS/Router mode, scheme, host and port separately.
 
-For HTTPS, TLS verification should remain enabled when the certificate is valid. Disabling verification is intended for controlled testing with self-signed certificates.
+If RouteBox authentication is disabled, leave username/password empty.
 
----
+For HTTPS, keep TLS verification enabled when the certificate is valid. Disabling it is intended for controlled testing with self-signed certificates.
 
 ## 6. RouteBox Authentication
 
-The Bot follows the current RouteBox session API:
+The Bot follows the RouteBox session API:
 
 ```text
 POST /api/auth/login
         ↓
-Set-Cookie: RouteBox session
+Session Cookie
         ↓
-Protected API requests using the session cookie
+Protected API requests
         ↓
 401 → re-login once → retry
         ↓
-HTTP Basic fallback when session authentication is unavailable
+HTTP Basic compatibility fallback
 ```
 
-The session cookie is kept only in the running PHP process. It is not written to the Bot database.
+Session cookies remain in memory and are not stored in SQLite.
 
-RouteBox also supports HTTP Basic authentication for scripts, so the Bot keeps that as a compatibility fallback.
+## 7. Full RouteBox Validation
 
----
+A reachable panel or `/api/status` alone is not enough.
 
-## 7. RouteBox Validation — No Guessing
-
-The installer does not consider an open TCP port or a successful `/api/status` response sufficient.
-
-Before saving a RouteBox server, it performs:
+The installer validates:
 
 ```text
 GET /api/health
@@ -185,7 +136,7 @@ GET /api/awg/peers
 GET /api/settings
 ```
 
-Then it performs a real temporary AWG operation:
+Then it performs a real temporary peer operation:
 
 ```text
 POST   /api/awg/peers
@@ -193,52 +144,27 @@ GET    /api/awg/peers/{publicKey}/config
 DELETE /api/awg/peers/{publicKey}
 ```
 
-The temporary peer has a unique `rbt-install-test-*` name.
+The temporary peer is named `rbt-install-test-*`.
 
-### What this catches
+This verifies connectivity, authentication, API permissions, AmneziaWG availability, peer creation, key generation, config rendering, URL encoding and deletion.
 
-- RouteBox connectivity
-- Authentication / authorization
-- Protected API access
-- AmneziaWG API availability
-- Peer creation permissions
-- RouteBox key generation
-- Client configuration rendering
-- Public-key URL encoding
-- Peer deletion / cleanup
-
-The server is saved only after the complete test succeeds.
-
-If cleanup itself fails, the installer reports that failure instead of silently claiming success.
-
----
+The RouteBox server is saved only after this complete test succeeds.
 
 ## 8. AmneziaWG Client Address
 
-The Bot does not generate AWG keys or client configuration files itself.
-
-It requests the generated configuration from RouteBox:
+The Bot does not generate the `.conf` itself. It requests it from RouteBox:
 
 ```text
 GET /api/awg/peers/{publicKey}/config
 ```
 
-RouteBox uses its configured client-facing server address when rendering the `.conf`.
-
-Therefore, before using the Bot, configure one of these in RouteBox:
-
-- **AmneziaWG → Server address**, or
-- **App Settings → Server → Public host**
-
-If the RouteBox configuration has no usable public/client address, the Bot's installation smoke test should fail at the configuration-export step. Fix the RouteBox address and run the test again.
+Configure a usable RouteBox **AmneziaWG Server address / Public host** before using the Bot.
 
 The AWG UDP listen port is separate from the RouteBox HTTP/API listener. The Bot does not connect to the AWG UDP port for API operations.
 
----
-
 ## 9. Multiple RouteBox Servers
 
-You can add multiple servers during installation:
+You can add multiple servers:
 
 ```text
 RouteBox #1 → https://de.example.com:8443
@@ -246,95 +172,82 @@ RouteBox #2 → https://tr.example.com:8443
 RouteBox #3 → https://panel.example.com
 ```
 
-For a Telegram user ID `123456789`, the logical peer name is:
+For Telegram ID `123456789`, the logical peer name is:
 
 ```text
 user123456789
 ```
 
-Each RouteBox creates its own cryptographic keypair and public key.
-
-During a real multi-server provisioning operation, if a later server fails, the Bot attempts to delete peers created earlier in that same operation.
-
----
+Each RouteBox creates its own cryptographic keypair/public key.
 
 ## 10. Admin Panel
 
-The installer creates a separate Bot administration panel.
-
-The first-run credentials are:
+First-run credentials:
 
 ```text
 Username: admin
 Password: <generated during installation>
 ```
 
-The panel lets you configure:
+The panel configures Telegram, trial duration, RouteBox servers, server enable/disable state and integration tests.
 
-- Telegram Bot Token
-- Trial duration
-- RouteBox servers
-- Enable / disable servers
-- Full RouteBox integration tests
-- Recent Telegram users
+If the independent listener is used, the installer prints the exact URL. The port is also saved at:
 
-### Adding a RouteBox from the panel
+```text
+/etc/routebox-telegram-bot/web-port
+```
 
-The Admin Panel uses the **same validation path as the installer**.
+Check it with:
 
-A RouteBox is not saved until the read-only API checks and temporary AWG create → config → delete smoke test pass.
+```bash
+cat /etc/routebox-telegram-bot/web-port
+```
 
-This prevents a server with a reachable panel but a broken AWG API from being silently added.
+And check the service with:
 
-### Admin security
+```bash
+systemctl status routebox-telegram-bot-web@$(cat /etc/routebox-telegram-bot/web-port)
+```
 
-Admin POST actions use CSRF protection. Use HTTPS and restrict the panel with firewall or network access controls before public deployment.
+For public deployment, place the panel behind HTTPS/reverse proxy or restrict its port with a firewall.
 
----
+## 11. RouteBox API Surface
 
-## 11. API Endpoints Used
+The integration uses the current RouteBox API architecture, including:
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `POST` | `/api/auth/login` | Create RouteBox session |
-| `GET` | `/api/auth/session` | Session compatibility endpoint |
-| `POST` | `/api/auth/logout` | End a session |
-| `GET` | `/api/health` | Health check |
-| `GET` | `/api/status` | RouteBox process status |
-| `GET` | `/api/settings` | Integration validation |
-| `GET` | `/api/awg/status` | AWG server status |
-| `GET` | `/api/awg/peers` | List peers |
-| `POST` | `/api/awg/peers` | Create peer |
-| `PATCH` | `/api/awg/peers/{publicKey}/expiry` | Set expiry / quota |
-| `GET` | `/api/awg/peers/{publicKey}/config` | Get `.conf` |
-| `GET` | `/api/awg/peers/{publicKey}/vpn-link` | Get `vpn://` link |
-| `GET` | `/api/awg/peers/{publicKey}/singbox` | Get sing-box export |
-| `POST` | `/api/awg/peers/{publicKey}/traffic/reset` | Reset traffic |
-| `DELETE` | `/api/awg/peers/{publicKey}` | Delete peer |
-
-The current Bot provisioning path primarily uses peer list, create, expiry, config export and delete.
-
----
+```text
+POST /api/auth/login
+GET  /api/health
+GET  /api/status
+GET  /api/settings
+GET  /api/awg/status
+GET  /api/awg/peers
+POST /api/awg/peers
+PATCH /api/awg/peers/{publicKey}/expiry
+GET  /api/awg/peers/{publicKey}/config
+GET  /api/awg/peers/{publicKey}/vpn-link
+GET  /api/awg/peers/{publicKey}/singbox
+POST /api/awg/peers/{publicKey}/traffic/reset
+DELETE /api/awg/peers/{publicKey}
+```
 
 ## 12. Service Management
 
+Worker:
+
 ```bash
 systemctl status routebox-telegram-bot
-```
-
-Live logs:
-
-```bash
 journalctl -u routebox-telegram-bot -f
-```
-
-Restart:
-
-```bash
 systemctl restart routebox-telegram-bot
 ```
 
----
+Admin Panel, when using the independent listener:
+
+```bash
+PORT=$(cat /etc/routebox-telegram-bot/web-port)
+systemctl status routebox-telegram-bot-web@$PORT
+journalctl -u routebox-telegram-bot-web@$PORT -f
+```
 
 ## 13. Updating
 
@@ -342,11 +255,7 @@ systemctl restart routebox-telegram-bot
 bash /opt/routebox-telegram-bot/update.sh
 ```
 
-Back up the SQLite database before major Beta updates.
-
-The update script validates PHP and shell syntax and checks that the systemd service starts after the update.
-
----
+The update script detects the existing web mode. If an older installation tried to use Nginx while RouteBox owns port 80, the update migrates the Bot Admin Panel to the independent listener instead of touching RouteBox.
 
 ## 14. Uninstalling
 
@@ -354,117 +263,86 @@ The update script validates PHP and shell syntax and checks that the systemd ser
 bash /opt/routebox-telegram-bot/uninstall.sh
 ```
 
-The uninstall script removes the Bot application, systemd service and Nginx site. It intentionally does not remove system packages such as PHP, Nginx or SQLite.
-
----
+The uninstall script removes the Bot services, its own Nginx site if present, the application and its state directory. It does **not** remove RouteBox, Apache, Nginx, PHP or other system packages.
 
 ## 15. Troubleshooting
 
-### Telegram connection failed
+### `Address already in use` on port 80
 
-Check basic outbound connectivity:
+This should no longer happen during normal installation. The installer detects an existing listener before starting Nginx.
+
+Check the owner manually:
+
+```bash
+sudo ss -ltnp | grep ':80'
+```
+
+If it shows `routebox`, leave it alone. The Bot Admin Panel should use its independent port.
+
+### Telegram connection failed
 
 ```bash
 curl -I https://api.telegram.org
 ```
 
-Then verify the Bot Token with @BotFather.
+Verify the token with @BotFather.
 
-### RouteBox URL cannot be reached
+### RouteBox cannot be reached
 
-Use the exact URL that opens the RouteBox panel in your browser.
-
-Examples:
+Use the exact URL that opens the RouteBox panel:
 
 ```bash
 curl -vk https://YOUR_ROUTEBOX_HOST:8443/api/status
 curl -v http://YOUR_ROUTEBOX_HOST:8080/api/status
 ```
 
-A successful TCP connection does **not** prove that authentication or AWG operations work. The Bot's smoke test is intentionally stricter.
+A successful TCP connection does not prove authentication or AWG operations work; the full smoke test is intentionally stricter.
 
-### RouteBox login fails
+### RouteBox login failed
 
-Use the exact RouteBox administrator username/password used by the RouteBox panel.
-
-If RouteBox authentication is disabled, leave both fields empty and the Bot will test the unauthenticated API path.
+Use the same credentials used to enter the RouteBox panel. If authentication is disabled, leave both fields empty.
 
 ### TLS errors
 
 For a self-signed certificate during controlled testing, disable TLS verification for that RouteBox entry. For production, use a valid certificate and keep verification enabled.
 
-### AWG API unavailable
+### AWG config export failed
 
-Check the RouteBox panel's AmneziaWG configuration and confirm that the installed RouteBox version exposes `/api/awg/*`.
-
-### Client `.conf` cannot be generated
-
-Check the RouteBox AWG server address / public host as described in Section 8.
+Check RouteBox's AmneziaWG Server address / Public host. The Bot asks RouteBox to render the client configuration; it does not invent the endpoint itself.
 
 ### A smoke-test peer remains after an interrupted install
 
-List peers in the RouteBox panel and remove only the uniquely named `rbt-install-test-*` peer that belongs to the interrupted test. The installer attempts cleanup automatically, but an abrupt process or network failure can prevent a remote DELETE from reaching RouteBox.
-
----
+Look for a uniquely named `rbt-install-test-*` peer in RouteBox and remove only that test peer. The installer normally cleans it up, but a network/process interruption can prevent the DELETE request from reaching RouteBox.
 
 ## 16. Security Recommendations
 
-- 🔐 Never publish Telegram Bot Tokens.
-- 🔐 Never publish RouteBox passwords.
+- 🔐 Never publish Telegram Bot Tokens or RouteBox passwords.
 - 🔐 Never publish private keys or real `.conf` files.
-- 🌐 Use HTTPS for the Admin Panel.
-- 🔥 Restrict Admin Panel access with firewall/network controls.
+- 🌐 Use HTTPS for the Admin Panel in public deployments.
+- 🔥 Restrict the Admin Panel port with firewall/network controls.
 - 🧱 Keep SQLite and `config/config.php` outside the public web root.
 - 🔄 Keep Ubuntu and RouteBox updated.
 - 📝 Sanitize logs before sharing them publicly.
 
----
+## 17. Beta Scope and Roadmap
 
-## 17. Beta Scope
+Current Beta focuses on Telegram, free trial, AmneziaWG peer provisioning, multi-RouteBox support, expiration, `.conf` delivery, encrypted credentials, Admin Panel and end-to-end testing.
 
-Current Beta functionality focuses on:
-
-- 🤖 Telegram Bot
-- 🎁 Free Trial
-- 👤 Telegram user management foundation
-- 🔑 AmneziaWG peer provisioning
-- 🌍 Multi-RouteBox provisioning
-- ⏱️ Expiration
-- 📄 Configuration delivery
-- 🖥️ Independent Admin Panel
-- 🔐 Encrypted credentials
-- 🧪 End-to-end RouteBox smoke testing
-- 📝 Logging
-
-### Planned Updates
-
-Future releases will add:
+Future updates will add:
 
 - 💰 **Iranian Rial payment gateway**
 - 🪙 **Cryptocurrency payment gateway**
 - 🔄 Subscription renewal and upgrades
 - 🧾 Invoices and payment history
-- 🎟️ Coupons and referral system
+- 🎟️ Coupons / referral system
 - 🌍 Server / Region selection
 - 📊 Usage and traffic dashboards
 - 🔔 Expiration notifications
 - 🌐 Persian / English Bot interface
 - 🔗 Subscription links / QR workflow
 
----
+## 18. Compatibility Note
 
-## 18. Beta Compatibility Note
+The Bot is designed around the current RouteBox API architecture. RouteBox API behavior can change between releases, so the full smoke test against the exact RouteBox version installed on the server is mandatory before real users are added.
 
-The Bot is designed around the current RouteBox API architecture. RouteBox can change API behavior between releases, so the **full smoke test against the exact RouteBox version installed on your server is mandatory before real users are added**.
-
-When reporting a problem, include:
-
-```text
-Ubuntu version
-RouteBox version
-RouteBox Telegram Bot version
-PHP version
-Sanitized journalctl output
-```
-
-Never include credentials or private configuration data.
+When reporting a problem, include Ubuntu, RouteBox, Bot and PHP versions plus sanitized logs. Never include credentials or private configuration data.
