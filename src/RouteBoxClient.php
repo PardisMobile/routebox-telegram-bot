@@ -251,7 +251,7 @@ final class RouteBoxClient
     /**
      * Run the same end-to-end operation required by real provisioning:
      * create a temporary peer, fetch its real .conf, and delete it again.
-     * Any created peer is cleaned up on failure.
+     * Any created peer is cleaned up on success or failure.
      *
      * @return array{peer_name:string,public_key:string,config_bytes:int}
      */
@@ -259,6 +259,8 @@ final class RouteBoxClient
     {
         $name = $namePrefix . '-' . date('YmdHis') . '-' . bin2hex(random_bytes(3));
         $publicKey = '';
+        $configBytes = 0;
+        $failure = null;
 
         try {
             $peer = $this->createPeer($name);
@@ -278,33 +280,39 @@ final class RouteBoxClient
             }
 
             $config = $this->config($publicKey);
+            $configBytes = strlen($config);
             if (trim($config) === '') {
                 throw new RuntimeException('RouteBox returned an empty client configuration.');
             }
-
-            return [
-                'peer_name' => $name,
-                'public_key' => $publicKey,
-                'config_bytes' => strlen($config),
-            ];
         } catch (Throwable $error) {
-            if ($publicKey !== '') {
-                try {
-                    $this->deletePeer($publicKey);
-                } catch (Throwable $cleanupError) {
-                    throw new RuntimeException(
-                        $error->getMessage() . ' Cleanup also failed: ' . $cleanupError->getMessage(),
-                        (int) $error->getCode(),
-                        $error
+            $failure = $error;
+        }
+
+        if ($publicKey !== '') {
+            try {
+                $this->deletePeer($publicKey);
+            } catch (Throwable $cleanupError) {
+                if ($failure === null) {
+                    $failure = new RuntimeException('Smoke-test cleanup failed: ' . $cleanupError->getMessage(), (int) $cleanupError->getCode(), $cleanupError);
+                } else {
+                    $failure = new RuntimeException(
+                        $failure->getMessage() . ' Cleanup also failed: ' . $cleanupError->getMessage(),
+                        (int) $failure->getCode(),
+                        $failure
                     );
                 }
             }
-            throw $error;
         }
 
-        // The success path also needs cleanup; the block above intentionally does
-        // not return the peer to RouteBox. This branch is unreachable and kept out
-        // of the main flow so cleanup cannot be accidentally skipped by callers.
+        if ($failure !== null) {
+            throw $failure;
+        }
+
+        return [
+            'peer_name' => $name,
+            'public_key' => $publicKey,
+            'config_bytes' => $configBytes,
+        ];
     }
 
     public function config(string $publicKey): string
