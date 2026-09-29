@@ -2,7 +2,7 @@
 
 > 🤖 Telegram Bot + 🖥️ Independent Web Admin Panel for RouteBox / AmneziaWG
 >
-> **Version: `0.1.0-beta.3` · Status: 🧪 Beta**
+> **Version: `0.1.0-beta.4` · Status: 🧪 Beta**
 
 ## ✨ What is it?
 
@@ -12,22 +12,27 @@ An independent backend for provisioning and managing **AmneziaWG peers** through
 📱 Telegram → 🤖 Bot Worker → 🖥️ Admin Panel → 🌐 RouteBox API → 🔐 AmneziaWG → 📄 .conf
 ```
 
-## 🤖 Current Features
+## 🤖 Current Features — Beta 4
 
 - 🎁 Configurable free trial
 - 👤 Telegram user identity and service status
+- 🌐 Persian / English Telegram user experience with language switching
+- ✏️ Editable bilingual welcome message from the Admin Panel
+- 🎛️ Editable bilingual fixed bot buttons (trial / account / language)
+- 📦 Dynamic Telegram plan/button management from the Admin Panel
 - 🔑 Automatic AmneziaWG peer creation
 - 🌍 Multi-RouteBox provisioning
 - 🆔 Same logical peer name across enabled servers (`user<telegram_id>`)
 - ⏱️ Expiration management
 - 📦 Traffic quota support per Telegram plan
-- 🛒 Dynamic Telegram plan/button management from the Admin Panel
 - 📄 Automatic `.conf` delivery
 - 🛡️ Trial reuse protection
 - 🔄 Rollback attempts after failed multi-server provisioning
 - 📡 RouteBox server ping/latency display
-- 🌍 RouteBox country flags in the Admin Panel
-- ☀️🌙 Light/Dark Admin Panel mode
+- 🌍 RouteBox country flags with automatic country detection fallback
+- ☀️🌙 Modern responsive Admin Panel with Light/Dark mode
+- 🇮🇷🇬🇧 Persian / English Admin Panel UI
+- 🧭 Sidebar navigation and mobile-friendly layout
 - 🔐 Web Admin password change and CLI recovery
 - 🔄 Admin Panel self-update with GitHub version checking
 - 📝 Application and provisioning logs
@@ -36,9 +41,7 @@ An independent backend for provisioning and managing **AmneziaWG peers** through
 
 ## 🧩 RouteBox Connection: one URL, no extra API port
 
-The Bot does **not** need a separate RouteBox API port.
-
-Enter the URL that opens the RouteBox panel, including its HTTP/HTTPS scheme and port when one is present:
+The Bot does **not** need a separate RouteBox API port. Enter the URL that opens the RouteBox panel, including its HTTP/HTTPS scheme and port when one is present:
 
 ```text
 https://panel.example.com:8443
@@ -46,118 +49,59 @@ http://192.0.2.10:8080
 https://panel.example.com
 ```
 
-For convenience, the installer also accepts `panel.example.com:8443` and automatically adds `https://`.
-
-The AmneziaWG **UDP** listen port is unrelated to the Bot API connection. The Bot talks to the RouteBox HTTP(S) listener only.
-
-The installer does not ask for VPS/Router mode, scheme, host and API port separately.
+The installer accepts `panel.example.com:8443` and automatically adds `https://` when needed. The AmneziaWG UDP listen port is unrelated to the Bot API connection.
 
 ## 🔐 RouteBox Authentication
 
 The integration follows RouteBox's current authentication model:
 
 ```text
-POST /api/auth/login
-        ↓
-Session Cookie
-        ↓
-Protected API requests
-        ↓
-401 → re-login once → retry
-        ↓
-HTTP Basic compatibility fallback
+POST /api/auth/login → Session Cookie → Protected API requests
+                                  ↘ 401 → re-login once → retry
 ```
 
 Session cookies remain in process memory and are never stored in SQLite.
 
 ## 🧪 Installer validation
 
-A reachable panel is not enough. Before a RouteBox server is saved, the installer uses the **same `RouteBoxClient` used by the Bot** and validates:
-
-```text
-GET  /api/health
-GET  /api/status
-GET  /api/awg/status
-GET  /api/awg/peers
-GET  /api/settings
-
-POST   /api/awg/peers
-GET    /api/awg/peers/{publicKey}/config
-DELETE /api/awg/peers/{publicKey}
-```
-
-The temporary peer is named `rbt-install-test-*` and is removed after the test. This verifies authentication, API permissions, AmneziaWG availability, peer creation, key handling, config rendering, URL encoding and deletion.
-
-If the real create/export/delete smoke test fails, the RouteBox is **not saved**.
+Before a RouteBox server is saved, the installer uses the **same `RouteBoxClient` used by the Bot** and validates health/status, authentication, AmneziaWG availability, peer creation, config rendering and deletion. The temporary smoke-test peer is removed after validation. If the real create/export/delete smoke test fails, the RouteBox is **not saved**.
 
 ## 📦 Installation — Ubuntu 22.04+
 
-Run this on the Ubuntu server; you do **not** need to clone the repository on your Mac:
+Run this on the Ubuntu server; you do not need to clone the repository on your Mac:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh)
 ```
 
-The installer:
+The installer checks Ubuntu/PHP requirements, initializes SQLite and encryption, validates Telegram, validates RouteBox/AWG end-to-end, installs the Telegram worker, and starts the Admin Panel on its own free port (normally `8090`).
 
-1. Checks Ubuntu 22.04+ and installs the required PHP/runtime packages.
-2. Downloads or updates the current Beta code.
-3. Initializes SQLite and the local encryption key.
-4. Validates the Telegram Bot Token with Telegram `getMe`.
-5. Stores the Telegram token encrypted; the full token is never printed.
-6. Asks only for the RouteBox panel URL and credentials needed for that panel.
-7. Runs the complete RouteBox API + AWG smoke test before saving each server.
-8. Installs the Telegram worker as a systemd service.
-9. Starts the Admin Panel on its own free port, normally `8090`.
+### Why the Admin Panel does not use Nginx
 
-### Why the Admin Panel no longer uses Nginx
-
-Beta 2 deliberately removes the Nginx/PHP-FPM path from the installer. The Admin Panel uses PHP's own listener on `8090` (or the next free port).
-
-This means the installer does **not** install, start, stop, reload or configure Nginx or Apache. Existing RouteBox, Apache and Nginx services on ports 80/443 are left alone.
+The Admin Panel uses PHP's own listener on `8090` (or the next free port). The installer does **not** install, start, stop, reload or configure Nginx/Apache for the Bot, so existing RouteBox/Apache/Nginx services on ports 80/443 remain untouched.
 
 ```text
-RouteBox / Apache / Nginx   ← untouched
-Bot Admin Panel :8090       ← independent PHP service
-Bot Worker                  ← systemd
-```
-
-This specifically avoids the `nginx.service ... Address already in use` failure seen when another service already owns port 80.
-
-The selected Admin Panel port is stored in:
-
-```text
-/etc/routebox-telegram-bot/web-port
+Existing RouteBox / Apache / Nginx : untouched
+Bot Admin Panel                    : independent PHP service
+Bot Worker                         : systemd
 ```
 
 ## 🤖 Telegram Bot
 
 Create the Bot with **@BotFather** using `/newbot` and keep the token private.
 
-During installation the token is entered silently, checked with `getMe`, and stored encrypted. The installer also attempts to remove an existing webhook because this Beta uses long polling.
+### User language
 
-Expected result:
-
-```text
-✓ Telegram connection successful: @YourBot
-✓ Token accepted and stored encrypted (token is never printed).
-```
-
-## 🖥️ RouteBox setup
-
-For each RouteBox the wizard asks:
+On first `/start`, the Bot uses Telegram's language when available and provides a language switcher. Users can also use:
 
 ```text
-Server name [RouteBox-1]:
-RouteBox Panel URL:
-RouteBox username [admin]:
-RouteBox password:
-Verify TLS certificate? [Y/n]:
+/start
+/menu
+/account
+/language
 ```
 
-If RouteBox authentication is disabled, leave the credentials empty. For HTTPS, keep TLS verification enabled when the certificate is valid.
-
-Before using the Bot, configure a usable AmneziaWG **Server address / Public host** in RouteBox. RouteBox renders the client `.conf`; the Bot does not invent that endpoint.
+Persian and English welcome messages and the fixed buttons are editable from the Admin Panel. Enabled Plans automatically become additional Telegram buttons.
 
 ## 🖥️ Admin Panel
 
@@ -168,19 +112,10 @@ Username: admin
 Password: <generated during installation>
 ```
 
-The installer prints the generated password once. Save it securely.
+The selected port is stored in:
 
-Check the selected port:
-
-```bash
-cat /etc/routebox-telegram-bot/web-port
-```
-
-Check the service:
-
-```bash
-PORT=$(cat /etc/routebox-telegram-bot/web-port)
-systemctl status routebox-telegram-bot-web@$PORT
+```text
+/etc/routebox-telegram-bot/web-port
 ```
 
 Open:
@@ -189,51 +124,51 @@ Open:
 http://YOUR_SERVER_IP:<PORT>/
 ```
 
-### 🔄 Updating from the Admin Panel
+### ✨ Beta 4 Admin Panel
 
-Beta 3 adds a controlled software updater at:
+The panel now includes:
 
-```text
-/update.php
-```
+- 🇮🇷 Persian / 🇬🇧 English interface
+- 🧭 Sidebar navigation
+- ☀️ Light / 🌙 Dark theme with saved preference
+- 🌐 RouteBox server cards with country flag and ping
+- 🤖 Editable bilingual welcome messages
+- 🎛️ Editable fixed Telegram buttons
+- 📦 Plan creation/editing/enabling/disabling
+- 🔐 Admin password change
+- ⬆️ In-panel software updater
+- 📱 Responsive mobile layout
 
-The updater:
+### 🌍 Server country and ping
 
-1. Reads the installed `VERSION`.
-2. Checks the latest `VERSION` on the official GitHub repository.
-3. Shows whether a newer release is available.
-4. When confirmed, stops the Bot worker and its Admin Panel service.
-5. Runs the existing `update.sh` Git-based update process.
-6. Reinstalls the systemd definitions and the restricted updater permission.
-7. Starts the Admin Panel and Bot worker again.
-8. Keeps the existing RouteBox, Apache and Nginx services untouched.
+Each server can have a two-letter country code such as `US`, `DE` or `TR`. If the field is left empty, the panel attempts to detect the public IP country automatically. The panel also measures TCP connection latency to the configured RouteBox endpoint.
 
-For security, the web user receives **only one restricted sudo permission** for `/usr/local/sbin/routebox-telegram-bot-update`; it is not granted general root access.
+## 🔄 Updating from the Admin Panel
 
-The update log is stored at:
+The controlled updater is available from the **Updates** section. It stops the Bot worker and Admin Panel, runs the Git-based update, reinstalls the service definitions, and starts the services again. Existing RouteBox/Apache/Nginx services remain untouched.
+
+For security, the web user receives only one restricted sudo permission for `/usr/local/sbin/routebox-telegram-bot-update`; it is not granted general root access.
+
+Update logs are stored at:
 
 ```text
 /opt/routebox-telegram-bot/storage/logs/admin-update.log
 ```
 
-If the panel updater has not yet been enabled on an existing installation, run one manual update first:
+If the updater is not yet installed on an existing installation, run once:
 
 ```bash
 cd /opt/routebox-telegram-bot
 sudo bash update.sh
 ```
 
-After that, the `/update.php` updater is installed and available from the Admin Panel security page.
+## 🔐 HTTPS / Reverse Proxy
 
-### 🔐 HTTPS / Reverse Proxy
+The Bot Admin Panel does not take over ports 80/443. For production HTTPS, use the **existing RouteBox/Apache/Nginx TLS endpoint** and reverse-proxy internally to the Bot's local PHP listener. Do not install another web server configuration on an already-used 80/443 port.
 
-The Bot Admin Panel does not take over ports 80/443. For production HTTPS, use the existing TLS endpoint / reverse proxy and forward internally to the Bot's local PHP listener. Do not install another Nginx configuration on an already-used 80/443 port.
+## 🛒 Telegram Plans and Buttons
 
-## 🛒 Telegram plans and buttons
-
-Plans are managed from the Admin Panel. No PHP editing is required.
-
-Each plan supports:
+Plans are managed from the Admin Panel. Each plan supports:
 
 ```text
 Name:        e.g. 30 Days / 50 GB
@@ -243,9 +178,9 @@ Traffic = 0: unlimited
 Enabled:     show/hide Telegram button
 ```
 
-Enabled plans automatically appear in the Telegram `/start` menu. Editing a plan changes future provisioning without changing existing RouteBox peers.
+Fixed Bot buttons such as **Free Trial**, **My Account** and **Language** have separate Persian/English labels that can be edited from the Admin Panel. Plan buttons are generated dynamically from the enabled Plans.
 
-Payment is not yet connected, so Beta 3 provisions the selected plan immediately for testing. Payment integration is planned as the next phase.
+Payment is not yet connected, so Beta 4 still provisions selected plans immediately for testing. Payment integration is the next phase.
 
 ## 🌍 Multi-RouteBox
 
@@ -262,13 +197,7 @@ For Telegram ID `123456789`, the logical peer name is `user123456789`. Each Rout
 
 ## 📄 Client configuration
 
-The Bot requests the real configuration from RouteBox:
-
-```text
-GET /api/awg/peers/{publicKey}/config
-```
-
-The AWG UDP port is separate from the RouteBox HTTP/API listener. The Bot never connects to the AWG UDP port for API operations.
+The Bot requests the real configuration from RouteBox and sends the resulting `.conf` file to the Telegram user. The Bot does not invent the AmneziaWG endpoint.
 
 ## 🛠️ Management
 
@@ -281,11 +210,9 @@ bash /opt/routebox-telegram-bot/uninstall.sh
 
 ## 💳 Payment & Subscription Roadmap
 
-Payment is **not implemented in Beta 3**.
+Payment is **not implemented in Beta 4**.
 
-Future updates will add both **Iranian Rial** and **Cryptocurrency** payment options, in both the **Persian and English** user experience, together with subscription management.
-
-Planned features include subscription renewal/upgrades, invoices, coupons/referrals, server/region selection, usage dashboards, expiration notifications, subscription links/QR workflow, and richer Persian/English Bot interfaces.
+Future updates will add Iranian Rial and cryptocurrency payment options, Persian/English checkout, subscription renewal/upgrades, invoices, coupons/referrals, server/region selection, usage dashboards, expiration notifications and subscription links/QR workflows.
 
 ## 🗺️ Roadmap
 
@@ -309,6 +236,9 @@ Planned features include subscription renewal/upgrades, invoices, coupons/referr
 - [x] Plan/button manager
 - [x] Server ping + country flag
 - [x] Light/Dark mode
+- [x] Persian/English Admin Panel
+- [x] Persian/English Telegram Bot
+- [x] Editable welcome message and fixed buttons
 - [x] Web password change + CLI recovery
 - [x] Admin Panel software updater
 - [x] Update / uninstall scripts
@@ -323,7 +253,6 @@ Planned features include subscription renewal/upgrades, invoices, coupons/referr
 - [ ] 📊 Usage dashboard
 - [ ] 👨‍💼 Advanced user management
 - [ ] 🔔 Expiration notifications
-- [ ] 🌐 Persian / English Bot interface
 - [ ] 🔗 Subscription links / QR workflow
 
 ## 🔐 Security
@@ -338,7 +267,7 @@ Planned features include subscription renewal/upgrades, invoices, coupons/referr
 
 ## 🧪 Beta notice
 
-This is **Beta 3**. The installer is intentionally strict: it will not accept a RouteBox server until the real API + AmneziaWG create/export/delete smoke test succeeds.
+This is **Beta 4**. The installer is intentionally strict: it will not accept a RouteBox server until the real API + AmneziaWG create/export/delete smoke test succeeds.
 
 RouteBox API behavior can change between releases. Test the exact RouteBox version installed on your server before enabling real users or paid sales.
 
