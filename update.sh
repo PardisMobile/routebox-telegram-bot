@@ -18,7 +18,16 @@ install -m 0644 systemd/routebox-telegram-bot.service "/etc/systemd/system/$SERV
 chown www-data:www-data storage/database.sqlite 2>/dev/null || true
 chmod 640 storage/database.sqlite 2>/dev/null || true
 
-# Beta 2 always uses the independent PHP listener. Do not install, start, stop,
+# Install the restricted root updater used by the Admin Panel. The web user
+# can run only this fixed wrapper through sudo; it cannot run arbitrary root commands.
+install -m 0755 admin-update.sh /usr/local/sbin/routebox-telegram-bot-update
+cat > /etc/sudoers.d/routebox-telegram-bot-update <<'EOF_SUDO'
+www-data ALL=(root) NOPASSWD: /usr/local/sbin/routebox-telegram-bot-update
+EOF_SUDO
+chmod 0440 /etc/sudoers.d/routebox-telegram-bot-update
+visudo -cf /etc/sudoers.d/routebox-telegram-bot-update >/dev/null
+
+# Beta 2+ uses the independent PHP listener. Do not install, start, stop,
 # reload or configure Nginx/Apache as part of a Bot update.
 OLD_PORT=$(cat "$STATE_DIR/web-port" 2>/dev/null || echo 8090)
 if [[ "$OLD_PORT" =~ ^[0-9]+$ ]]; then
@@ -62,10 +71,12 @@ systemctl enable --now "$SERVICE"
 php -l worker.php >/dev/null
 php -l src/RouteBoxClient.php >/dev/null
 php -l public/index.php >/dev/null
-bash -n install.sh install-v2.sh update.sh uninstall.sh
+php -l public/update.php >/dev/null
+bash -n install.sh install-v2.sh update.sh uninstall.sh admin-update.sh
 systemctl restart "$SERVICE"
 sleep 1
 systemctl is-active --quiet "$SERVICE" || { journalctl -u "$SERVICE" -n 80 --no-pager; exit 1; }
 echo "✓ Update completed successfully."
 echo "✓ Existing Apache/Nginx/RouteBox services were not started, stopped or reconfigured."
 echo "✓ Admin Panel: http://YOUR_SERVER_IP:$PORT/"
+echo "✓ Admin Panel updater: /update.php"
