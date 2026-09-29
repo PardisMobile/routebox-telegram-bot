@@ -2,6 +2,19 @@
 
 All notable changes to RouteBox Telegram Bot are documented here.
 
+## 0.1.0-beta.6 — 2026-09-30
+
+### RouteBox TLS integration
+- Added a safe HTTPS integration for the Admin Panel using the certificate already issued and maintained by RouteBox.
+- Reuses RouteBox's canonical panel certificate export at `/etc/routebox/panel-cert/{fullchain.pem,key.pem}` when available.
+- Uses a dedicated TLS wrapper for the Bot Admin Panel; the PHP backend is moved to loopback only.
+- Does **not** install or reconfigure Nginx or Apache.
+- Does **not** bind, change, or occupy ports `80` or `443`.
+- Keeps the Telegram worker service `routebox-telegram-bot.service` unchanged.
+- Adds a small systemd timer to sync RouteBox certificate renewals automatically and reload the TLS listener.
+- Keeps the existing Admin Panel port, so an existing `:8093` panel remains `:8093`, now over HTTPS.
+- If the RouteBox certificate is not available, the installer safely leaves the Admin Panel on HTTP instead of breaking the installation.
+
 ## 0.1.0-beta.5 — 2026-09-30
 
 ### Admin Panel Hotfix
