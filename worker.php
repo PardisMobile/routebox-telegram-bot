@@ -1,8 +1,235 @@
 <?php
-require __DIR__.'/src/bootstrap.php';require __DIR__.'/src/RouteBoxClient.php';
-function sget(string $k,?string $d=null):?string{$s=db()->prepare('SELECT value FROM settings WHERE key=?');$s->execute([$k]);$v=$s->fetchColumn();return $v===false?$d:$v;}
-function api(string $t,string $m,array $d=[]):array{$c=curl_init('https://api.telegram.org/bot'.$t.'/'.$m);curl_setopt_array($c,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$d,CURLOPT_TIMEOUT=>35]);$r=curl_exec($c);if($r===false)throw new RuntimeException(curl_error($c));curl_close($c);$j=json_decode($r,true);if(empty($j['ok']))throw new RuntimeException($j['description']??'Telegram API error');return $j['result']??[];}
-function upsert(array $u):int{$s=db()->prepare('INSERT INTO telegram_users(telegram_id,username,first_name,created_at,last_seen)VALUES(?,?,?,?,?)ON CONFLICT(telegram_id)DO UPDATE SET username=excluded.username,first_name=excluded.first_name,last_seen=excluded.last_seen');$s->execute([(string)$u['id'],$u['username']??null,$u['first_name']??null,time(),time()]);$q=db()->prepare('SELECT id FROM telegram_users WHERE telegram_id=?');$q->execute([(string)$u['id']]);return(int)$q->fetchColumn();}
-function provisionUser(int $uid,string $tid):array{$servers=db()->query('SELECT * FROM routebox_servers WHERE enabled=1 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);if(!$servers)throw new RuntimeException('هیچ RouteBox فعالی تنظیم نشده است.');$exp=time()+max(1,(int)sget('trial_hours','12'))*3600;$name='user'.$tid;$out=[];foreach($servers as $s){$c=new RouteBoxClient($s['base_url'],dec($s['user_enc']),dec($s['pass_enc']),(bool)$s['verify_tls']);$peer=null;foreach($c->peers() as $p){if(($p['name']??'')===$name){$peer=$p;break;}}if(!$peer)$peer=$c->createPeer($name);$pk=$peer['public_key']??$peer['publicKey']??'';if(!$pk)throw new RuntimeException('RouteBox public key missing.');$c->setExpiry($pk,$exp);$conf=$c->config($pk);db()->prepare('INSERT OR REPLACE INTO provisions(telegram_user_id,server_id,peer_name,public_key,expires_at,created_at)VALUES(?,?,?,?,?,?)')->execute([$uid,$s['id'],$name,$pk,$exp,time()]);$out[]=['server'=>$s['name'],'conf'=>$conf,'expires'=>$exp];}return $out;}
-$stored=sget('telegram_token');if(!$stored)exit("Telegram token is not configured\n");$token=dec($stored);@mkdir(__DIR__.'/storage',0700,true);$offset=(int)(@file_get_contents(__DIR__.'/storage/update.offset')?:0);
-while(true){try{$updates=api($token,'getUpdates',['offset'=>$offset,'timeout'=>25]);foreach($updates as $u){$offset=(int)$u['update_id']+1;file_put_contents(__DIR__.'/storage/update.offset',(string)$offset,LOCK_EX);$m=$u['message']??null;$cb=$u['callback_query']??null;$chat=$m['chat']['id']??$cb['message']['chat']['id']??null;$from=$m['from']??$cb['from']??null;if(!$chat||!$from)continue;$uid=upsert($from);if($m&&str_starts_with($m['text']??'','/start')){api($token,'sendMessage',['chat_id'=>$chat,'text'=>'سلام 👋\nبرای دریافت تست رایگان دکمه زیر را بزنید.','reply_markup'=>json_encode(['inline_keyboard'=>[[['text'=>'🎁 دریافت تست','callback_data'=>'trial'],['text'=>'👤 حساب من','callback_data'=>'account']]]],JSON_UNESCAPED_UNICODE)]);continue;}if(!$cb)continue;api($token,'answerCallbackQuery',['callback_query_id'=>$cb['id']]);if(($cb['data']??'')==='account'){$q=db()->prepare('SELECT COUNT(*) FROM provisions WHERE telegram_user_id=? AND expires_at>?');$q->execute([$uid,time()]);api($token,'sendMessage',['chat_id'=>$chat,'text'=>'👤 حساب شما\nسرویس فعال: '.$q->fetchColumn()]);continue;}if(($cb['data']??'')==='trial'){try{$items=provisionUser($uid,(string)$from['id']);foreach($items as $x){$tmp=tempnam(sys_get_temp_dir(),'rbt');file_put_contents($tmp,$x['conf']);api($token,'sendDocument',['chat_id'=>$chat,'document'=>new CURLFile($tmp,'text/plain','RouteBox-'.$x['server'].'.conf'),'caption'=>'🎁 تست فعال شد\n🖥️ '.$x['server'].'\n⏱️ تا '.date('Y-m-d H:i',$x['expires'])]);unlink($tmp);}}catch(Throwable $e){log_event('error','Provision: '.$e->getMessage());api($token,'sendMessage',['chat_id'=>$chat,'text'=>'❌ خطا: '.$e->getMessage()]);}}}}catch(Throwable $e){log_event('error','Telegram worker: '.$e->getMessage());sleep(3);}}
+
+declare(strict_types=1);
+
+require __DIR__ . '/src/bootstrap.php';
+require __DIR__ . '/src/RouteBoxClient.php';
+
+function sget(string $key, ?string $default = null): ?string
+{
+    $stmt = db()->prepare('SELECT value FROM settings WHERE key = ?');
+    $stmt->execute([$key]);
+    $value = $stmt->fetchColumn();
+    return $value === false ? $default : (string) $value;
+}
+
+function telegramApi(string $token, string $method, array $data = []): array
+{
+    $ch = curl_init('https://api.telegram.org/bot' . $token . '/' . $method);
+    if ($ch === false) {
+        throw new RuntimeException('Could not initialize Telegram cURL.');
+    }
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $data,
+        CURLOPT_TIMEOUT => 35,
+        CURLOPT_CONNECTTIMEOUT => 10,
+    ]);
+    $raw = curl_exec($ch);
+    $error = curl_error($ch);
+    curl_close($ch);
+    if ($raw === false) {
+        throw new RuntimeException('Telegram connection failed: ' . ($error ?: 'unknown cURL error'));
+    }
+    $json = json_decode($raw, true);
+    if (!is_array($json) || empty($json['ok'])) {
+        throw new RuntimeException($json['description'] ?? 'Telegram API error');
+    }
+    return is_array($json['result'] ?? null) ? $json['result'] : [];
+}
+
+function upsertTelegramUser(array $user): int
+{
+    $now = time();
+    $stmt = db()->prepare(
+        'INSERT INTO telegram_users(telegram_id,username,first_name,created_at,last_seen)
+         VALUES(?,?,?,?,?)
+         ON CONFLICT(telegram_id) DO UPDATE SET username=excluded.username,first_name=excluded.first_name,last_seen=excluded.last_seen'
+    );
+    $stmt->execute([
+        (string) $user['id'],
+        $user['username'] ?? null,
+        $user['first_name'] ?? null,
+        $now,
+        $now,
+    ]);
+    $lookup = db()->prepare('SELECT id FROM telegram_users WHERE telegram_id = ?');
+    $lookup->execute([(string) $user['id']]);
+    return (int) $lookup->fetchColumn();
+}
+
+function provisionUser(int $userId, string $telegramId): array
+{
+    $used = db()->prepare('SELECT COUNT(*) FROM provisions WHERE telegram_user_id = ?');
+    $used->execute([$userId]);
+    if ((int) $used->fetchColumn() > 0) {
+        throw new RuntimeException('🎟️ دوره تست این حساب قبلاً استفاده شده است.');
+    }
+
+    $servers = db()->query('SELECT * FROM routebox_servers WHERE enabled = 1 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+    if (!$servers) {
+        throw new RuntimeException('🌐 هیچ RouteBox فعالی در پنل تنظیم نشده است.');
+    }
+
+    $expiresAt = time() + max(1, (int) sget('trial_hours', '12')) * 3600;
+    $peerName = 'user' . $telegramId;
+    $output = [];
+    $createdPeers = [];
+
+    try {
+        foreach ($servers as $server) {
+            $client = new RouteBoxClient(
+                (string) $server['base_url'],
+                dec((string) $server['user_enc']),
+                dec((string) $server['pass_enc']),
+                (bool) $server['verify_tls']
+            );
+
+            $peer = null;
+            foreach ($client->peers() as $candidate) {
+                if (($candidate['name'] ?? '') === $peerName) {
+                    $peer = $candidate;
+                    break;
+                }
+            }
+
+            $createdHere = false;
+            if ($peer === null) {
+                $peer = $client->createPeer($peerName);
+                $createdHere = true;
+            }
+
+            $publicKey = (string) ($peer['public_key'] ?? $peer['publicKey'] ?? '');
+            if ($publicKey === '') {
+                throw new RuntimeException('RouteBox did not return a public key for ' . $server['name']);
+            }
+
+            if ($createdHere) {
+                $createdPeers[] = [$client, $publicKey];
+            }
+
+            $client->setExpiry($publicKey, $expiresAt);
+            $config = $client->config($publicKey);
+
+            db()->prepare(
+                'INSERT OR REPLACE INTO provisions(telegram_user_id,server_id,peer_name,public_key,expires_at,created_at)
+                 VALUES(?,?,?,?,?,?)'
+            )->execute([$userId, $server['id'], $peerName, $publicKey, $expiresAt, time()]);
+
+            $output[] = [
+                'server' => (string) $server['name'],
+                'conf' => $config,
+                'expires' => $expiresAt,
+            ];
+        }
+    } catch (Throwable $error) {
+        foreach ($createdPeers as [$client, $publicKey]) {
+            try {
+                $client->deletePeer($publicKey);
+            } catch (Throwable $rollbackError) {
+                log_event('error', 'Provision rollback failed: ' . $rollbackError->getMessage());
+            }
+        }
+        throw $error;
+    }
+
+    return $output;
+}
+
+$storedToken = sget('telegram_token');
+if (!$storedToken) {
+    exit("Telegram token is not configured\n");
+}
+$token = dec($storedToken);
+
+@mkdir(__DIR__ . '/storage', 0700, true);
+$offset = (int) (@file_get_contents(__DIR__ . '/storage/update.offset') ?: 0);
+
+while (true) {
+    try {
+        $updates = telegramApi($token, 'getUpdates', [
+            'offset' => $offset,
+            'timeout' => 25,
+            'allowed_updates' => json_encode(['message', 'callback_query']),
+        ]);
+
+        foreach ($updates as $update) {
+            $offset = (int) $update['update_id'] + 1;
+            file_put_contents(__DIR__ . '/storage/update.offset', (string) $offset, LOCK_EX);
+
+            $message = $update['message'] ?? null;
+            $callback = $update['callback_query'] ?? null;
+            $chatId = $message['chat']['id'] ?? $callback['message']['chat']['id'] ?? null;
+            $from = $message['from'] ?? $callback['from'] ?? null;
+            if ($chatId === null || !is_array($from)) {
+                continue;
+            }
+
+            $userId = upsertTelegramUser($from);
+
+            if ($message && str_starts_with((string) ($message['text'] ?? ''), '/start')) {
+                telegramApi($token, 'sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => "🚀 RouteBox Telegram Bot\n\nسلام 👋\nبرای دریافت تست رایگان، دکمه زیر را بزنید.",
+                    'reply_markup' => json_encode([
+                        'inline_keyboard' => [[
+                            ['text' => '🎁 دریافت تست رایگان', 'callback_data' => 'trial'],
+                            ['text' => '👤 حساب من', 'callback_data' => 'account'],
+                        ]],
+                    ], JSON_UNESCAPED_UNICODE),
+                ]);
+                continue;
+            }
+
+            if (!$callback) {
+                continue;
+            }
+
+            telegramApi($token, 'answerCallbackQuery', ['callback_query_id' => $callback['id']]);
+            $action = (string) ($callback['data'] ?? '');
+
+            if ($action === 'account') {
+                $stmt = db()->prepare('SELECT COUNT(*) FROM provisions WHERE telegram_user_id = ? AND expires_at > ?');
+                $stmt->execute([$userId, time()]);
+                $active = (int) $stmt->fetchColumn();
+                telegramApi($token, 'sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => "👤 حساب شما\n\n🟢 سرویس فعال: {$active}",
+                ]);
+                continue;
+            }
+
+            if ($action === 'trial') {
+                try {
+                    $items = provisionUser($userId, (string) $from['id']);
+                    foreach ($items as $item) {
+                        $tmp = tempnam(sys_get_temp_dir(), 'rbt');
+                        if ($tmp === false) {
+                            throw new RuntimeException('Could not create temporary config file.');
+                        }
+                        file_put_contents($tmp, $item['conf']);
+                        try {
+                            telegramApi($token, 'sendDocument', [
+                                'chat_id' => $chatId,
+                                'document' => new CURLFile($tmp, 'text/plain', 'RouteBox-' . $item['server'] . '.conf'),
+                                'caption' => "🎁 تست فعال شد\n\n🖥️ سرور: {$item['server']}\n⏱️ اعتبار تا: " . date('Y-m-d H:i', $item['expires']),
+                            ]);
+                        } finally {
+                            @unlink($tmp);
+                        }
+                    }
+                } catch (Throwable $error) {
+                    log_event('error', 'Provision: ' . $error->getMessage());
+                    telegramApi($token, 'sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => '❌ ' . $error->getMessage(),
+                    ]);
+                }
+            }
+        }
+    } catch (Throwable $error) {
+        log_event('error', 'Telegram worker: ' . $error->getMessage());
+        sleep(3);
+    }
+}
