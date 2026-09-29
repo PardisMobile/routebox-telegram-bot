@@ -113,14 +113,37 @@ if [[ "${has_token}" != 1 || "${has_servers}" == 0 ]]; then
       RB_VERIFY_TLS=0
     fi
 
-    echo "==> Testing RouteBox API: ${RB_BASE}"
-    CURL_ARGS=(); [[ ${RB_VERIFY_TLS} -eq 0 ]] && CURL_ARGS+=( -k )
-    AUTH_ARGS=(); [[ -n "${RB_USER}" || -n "${RB_PASS}" ]] && AUTH_ARGS+=( -u "${RB_USER}:${RB_PASS}" )
+    echo "==> Testing RouteBox API and authentication: ${RB_BASE}"
+    TEST_DIR="$(mktemp -d)"
+    COOKIE_JAR="${TEST_DIR}/cookies.txt"
+    trap 'rm -rf "${TEST_DIR:-}"' RETURN
+    CURL_ARGS=( -sS --connect-timeout 8 --max-time 25 )
+    [[ ${RB_VERIFY_TLS} -eq 0 ]] && CURL_ARGS+=( -k )
 
-    test_api(){
+    # Prefer the real RouteBox panel session API. Basic Auth is retained as a
+    # documented script fallback and as support for auth-disabled router mode.
+    SESSION_OK=0
+    if [[ -n "${RB_USER}" && -n "${RB_PASS}" ]]; then
+      LOGIN_CODE="$(curl "${CURL_ARGS[@]}" -c "${COOKIE_JAR}" -H 'Content-Type: application/json' -o "${TEST_DIR}/login.json" -w '%{http_code}' -X POST "${RB_BASE}/api/auth/login" --data "$(php -r 'echo json_encode(["username"=>$argv[1],"password"=>$argv[2]], JSON_UNESCAPED_SLASHES);' "${RB_USER}" "${RB_PASS}")" 2>/dev/null || true)"
+      if [[ "${LOGIN_CODE}" =~ ^2[0-9][0-9]$ ]] && grep -Eq '^[^#].*=|^#HttpOnly_' "${COOKIE_JAR}" 2>/dev/null; then
+        SESSION_OK=1
+        echo "✓ RouteBox session login OK"
+      else
+        echo "ℹ Session login was not available; trying HTTP Basic fallback"
+      fi
+    else
+      echo "ℹ No RouteBox credentials supplied; testing unauthenticated router mode"
+    fi
+
+    rb_get(){
       local path="$1" label="$2" code
-      code="$(curl -sS "${CURL_ARGS[@]}" --connect-timeout 8 --max-time 20 "${AUTH_ARGS[@]}" -o /tmp/rbt-test.$$ -w '%{http_code}' "${RB_BASE}${path}" 2>/dev/null || true)"
-      rm -f /tmp/rbt-test.$$
+      if [[ ${SESSION_OK} -eq 1 ]]; then
+        code="$(curl "${CURL_ARGS[@]}" -b "${COOKIE_JAR}" -o "${TEST_DIR}/response.json" -w '%{http_code}' "${RB_BASE}${path}" 2>/dev/null || true)"
+      elif [[ -n "${RB_USER}" || -n "${RB_PASS}" ]]; then
+        code="$(curl "${CURL_ARGS[@]}" -u "${RB_USER}:${RB_PASS}" -o "${TEST_DIR}/response.json" -w '%{http_code}' "${RB_BASE}${path}" 2>/dev/null || true)"
+      else
+        code="$(curl "${CURL_ARGS[@]}" -o "${TEST_DIR}/response.json" -w '%{http_code}' "${RB_BASE}${path}" 2>/dev/null || true)"
+      fi
       if [[ "${code}" != 2* ]]; then
         echo "[ERROR] ${label} failed (HTTP ${code:-connection-error})."
         return 1
@@ -128,13 +151,60 @@ if [[ "${has_token}" != 1 || "${has_servers}" == 0 ]]; then
       echo "✓ ${label} OK"
     }
 
-    test_api "/api/health" "RouteBox health API" || { server_no=$((server_no-1)); continue; }
-    test_api "/api/status" "RouteBox status API" || { server_no=$((server_no-1)); continue; }
-    test_api "/api/awg/status" "AmneziaWG API" || { server_no=$((server_no-1)); continue; }
-    test_api "/api/awg/peers" "AmneziaWG peers API" || { server_no=$((server_no-1)); continue; }
-    test_api "/api/settings" "RouteBox settings API" || { server_no=$((server_no-1)); continue; }
+    rb_write(){
+      local method="$1" path="$2" body="$3" out="$4" code
+      if [[ ${SESSION_OK} -eq 1 ]]; then
+        code="$(curl "${CURL_ARGS[@]}" -b "${COOKIE_JAR}" -H 'Content-Type: application/json' -o "${out}" -w '%{http_code}' -X "${method}" "${RB_BASE}${path}" --data "${body}" 2>/dev/null || true)"
+      elif [[ -n "${RB_USER}" || -n "${RB_PASS}" ]]; then
+        code="$(curl "${CURL_ARGS[@]}" -u "${RB_USER}:${RB_PASS}" -H 'Content-Type: application/json' -o "${out}" -w '%{http_code}' -X "${method}" "${RB_BASE}${path}" --data "${body}" 2>/dev/null || true)"
+      else
+        code="$(curl "${CURL_ARGS[@]}" -H 'Content-Type: application/json' -o "${out}" -w '%{http_code}' -X "${method}" "${RB_BASE}${path}" --data "${body}" 2>/dev/null || true)"
+      fi
+      [[ "${code}" == 2* ]] || { echo "[ERROR] ${method} ${path} failed (HTTP ${code:-connection-error})."; return 1; }
+    }
 
-    echo "✓ RouteBox API and AmneziaWG endpoints are reachable and authenticated"
+    rb_get "/api/health" "RouteBox health API" || { rm -rf "${TEST_DIR}"; server_no=$((server_no-1)); continue; }
+    rb_get "/api/status" "RouteBox status API" || { rm -rf "${TEST_DIR}"; server_no=$((server_no-1)); continue; }
+    rb_get "/api/awg/status" "AmneziaWG status API" || { rm -rf "${TEST_DIR}"; server_no=$((server_no-1)); continue; }
+    rb_get "/api/awg/peers" "AmneziaWG peers API" || { rm -rf "${TEST_DIR}"; server_no=$((server_no-1)); continue; }
+    rb_get "/api/settings" "RouteBox settings API" || { rm -rf "${TEST_DIR}"; server_no=$((server_no-1)); continue; }
+
+    # Full end-to-end smoke test: create one temporary peer, retrieve its real
+    # client configuration, then delete it. This catches auth, write access,
+    # AWG availability, key generation, config rendering and URL decoding issues
+    # before the server is accepted by the installer.
+    TEST_PEER="rbt-install-test-$(date +%s)-$$"
+    TEST_BODY="$(php -r 'echo json_encode(["name"=>$argv[1]], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);' "${TEST_PEER}")"
+    rb_write POST "/api/awg/peers" "${TEST_BODY}" "${TEST_DIR}/create.json" || { rm -rf "${TEST_DIR}"; server_no=$((server_no-1)); continue; }
+    TEST_PUBLIC_KEY="$(php -r '$j=json_decode(file_get_contents($argv[1]),true);$d=$j["data"]??$j;echo is_array($d)?($d["public_key"]??$d["publicKey"]??""):"";' "${TEST_DIR}/create.json" 2>/dev/null || true)"
+    if [[ -z "${TEST_PUBLIC_KEY}" ]]; then
+      # Be tolerant of future RouteBox response envelopes: locate the peer by
+      # its unique test name in the roster if the POST response omits the key.
+      rb_get "/api/awg/peers" "AmneziaWG peer roster after smoke-test create" || { rm -rf "${TEST_DIR}"; server_no=$((server_no-1)); continue; }
+      TEST_PUBLIC_KEY="$(php -r '$j=json_decode(file_get_contents($argv[1]),true);$d=$j["data"]??$j;if(is_array($d)){foreach($d as $p){if(is_array($p)&&(($p["name"]??"")===$argv[2])){echo $p["public_key"]??$p["publicKey"]??"";break;}}}' "${TEST_DIR}/response.json" "${TEST_PEER}" 2>/dev/null || true)"
+    fi
+    if [[ -z "${TEST_PUBLIC_KEY}" ]]; then
+      echo "[ERROR] RouteBox created the smoke-test peer but did not return its public key."
+      rm -rf "${TEST_DIR}"; server_no=$((server_no-1)); continue
+    fi
+
+    TEST_ENCODED_KEY="$(php -r 'echo rawurlencode($argv[1]);' "${TEST_PUBLIC_KEY}")"
+    rb_get "/api/awg/peers/${TEST_ENCODED_KEY}/config" "AmneziaWG client config export" || {
+      if [[ ${SESSION_OK} -eq 1 ]]; then curl "${CURL_ARGS[@]}" -b "${COOKIE_JAR}" -X DELETE "${RB_BASE}/api/awg/peers/${TEST_ENCODED_KEY}" >/dev/null 2>&1 || true; else curl "${CURL_ARGS[@]}" -u "${RB_USER}:${RB_PASS}" -X DELETE "${RB_BASE}/api/awg/peers/${TEST_ENCODED_KEY}" >/dev/null 2>&1 || true; fi
+      rm -rf "${TEST_DIR}"; server_no=$((server_no-1)); continue;
+    }
+
+    if [[ ${SESSION_OK} -eq 1 ]]; then
+      DELETE_CODE="$(curl "${CURL_ARGS[@]}" -b "${COOKIE_JAR}" -o /dev/null -w '%{http_code}' -X DELETE "${RB_BASE}/api/awg/peers/${TEST_ENCODED_KEY}" 2>/dev/null || true)"
+    else
+      DELETE_CODE="$(curl "${CURL_ARGS[@]}" -u "${RB_USER}:${RB_PASS}" -o /dev/null -w '%{http_code}' -X DELETE "${RB_BASE}/api/awg/peers/${TEST_ENCODED_KEY}" 2>/dev/null || true)"
+    fi
+    [[ "${DELETE_CODE}" == 2* ]] || { rm -rf "${TEST_DIR}"; server_no=$((server_no-1)); echo "[ERROR] Smoke-test peer cleanup failed (HTTP ${DELETE_CODE:-connection-error})."; continue; }
+    echo "✓ Full RouteBox + AmneziaWG create/export/delete smoke test OK"
+
+    rm -rf "${TEST_DIR}"
+    trap - RETURN
+
     UENC="$(enc "${RB_USER}")"; PENC="$(enc "${RB_PASS}")"
     [[ -n "$UENC" && -n "$PENC" ]] || fail "Could not encrypt RouteBox credentials."
     sqlite3 "${DB}" "INSERT INTO routebox_servers(name,base_url,user_enc,pass_enc,verify_tls,enabled,created_at) VALUES('$(sql "$RB_NAME")','$(sql "$RB_BASE")','$(sql "$UENC")','$(sql "$PENC")',${RB_VERIFY_TLS},1,$(date +%s));"
@@ -177,7 +247,8 @@ php -l "${APP_DIR}/worker.php" >/dev/null || fail "worker.php syntax check faile
 php -l "${APP_DIR}/src/RouteBoxClient.php" >/dev/null || fail "RouteBoxClient.php syntax check failed."
 echo
 echo "✓ Installation completed successfully."
-echo "✓ Telegram, RouteBox and AmneziaWG API endpoints were verified during setup."
+echo "✓ Telegram and RouteBox authentication were verified during setup."
+echo "✓ Full AmneziaWG create → config → delete smoke test passed."
 echo "✓ RouteBox mode, scheme, host and port are not separate inputs."
 echo "✓ Enter the exact URL you already use to open the RouteBox panel."
 echo "Admin panel: http://YOUR_SERVER_IP/"
