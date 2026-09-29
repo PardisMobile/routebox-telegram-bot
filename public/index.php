@@ -352,7 +352,7 @@ function navIcon(string $key): string
     <?php endforeach; ?>
   </nav>
   <div class="sidebar-foot">
-    <a class="mini-link" href="<?=h(SUPPORT_URL)?>" target="_blank" rel="noopener"><?=navIcon('bot')?> <?=$T['support']?></a>
+    <a class="mini-link" href="https://github.com/PardisMobile/routebox-telegram-bot" target="_blank" rel="noopener noreferrer">GitHub</a>
     <a class="mini-link" href="/?section=<?=$section?>&lang=<?=$lang==='fa'?'en':'fa'?>"><?= $lang==='fa' ? 'English' : 'فارسی' ?></a>
   </div>
 </aside>
