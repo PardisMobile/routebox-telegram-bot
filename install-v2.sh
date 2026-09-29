@@ -95,25 +95,36 @@ if [[ "${has_token}" != 1 || "${has_servers}" == 0 ]]; then
   while :; do
     server_no=$((server_no+1)); echo; echo "--- RouteBox #${server_no} ---"
     read -r -p "Server name [RouteBox-${server_no}]: " RB_NAME; RB_NAME="${RB_NAME:-RouteBox-${server_no}}"
-    read -r -p "Panel/API host (domain or IP, without port): " RB_HOST
-    [[ -n "${RB_HOST}" && "${RB_HOST}" != *:* && "${RB_HOST}" != */* ]] || { echo "[ERROR] Enter only a hostname/IP, without scheme or port."; server_no=$((server_no-1)); continue; }
-    read -r -p "Panel/API port [8443]: " RB_PORT; RB_PORT="${RB_PORT:-8443}"
-    [[ "${RB_PORT}" =~ ^[0-9]+$ ]] && (( RB_PORT>=1 && RB_PORT<=65535 )) || { echo "[ERROR] Invalid port."; server_no=$((server_no-1)); continue; }
-    read -r -p "RouteBox username [admin]: " RB_USER; RB_USER="${RB_USER:-admin}"
-    read -r -s -p "RouteBox password: " RB_PASS; echo
-    RB_VERIFY_TLS=1
-    read -r -p "Verify TLS certificate? [Y/n]: " V; V="${V:-Y}"; [[ "$V" =~ ^[Nn]$ ]] && RB_VERIFY_TLS=0
 
-    RB_BASE="https://${RB_HOST}:${RB_PORT}"
+    read -r -p "RouteBox Panel URL (e.g. https://panel.example.com:8443 or http://192.0.2.10:8080): " RB_BASE
+    RB_BASE="${RB_BASE%/}"
+    if [[ ! "${RB_BASE}" =~ ^https?://[^/[:space:]]+$ ]]; then
+      echo "[ERROR] Enter the complete RouteBox Panel URL, including http:// or https:// and optional port."; server_no=$((server_no-1)); continue
+    fi
+    RB_SCHEME="${RB_BASE%%://*}"
+    RB_HOSTPORT="${RB_BASE#*://}"
+    [[ -n "${RB_HOSTPORT}" ]] || { echo "[ERROR] Invalid RouteBox URL."; server_no=$((server_no-1)); continue; }
+
+    read -r -p "RouteBox username [admin]: " RB_USER; RB_USER="${RB_USER:-admin}"
+    read -r -s -p "RouteBox password (leave empty if authentication is disabled): " RB_PASS; echo
+
+    RB_VERIFY_TLS=1
+    if [[ "${RB_SCHEME}" == "https" ]]; then
+      read -r -p "Verify TLS certificate? [Y/n]: " V; V="${V:-Y}"; [[ "$V" =~ ^[Nn]$ ]] && RB_VERIFY_TLS=0
+    else
+      RB_VERIFY_TLS=0
+    fi
+
     echo "==> Testing RouteBox API: ${RB_BASE}"
     CURL_ARGS=(); [[ ${RB_VERIFY_TLS} -eq 0 ]] && CURL_ARGS+=( -k )
-    HTTP_CODE="$(curl -sS "${CURL_ARGS[@]}" --connect-timeout 8 --max-time 20 -u "${RB_USER}:${RB_PASS}" -o /tmp/rbt-status.$$ -w '%{http_code}' "${RB_BASE}/api/status" 2>/dev/null || true)"
+    AUTH_ARGS=(); [[ -n "${RB_USER}" ]] && AUTH_ARGS+=( -u "${RB_USER}:${RB_PASS}" )
+    HTTP_CODE="$(curl -sS "${CURL_ARGS[@]}" --connect-timeout 8 --max-time 20 "${AUTH_ARGS[@]}" -o /tmp/rbt-status.$$ -w '%{http_code}' "${RB_BASE}/api/status" 2>/dev/null || true)"
     if [[ "${HTTP_CODE}" != 2* ]]; then
       echo "[ERROR] RouteBox API test failed (HTTP ${HTTP_CODE:-connection-error})."
       rm -f /tmp/rbt-status.$$
       server_no=$((server_no-1)); continue
     fi
-    rm -f /tmp/rbt-status.$$
+    rm -f /tmp/rbt-status.$$$$
     echo "✓ RouteBox API connection successful"
     UENC="$(enc "${RB_USER}")"; PENC="$(enc "${RB_PASS}")"
     [[ -n "$UENC" && -n "$PENC" ]] || fail "Could not encrypt RouteBox credentials."
@@ -156,7 +167,7 @@ systemctl reload nginx
 php -l "${APP_DIR}/worker.php" >/dev/null || fail "worker.php syntax check failed."
 echo
 echo "✓ Installation completed successfully."
-echo "✓ Telegram and RouteBox configuration were verified during setup."
-echo "✓ RouteBox mode and scheme selection are intentionally not required."
-echo "✓ The installer uses the supplied RouteBox host and HTTPS port directly."
+echo "✓ Telegram and RouteBox were verified during setup."
+echo "✓ RouteBox mode, scheme, host and port are not separate inputs."
+echo "✓ Enter the exact URL you already use to open the RouteBox panel."
 echo "Admin panel: http://YOUR_SERVER_IP/"
