@@ -4,6 +4,7 @@ APP_DIR=/opt/routebox-telegram-bot
 SERVICE=routebox-telegram-bot.service
 APP_NAME=routebox-telegram-bot
 WEB_SERVICE=${APP_NAME}-web
+TLS_SERVICE=${APP_NAME}-tls.service
 STATE_DIR=/etc/${APP_NAME}
 [[ $EUID -eq 0 ]] || { echo '[ERROR] Run as root: sudo bash update.sh'; exit 1; }
 [[ -d "$APP_DIR/.git" ]] || { echo "[ERROR] $APP_DIR is not a Git checkout."; exit 1; }
@@ -26,6 +27,10 @@ www-data ALL=(root) NOPASSWD: /usr/local/sbin/routebox-telegram-bot-update
 EOF_SUDO
 chmod 0440 /etc/sudoers.d/routebox-telegram-bot-update
 visudo -cf /etc/sudoers.d/routebox-telegram-bot-update >/dev/null
+
+# The optional RouteBox TLS frontend owns the public Admin Panel port. Stop it
+# before recreating the PHP backend so the existing port is preserved.
+systemctl stop "$TLS_SERVICE" >/dev/null 2>&1 || true
 
 # Beta 2+ uses the independent PHP listener. Do not install, start, stop,
 # reload or configure Nginx/Apache as part of a Bot update.
@@ -72,11 +77,24 @@ php -l worker.php >/dev/null
 php -l src/RouteBoxClient.php >/dev/null
 php -l public/index.php >/dev/null
 php -l public/update.php >/dev/null
-bash -n install.sh install-v2.sh update.sh uninstall.sh admin-update.sh
+bash -n install.sh install-v2.sh update.sh uninstall.sh admin-update.sh setup-routebox-tls.sh
 systemctl restart "$SERVICE"
 sleep 1
 systemctl is-active --quiet "$SERVICE" || { journalctl -u "$SERVICE" -n 80 --no-pager; exit 1; }
+
+# Restore/reapply the optional RouteBox certificate integration. If the RouteBox
+# panel certificate is not available, the script exits successfully and HTTP
+# remains available; no existing web service is broken.
+if [[ -f setup-routebox-tls.sh ]]; then
+  bash setup-routebox-tls.sh || { echo '[WARN] RouteBox TLS integration could not be restored; HTTP panel remains available.' >&2; }
+fi
+
 echo "✓ Update completed successfully."
-echo "✓ Existing Apache/Nginx/RouteBox services were not started, stopped or reconfigured."
-echo "✓ Admin Panel: http://YOUR_SERVER_IP:$PORT/"
+echo "✓ Existing Apache/Nginx/RouteBox services were not reconfigured."
+echo "✓ Telegram worker: systemctl restart routebox-telegram-bot.service"
+if [[ "$(cat "$STATE_DIR/web-tls-mode" 2>/dev/null || true)" == "routebox-panel-acme" ]]; then
+  echo "✓ Admin Panel HTTPS: https://YOUR-ROUTEBOX-DOMAIN:$PORT/"
+else
+  echo "✓ Admin Panel HTTP: http://YOUR_SERVER_IP:$PORT/"
+fi
 echo "✓ Admin Panel updater: /update.php"
