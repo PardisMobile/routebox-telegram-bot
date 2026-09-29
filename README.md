@@ -120,36 +120,41 @@ It immediately calls Telegram `getMe` to verify the token before saving it.
 
 #### 🌐 RouteBox
 
-For each RouteBox server, the installer asks for:
+For each RouteBox server, the installer asks only for:
 
 - Server name
-- RouteBox mode: `vps` or `router`
-- Panel/API scheme: `https` or `http`
-- Panel/API host
-- Panel/API port
+- **RouteBox Panel URL** — the exact URL you already use to open the RouteBox panel
 - RouteBox username
 - RouteBox password
-- TLS certificate verification preference for HTTPS
+- TLS verification preference when the URL uses HTTPS
 
-The installer then tests `GET /api/status` before saving the server.
+Examples:
 
-You can add multiple RouteBox servers during installation.
+```text
+https://panel.example.com:8443
+http://192.0.2.10:8080
+https://panel.example.com
+```
+
+You do **not** need to enter RouteBox mode, scheme, host, or port separately.
+
+The installer tests `<Panel URL>/api/status` before saving the server. You can add multiple RouteBox servers during installation.
 
 ### 🔌 RouteBox API Port
 
 There is **no separate API port** for the bot. The RouteBox REST API is exposed through the same HTTP(S) listener as the RouteBox web panel.
 
-Typical defaults are:
+Typical examples are:
 
-| RouteBox mode | Typical panel/API URL | Default port |
+| RouteBox deployment | Panel/API URL | Listener |
 |---|---|---:|
 | VPS | `https://panel.example.com:8443` | `8443/tcp` |
 | Router | `http://router-ip:8080` | `8080/tcp` |
-| Custom reverse proxy | Your configured URL | Your configured port |
+| Reverse proxy | `https://panel.example.com` | `443/tcp` |
 
-The bot uses RouteBox's HTTP Basic authentication support for scripts. This avoids needing to emulate a browser login session for every API request. RouteBox's protected REST endpoints remain protected by the credentials supplied to the bot.
+Enter the URL exactly as it is opened in the browser. The installer derives the API base URL from that value.
 
-> If your RouteBox panel is behind a reverse proxy on `443`, enter `https` and port `443` during setup.
+The bot uses RouteBox's documented HTTP Basic authentication support for scripts. This avoids needing to emulate a browser login session for every API request. RouteBox's protected REST endpoints remain protected by the credentials supplied to the bot.
 
 ### 🔐 What Gets Stored
 
@@ -259,7 +264,7 @@ Additional planned features include:
 - [x] Interactive installation wizard
 - [x] Telegram token validation
 - [x] RouteBox API connectivity validation
-- [x] RouteBox panel/API port configuration
+- [x] RouteBox Panel URL configuration
 - [x] Ubuntu 22.04+ installer
 - [x] Update / uninstall scripts
 - [x] PHP syntax checks
