@@ -25,10 +25,10 @@ This guide explains how to install and configure RouteBox Telegram Bot on a fres
 
 The Bot connects to the **same web-panel/API listener used by RouteBox**. There is **no separate Bot API port**.
 
-You provide:
+To keep installation simple, the wizard only asks for:
 
 ```text
-Panel/API scheme
+Server name
 Panel/API host
 Panel/API port
 Username
@@ -36,15 +36,9 @@ Password
 TLS verification preference
 ```
 
-Typical defaults are:
+For the standard RouteBox VPS panel, the documented default is **HTTPS on port `8443`**. RouteBox can also be exposed through a reverse proxy, commonly on **HTTPS `443`**. citeturn0search0
 
-| Deployment | Scheme | Typical Port |
-|---|---|---:|
-| RouteBox HTTPS panel | `https` | `8443` |
-| RouteBox HTTP panel | `http` | `8080` |
-| Reverse proxy | `https` | `443` |
-
-The actual port depends on your RouteBox deployment. The installer does not ask you to choose `VPS` or `Router` mode; it simply tests the exact host, port, scheme, and credentials you provide.
+The installer therefore assumes **HTTPS** and does not ask for a scheme or a `VPS/Router` mode. This Bot is designed to manage RouteBox server APIs rather than configure a RouteBox home router.
 
 ---
 
@@ -110,23 +104,21 @@ Invalid tokens are rejected before the setup continues.
 
 ## 5. RouteBox Configuration
 
-For each RouteBox server, the installer asks only for the information actually needed to connect:
+For each RouteBox server, the installer asks only for the information actually needed:
 
 ```text
 Server name
-Panel/API scheme
 Panel/API host
-Panel/API port
-RouteBox username
+Panel/API port [8443]
+RouteBox username [admin]
 RouteBox password
-TLS verification
+Verify TLS certificate? [Y/n]
 ```
 
-### Standard HTTPS example
+### Standard RouteBox VPS example
 
 ```text
 Server name: Germany
-Panel/API scheme [https]: https
 Panel/API host: de.example.com
 Panel/API port [8443]: 8443
 RouteBox username [admin]: admin
@@ -134,14 +126,25 @@ RouteBox password: ********
 Verify TLS certificate? [Y/n]: Y
 ```
 
-### Reverse proxy example
-
-If the RouteBox panel is exposed through HTTPS on port 443:
+The resulting API base URL is:
 
 ```text
-Panel/API scheme: https
+https://de.example.com:8443
+```
+
+### Reverse proxy example
+
+If RouteBox is exposed through HTTPS on port 443:
+
+```text
 Panel/API host: panel.example.com
-Panel/API port: 443
+Panel/API port [8443]: 443
+```
+
+The resulting API base URL is:
+
+```text
+https://panel.example.com:443
 ```
 
 ### Important
@@ -156,11 +159,11 @@ Port: 8443
 Do **not** enter:
 
 ```text
-Host: de.example.com:8443
+Host: https://de.example.com:8443
 Port: 8443
 ```
 
-The installer builds the final API base URL automatically.
+The installer constructs the HTTPS API base URL automatically.
 
 ---
 
@@ -175,7 +178,7 @@ The flow is:
 ```text
 Bot Server
     │
-    │ HTTPS/HTTP
+    │ HTTPS
     ▼
 RouteBox Panel/API Listener
     │
@@ -187,13 +190,12 @@ API Response
 ✓ Server accepted
 ```
 
-The current Bot client uses RouteBox's supported HTTP Basic authentication for scripted API access.
+RouteBox documents cookie-based login sessions for the panel and also explicitly keeps HTTP Basic authentication available for scripts. The Bot uses the supported Basic authentication path for scripted API access. citeturn0search1
 
 If the test fails, check:
 
 - Hostname/IP
 - Port
-- HTTP vs HTTPS
 - RouteBox username
 - RouteBox password
 - Firewall rules
@@ -298,7 +300,7 @@ Verify the Bot Token with @BotFather.
 
 ### RouteBox connection failed
 
-For a standard HTTPS panel:
+For the standard RouteBox VPS panel:
 
 ```bash
 curl -vk https://YOUR_ROUTEBOX_HOST:8443/
@@ -308,12 +310,6 @@ For a reverse proxy on 443:
 
 ```bash
 curl -vk https://YOUR_ROUTEBOX_HOST:443/
-```
-
-For an HTTP panel on 8080:
-
-```bash
-curl -v http://YOUR_ROUTEBOX_HOST:8080/
 ```
 
 A reachable port does not prove that authentication or the API is working. The installer performs an authenticated API test before accepting the server.
