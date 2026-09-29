@@ -1,9 +1,16 @@
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS routebox_servers(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,base_url TEXT NOT NULL,user_enc TEXT NOT NULL,pass_enc TEXT NOT NULL,verify_tls INTEGER NOT NULL DEFAULT 1,enabled INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS server_meta(server_id INTEGER PRIMARY KEY,country_code TEXT NOT NULL DEFAULT '',ping_ms REAL,ping_checked_at INTEGER,FOREIGN KEY(server_id) REFERENCES routebox_servers(id) ON DELETE CASCADE);
-CREATE TABLE IF NOT EXISTS telegram_users(id INTEGER PRIMARY KEY AUTOINCREMENT,telegram_id TEXT UNIQUE NOT NULL,username TEXT,first_name TEXT,created_at INTEGER NOT NULL,last_seen INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS telegram_users(id INTEGER PRIMARY KEY AUTOINCREMENT,telegram_id TEXT UNIQUE NOT NULL,username TEXT,first_name TEXT,created_at INTEGER NOT NULL,last_seen INTEGER NOT NULL,language TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS telegram_buttons(id INTEGER PRIMARY KEY AUTOINCREMENT,action_key TEXT UNIQUE NOT NULL,text_fa TEXT NOT NULL,text_en TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,sort_order INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS provisions(id INTEGER PRIMARY KEY AUTOINCREMENT,telegram_user_id INTEGER NOT NULL,server_id INTEGER NOT NULL,peer_name TEXT NOT NULL,public_key TEXT NOT NULL,expires_at INTEGER,created_at INTEGER NOT NULL,UNIQUE(server_id,public_key),FOREIGN KEY(telegram_user_id) REFERENCES telegram_users(id) ON DELETE CASCADE,FOREIGN KEY(server_id) REFERENCES routebox_servers(id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS plans(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,duration_days INTEGER NOT NULL,quota_gb REAL NOT NULL DEFAULT 0,enabled INTEGER NOT NULL DEFAULT 1,sort_order INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS logs(id INTEGER PRIMARY KEY AUTOINCREMENT,level TEXT NOT NULL,message TEXT NOT NULL,created_at INTEGER NOT NULL);
 INSERT OR IGNORE INTO settings(key,value) VALUES('trial_hours','12');
 INSERT OR IGNORE INTO settings(key,value) VALUES('provision_mode','all_enabled');
+INSERT OR IGNORE INTO settings(key,value) VALUES('welcome_fa','🚀 RouteBox Telegram Bot\n\nسلام 👋\nسرویس موردنظر را انتخاب کنید:');
+INSERT OR IGNORE INTO settings(key,value) VALUES('welcome_en','🚀 RouteBox Telegram Bot\n\nHello 👋\nChoose a service:');
+INSERT OR IGNORE INTO settings(key,value) VALUES('panel_lang','fa');
+INSERT OR IGNORE INTO telegram_buttons(action_key,text_fa,text_en,enabled,sort_order,created_at,updated_at) VALUES('trial','🎁 دریافت تست رایگان','🎁 Get free trial',1,10,strftime('%s','now'),strftime('%s','now'));
+INSERT OR IGNORE INTO telegram_buttons(action_key,text_fa,text_en,enabled,sort_order,created_at,updated_at) VALUES('account','👤 حساب من','👤 My account',1,20,strftime('%s','now'),strftime('%s','now'));
+INSERT OR IGNORE INTO telegram_buttons(action_key,text_fa,text_en,enabled,sort_order,created_at,updated_at) VALUES('language','🌐 تغییر زبان','🌐 Language',1,30,strftime('%s','now'),strftime('%s','now'));
