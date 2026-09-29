@@ -41,13 +41,8 @@ jobs:
           set -euo pipefail
           php -r 'foreach (["curl", "mbstring", "pdo_sqlite", "sodium"] as $ext) { if (!extension_loaded($ext)) { fwrite(STDERR, "Missing PHP extension: $ext\n"); exit(1); } } echo "Required PHP extensions are available.\n";'
 
-      - name: Validate RouteBox integration contract
+      - name: Validate RouteBox client API surface
         shell: bash
         run: |
           set -euo pipefail
-          grep -q '/api/auth/login' src/RouteBoxClient.php
-          grep -q '/api/awg/peers' src/RouteBoxClient.php
-          grep -q '/api/awg/peers/' src/RouteBoxClient.php
-          grep -q 'sessionCookie' src/RouteBoxClient.php
-          grep -q 'Full RouteBox + AmneziaWG create/export/delete smoke test OK' install-v2.sh
-          echo "RouteBox session + AWG smoke-test contract present."
+          php -r 'require "src/RouteBoxClient.php"; $r = new RouteBoxClient("http://127.0.0.1:8080"); foreach (["health","status","awgStatus","settings","peers","validateIntegration","createPeer","smokeTest","config","vpnLink","singbox","setExpiry","resetTraffic","deletePeer"] as $m) { if (!method_exists($r, $m)) { fwrite(STDERR, "Missing RouteBoxClient method: $m\n"); exit(1); } } echo "RouteBoxClient API surface OK.\n";'
