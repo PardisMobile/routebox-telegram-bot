@@ -11,12 +11,15 @@ fail(){ echo "[ERROR] $*" >&2; exit 1; }
 [[ -d "$APP_DIR" ]] || fail "$APP_DIR does not exist. Run install.sh first."
 [[ -f "$APP_DIR/config/config.php" ]] || fail "Missing $APP_DIR/config/config.php. Run install.sh first."
 
-# The panel runs as www-data. Make the exact files/directories it needs readable,
-# without making secrets world-readable.
+# The panel runs as www-data. The directory itself must be traversable by the
+# www-data group; fixing only config.php is not enough when config/ is 750.
+# Keep the secret file private while allowing the service to read it.
+chown root:www-data "$APP_DIR/config"
+chmod 750 "$APP_DIR/config"
 chown root:www-data "$APP_DIR/config/config.php"
 chmod 640 "$APP_DIR/config/config.php"
 chown -R www-data:www-data "$APP_DIR/storage"
-chmod 750 "$APP_DIR/config" "$APP_DIR/storage"
+chmod 750 "$APP_DIR/storage"
 chmod 750 "$APP_DIR/storage/logs" 2>/dev/null || true
 
 # Fail early if PHP itself cannot see the config. This catches custom PHP
@@ -43,8 +46,8 @@ Type=simple
 User=www-data
 Group=www-data
 WorkingDirectory=$APP_DIR
-# Keep PHP confined to the application tree if the host has a restrictive
-# global open_basedir setting; /tmp is needed by normal PHP runtime operations.
+# PHP's built-in listener is HTTP only. Keep it isolated on its own port;
+# HTTPS should terminate at the existing Apache/Nginx/RouteBox TLS endpoint.
 ExecStart=/usr/bin/php -d open_basedir=$APP_DIR:/tmp -S 0.0.0.0:%i -t $APP_DIR/public
 Restart=always
 RestartSec=2
@@ -72,5 +75,6 @@ rm -f "/tmp/rbt-web-check.$$"
 echo
 echo "✓ Admin panel repaired and responding on HTTP."
 echo "✓ URL: http://YOUR_SERVER_IP:${PORT}/"
-echo "✓ HTTPS on this port is intentionally not enabled. Use HTTP locally or put Apache/Nginx in front of it for HTTPS."
+echo "✓ www-data can read config.php securely."
+echo "✓ HTTPS on this port is intentionally not enabled. Use the existing Apache/Nginx/RouteBox TLS endpoint as the reverse proxy."
 echo "✓ RouteBox itself is a separate service; do not use the Bot admin-panel port as the RouteBox API URL."
