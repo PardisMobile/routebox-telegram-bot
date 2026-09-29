@@ -101,6 +101,20 @@ PHP
   echo
 fi
 
+# Recover the existing encryption key on re-runs. This allows the installer to
+# finish first-run configuration later without ever generating a new key that
+# would make previously encrypted credentials unreadable.
+if [[ -z "${APP_KEY:-}" ]]; then
+  APP_KEY="$(php -r '
+    $c=require $argv[1];
+    echo is_array($c) ? ($c["app_key"] ?? "") : "";
+  ' "${APP_DIR}/config/config.php" 2>/dev/null || true)"
+fi
+if [[ -z "${APP_KEY:-}" ]]; then
+  echo "[ERROR] Could not load the application encryption key."
+  exit 1
+fi
+
 DB="${APP_DIR}/storage/database.sqlite"
 if [[ ! -f "${DB}" ]]; then
   sqlite3 "${DB}" < "${APP_DIR}/database/schema.sql"
@@ -170,8 +184,7 @@ if [[ "${has_telegram}" != "1" || "${has_routebox}" == "0" ]]; then
     break
   done
 
-  # Store the token encrypted with the locally generated application key.
-  TELEGRAM_ENC="$(RBT_APP_KEY="${APP_KEY:-$(php -r 'echo "";')}" RBT_SECRET="${TELEGRAM_TOKEN}" php -r '
+  TELEGRAM_ENC="$(RBT_APP_KEY="${APP_KEY}" RBT_SECRET="${TELEGRAM_TOKEN}" php -r '
     $key=base64_decode(getenv("RBT_APP_KEY"),true);
     $plain=getenv("RBT_SECRET");
     if (!$key || strlen($key)!==32 || $plain===false) { exit(2); }
@@ -261,20 +274,14 @@ if [[ "${has_telegram}" != "1" || "${has_routebox}" == "0" ]]; then
       CURL_TLS_ARGS+=("-k")
     fi
 
-    # /api/status is a protected RouteBox API endpoint when panel auth is enabled.
-    # RouteBox supports HTTP Basic for scripts, so this tests exactly the auth
-    # mechanism used by the bot. With auth disabled, an empty credential pair is OK.
     RB_HTTP_CODE="$(curl -sS "${CURL_TLS_ARGS[@]}" \
       --connect-timeout 8 --max-time 20 \
       -u "${RB_USER}:${RB_PASS}" \
       -o /tmp/routebox-status.$$ -w '%{http_code}' \
-      "${RB_BASE_URL}/api/status" 2>/tmp/routebox-curl-error.$$ || true)"
+      "${RB_BASE_URL}/api/status" 2>/dev/null || true)"
 
     if [[ "${RB_HTTP_CODE}" != "200" ]]; then
       echo "[ERROR] RouteBox API test failed (HTTP ${RB_HTTP_CODE:-connection-error})."
-      if [[ -s /tmp/routebox-curl-error.$$ ]]; then
-        sed 's/.*//' /tmp/routebox-curl-error.$$ >/dev/null || true
-      fi
       rm -f /tmp/routebox-status.$$ /tmp/routebox-curl-error.$$
       echo "        Check host, port, scheme, firewall, username/password, and TLS settings."
       server_count=$((server_count - 1))
@@ -300,8 +307,6 @@ if [[ "${has_telegram}" != "1" || "${has_routebox}" == "0" ]]; then
       exit 1
     fi
 
-    # SQLite string literals use single quotes; escape defensively even though
-    # names/URLs above are validated.
     sql_escape() { printf '%s' "$1" | sed "s/'/''/g"; }
     SQL_NAME="$(sql_escape "${RB_NAME}")"
     SQL_URL="$(sql_escape "${RB_BASE_URL}")"
@@ -364,7 +369,6 @@ systemctl enable --now nginx
 systemctl restart nginx
 systemctl restart "${SERVICE_NAME}"
 
-# Verify the application syntax before declaring success.
 echo "==> Running PHP syntax checks..."
 while IFS= read -r -d '' file; do php -l "${file}" >/dev/null; done < <(find "${APP_DIR}" -type f -name '*.php' -print0)
 
