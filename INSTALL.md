@@ -6,54 +6,69 @@
 
 This guide explains how to install and configure RouteBox Telegram Bot on a fresh Ubuntu server.
 
-> ⚠️ This is a Beta release. Test it with a non-production RouteBox server before commercial deployment.
+> ⚠️ This is a Beta release. Test it with your RouteBox installation before production or commercial deployment.
 
 ---
 
 ## 1. Requirements
 
-### Server
+### Bot server
 
 - Ubuntu 22.04 or newer
 - Root or sudo access
+- Internet access for Telegram API and GitHub
+- PHP 8+
 - A public IP or reachable hostname
-- Outbound HTTPS access to the Telegram Bot API
-- A domain name is recommended for the administration panel
+- A domain is recommended for the administration panel
 
 ### RouteBox
 
-- A reachable RouteBox installation
-- RouteBox web panel/API access enabled
-- RouteBox username and password
-- The RouteBox panel/API port
+The Bot connects to the **same web-panel/API listener used by RouteBox**. There is **no separate Bot API port**.
 
-For a standard RouteBox VPS installation, the default panel/API listener is normally **HTTPS port `8443`**. Router-mode installations commonly use **HTTP port `8080`**. If RouteBox is behind a reverse proxy, use the externally exposed port, commonly `443`.
+You provide:
 
-The bot does **not** require a separate API port. It connects to the same listener used by the RouteBox panel/API.
+```text
+Panel/API scheme
+Panel/API host
+Panel/API port
+Username
+Password
+TLS verification preference
+```
+
+Typical defaults are:
+
+| Deployment | Scheme | Typical Port |
+|---|---|---:|
+| RouteBox HTTPS panel | `https` | `8443` |
+| RouteBox HTTP panel | `http` | `8080` |
+| Reverse proxy | `https` | `443` |
+
+The actual port depends on your RouteBox deployment. The installer does not ask you to choose `VPS` or `Router` mode; it simply tests the exact host, port, scheme, and credentials you provide.
 
 ---
 
 ## 2. Create a Telegram Bot
 
 1. Open Telegram.
-2. Start a conversation with **@BotFather**.
+2. Start **@BotFather**.
 3. Run `/newbot`.
-4. Choose a name and username for the bot.
+4. Choose the bot name and username.
 5. Copy the Bot Token.
 
-Example format:
+Example:
 
 ```text
 123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Keep this token private.
+Keep the token private.
 
 ---
 
 ## 3. Install
 
-On the Ubuntu server, run:
+On the Ubuntu server run:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh)
@@ -62,14 +77,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegr
 The installer will:
 
 1. Check Ubuntu 22.04+.
-2. Install required packages.
-3. Download the repository.
-4. Initialize the SQLite database.
+2. Install required dependencies.
+3. Download the latest project files.
+4. Initialize SQLite.
 5. Generate the private application encryption key.
 6. Generate the administrator password.
 7. Configure Nginx and PHP-FPM.
-8. Install the systemd Bot service.
-9. Start the first-run configuration wizard.
+8. Install and enable the systemd Bot service.
+9. Start the interactive configuration wizard.
 
 ---
 
@@ -81,26 +96,24 @@ The installer asks for:
 Telegram Bot Token:
 ```
 
-The installer immediately calls Telegram's `getMe` endpoint.
+It immediately validates the token with Telegram's `getMe` API.
 
 A successful result looks like:
 
 ```text
-✓ Telegram connection successful
-✓ Bot: @YourBot
+✓ Telegram connection successful: @YourBot
 ```
 
-If Telegram rejects the token, installation does not continue until a valid token is supplied.
+Invalid tokens are rejected before the setup continues.
 
 ---
 
 ## 5. RouteBox Configuration
 
-For each RouteBox server, the installer asks for:
+For each RouteBox server, the installer asks only for the information actually needed to connect:
 
 ```text
 Server name
-Mode (vps/router)
 Panel/API scheme
 Panel/API host
 Panel/API port
@@ -109,76 +122,74 @@ RouteBox password
 TLS verification
 ```
 
-### Example — standard VPS installation
+### Standard HTTPS example
 
 ```text
 Server name: Germany
-Mode: vps
-Scheme: https
-Host: de.example.com
-Port: 8443
-Username: admin
-Password: ********
-Verify TLS: Y
+Panel/API scheme [https]: https
+Panel/API host: de.example.com
+Panel/API port [8443]: 8443
+RouteBox username [admin]: admin
+RouteBox password: ********
+Verify TLS certificate? [Y/n]: Y
 ```
 
-### Example — reverse proxy
+### Reverse proxy example
 
-If RouteBox is exposed through HTTPS on port 443:
+If the RouteBox panel is exposed through HTTPS on port 443:
 
 ```text
-Scheme: https
-Host: panel.example.com
-Port: 443
+Panel/API scheme: https
+Panel/API host: panel.example.com
+Panel/API port: 443
 ```
 
 ### Important
 
-Do **not** enter the port twice.
-
-Correct:
+Enter the host and port separately:
 
 ```text
 Host: de.example.com
 Port: 8443
 ```
 
-Not:
+Do **not** enter:
 
 ```text
 Host: de.example.com:8443
 Port: 8443
 ```
 
-The installer constructs the API base URL automatically.
+The installer builds the final API base URL automatically.
 
 ---
 
 ## 6. RouteBox Connectivity Test
 
-The installer must verify the RouteBox server before saving it.
+The installer does not accept a RouteBox server just because the TCP port is reachable.
 
-The intended authentication flow is compatible with the RouteBox API authentication model:
+It performs an authenticated API request before saving the server configuration.
+
+The flow is:
 
 ```text
-Bot
- │
- │ POST /api/auth/login
- ▼
-RouteBox
- │
- │ Session
- ▼
-Bot
- │
- │ Authenticated API request
- ▼
-RouteBox API
+Bot Server
+    │
+    │ HTTPS/HTTP
+    ▼
+RouteBox Panel/API Listener
+    │
+    │ Authenticated API request
+    ▼
+API Response
+    │
+    ▼
+✓ Server accepted
 ```
 
-The installer should not mark a server as configured unless authentication and an authenticated API request succeed.
+The current Bot client uses RouteBox's supported HTTP Basic authentication for scripted API access.
 
-If the connection fails, check:
+If the test fails, check:
 
 - Hostname/IP
 - Port
@@ -190,11 +201,13 @@ If the connection fails, check:
 - TLS certificate
 - RouteBox API availability
 
+The setup will ask you to correct the information instead of saving an unverified server.
+
 ---
 
 ## 7. Multiple RouteBox Servers
 
-The installer supports adding more than one RouteBox server.
+You can add multiple RouteBox servers during the same installation.
 
 Example:
 
@@ -204,32 +217,28 @@ RouteBox #2 → Turkey
 RouteBox #3 → Netherlands
 ```
 
-When multi-server provisioning is enabled, the same Telegram user identity can be provisioned across all enabled RouteBox servers.
+When multi-server provisioning is enabled, the same Telegram customer identity can be provisioned across all enabled RouteBox servers.
 
-Example peer identity:
+Example peer name:
 
 ```text
 user123456789
 ```
 
-This makes it possible to manage one Telegram customer across multiple RouteBox locations.
-
 ---
 
 ## 8. Administrator Panel
 
-At the end of installation, the installer displays the generated administrator password.
-
-Example:
+During first installation the setup wizard generates a random administrator password and displays it once.
 
 ```text
 Admin username: admin
 Admin password: <generated-password>
 ```
 
-Save this password securely.
+Save it securely.
 
-The administration panel is served through Nginx. For production use, place it behind HTTPS and restrict administrative access where appropriate.
+The panel is served by Nginx. For production deployments, put it behind HTTPS and restrict access where appropriate.
 
 ---
 
@@ -241,7 +250,7 @@ Check the Bot service:
 systemctl status routebox-telegram-bot
 ```
 
-Follow live logs:
+View live logs:
 
 ```bash
 journalctl -u routebox-telegram-bot -f
@@ -253,43 +262,27 @@ Restart:
 systemctl restart routebox-telegram-bot
 ```
 
-Stop:
-
-```bash
-systemctl stop routebox-telegram-bot
-```
-
-Start:
-
-```bash
-systemctl start routebox-telegram-bot
-```
-
 ---
 
 ## 10. Updating
-
-Run:
 
 ```bash
 bash /opt/routebox-telegram-bot/update.sh
 ```
 
-The update script should preserve runtime configuration and the SQLite database.
+Runtime configuration and the SQLite database should be preserved during updates.
 
-> ⚠️ Always back up the database before major Beta upgrades.
+> ⚠️ Back up the database before major Beta upgrades.
 
 ---
 
 ## 11. Uninstalling
 
-Run:
-
 ```bash
 bash /opt/routebox-telegram-bot/uninstall.sh
 ```
 
-Review the uninstall script before production use if you need to preserve local data.
+Review the uninstall behavior before using it on a production system if you need to preserve local data.
 
 ---
 
@@ -297,17 +290,15 @@ Review the uninstall script before production use if you need to preserve local 
 
 ### Telegram connection failed
 
-Test outbound HTTPS:
-
 ```bash
 curl -I https://api.telegram.org
 ```
 
-Verify the Bot Token with BotFather.
+Verify the Bot Token with @BotFather.
 
 ### RouteBox connection failed
 
-Test the panel port from the Bot server:
+For a standard HTTPS panel:
 
 ```bash
 curl -vk https://YOUR_ROUTEBOX_HOST:8443/
@@ -319,17 +310,17 @@ For a reverse proxy on 443:
 curl -vk https://YOUR_ROUTEBOX_HOST:443/
 ```
 
-For router mode:
+For an HTTP panel on 8080:
 
 ```bash
 curl -v http://YOUR_ROUTEBOX_HOST:8080/
 ```
 
-A reachable TCP port alone does not prove API authentication works. The installer must perform an authenticated API test before accepting the RouteBox configuration.
+A reachable port does not prove that authentication or the API is working. The installer performs an authenticated API test before accepting the server.
 
-### Check RouteBox logs
+### TLS errors
 
-Use the RouteBox administration/logging facilities on the RouteBox server and verify that the Bot server's IP is allowed to reach the panel/API listener.
+If your RouteBox uses a self-signed certificate during testing, the installer can disable TLS certificate verification for that server. For production, a valid certificate and TLS verification are strongly recommended.
 
 ---
 
@@ -338,7 +329,7 @@ Use the RouteBox administration/logging facilities on the RouteBox server and ve
 - 🔐 Never publish Telegram Bot Tokens.
 - 🔐 Never publish RouteBox passwords.
 - 🔐 Never publish private keys or real `.conf` files.
-- 🌐 Use HTTPS for the admin panel.
+- 🌐 Use HTTPS for the administration panel.
 - 🔥 Restrict the admin panel with firewall rules where possible.
 - 🧱 Do not expose SQLite or runtime configuration through Nginx.
 - 🔄 Keep Ubuntu and RouteBox updated.
@@ -357,7 +348,7 @@ Current Beta functionality focuses on:
 - 🌍 Multi-RouteBox provisioning
 - ⏱️ Expiration
 - 📄 Configuration delivery
-- 🖥️ Independent admin panel
+- 🖥️ Independent administration panel
 - 🔐 Encrypted credentials
 - 📝 Logging
 
@@ -379,9 +370,9 @@ Future releases will add:
 
 ## 15. Important Beta Note
 
-This project is designed to integrate with the RouteBox API and should be tested against the exact RouteBox version installed on your server.
+The project is designed around the RouteBox API and should be tested against the exact RouteBox version installed on your server.
 
-RouteBox API behavior can change between releases. If a RouteBox update changes authentication, endpoint paths, response formats, or required parameters, the Bot integration may require an update.
+RouteBox API behavior can change between releases. If authentication, endpoint paths, response formats, or required parameters change, the Bot integration may require an update.
 
 For support, include:
 
