@@ -6,7 +6,7 @@ Use `repair-web.sh` when the independent PHP Admin Panel is installed but is not
 
 - a blank page;
 - HTTP `503`;
-- Chrome `ERR_CONNECTION_CLOSED`;
+- `ERR_CONNECTION_CLOSED`;
 - PHP errors saying it cannot load `config/config.php`;
 - permission/ownership problems involving `config/` or `config.php`;
 - a stopped or broken Admin Panel systemd service;
@@ -33,7 +33,7 @@ The script:
 1. Verifies that the existing installation and `config/config.php` exist.
 2. Restores the expected `root:www-data` ownership and permissions for `config/` and `config.php`.
 3. Ensures the panel storage is writable by `www-data`.
-4. Tests loading `config.php` as the **actual `www-data` service user**.
+4. Tests loading `config.php` as the actual `www-data` service user.
 5. Recreates the dedicated PHP Admin Panel systemd unit.
 6. Starts the panel on the port stored in `/etc/routebox-telegram-bot/web-port`.
 7. Performs a real HTTP health check against `/login.php`.
@@ -54,7 +54,7 @@ The repair deliberately fixes the directory and file permissions together and th
 - delete or recreate the SQLite database;
 - change RouteBox itself;
 - stop or reconfigure an existing Apache/Nginx installation;
-- enable HTTPS directly on the PHP panel port;
+- take over ports `80` or `443`;
 - reset the Admin Panel password.
 
 ## Admin login
@@ -69,21 +69,35 @@ The password is randomly generated during the first installation and printed onc
 
 `repair-web.sh` does not change the password.
 
-## HTTPS
+## HTTPS / TLS
 
-The Admin Panel's PHP built-in listener is HTTP-only by design. HTTPS should terminate at an existing Apache/Nginx/RouteBox TLS endpoint and reverse-proxy to the Admin Panel port.
+Beta 7 can reuse the RouteBox panel certificate and accept **HTTP and HTTPS on the same Admin Panel port**.
 
-Do not make the repair script take over ports `80` or `443`; that can conflict with RouteBox or another existing web server.
+For example, with port `8093`:
+
+```text
+http://SERVER-IP:8093/
+https://ROUTEBOX-DOMAIN:8093/
+```
+
+The HTTPS frontend is configured separately by:
+
+```bash
+sudo bash /opt/routebox-telegram-bot/setup-routebox-tls.sh
+```
+
+The TLS setup keeps PHP and the TLS terminator on loopback, uses a Bot-owned HAProxy TCP multiplexer, and never takes over RouteBox/Apache/Nginx ports `80/443`.
+
+`repair-web.sh` itself does not enable TLS; it repairs the PHP Admin Panel. After a repair, run `setup-routebox-tls.sh` if the TLS frontend also needs to be restored.
 
 ## Successful repair
 
-A healthy repair should end with messages similar to:
+A healthy repair should end with messages confirming:
 
 ```text
 ✓ www-data can load config.php
 ✓ Admin panel repaired and responding on HTTP.
 ✓ www-data can read config.php securely.
-✓ HTTPS on this port is intentionally not enabled.
 ```
 
-If `www-data` still cannot load the configuration, the script prints additional permission and PHP diagnostics so the remaining issue can be investigated instead of hiding it.
+If `www-data` still cannot load the configuration, the script prints additional permission and PHP diagnostics instead of hiding the remaining problem.
