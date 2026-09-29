@@ -4,6 +4,16 @@ All notable changes to RouteBox Telegram Bot are documented here.
 
 The repository version is defined by [`VERSION`](./VERSION). Release notes below describe the important user-visible and operational changes for each beta.
 
+## 0.1.0-beta.8 — 2026-09-30
+
+### Admin Panel Updater
+
+- **Fixed Admin Panel updater detection:** the PHP panel can now see the root-owned updater at `/usr/local/sbin/routebox-telegram-bot-update` while retaining the existing PHP filesystem sandbox.
+- **Fixed updater execution:** the Admin Panel service no longer sets `NoNewPrivileges`, allowing the existing restricted `sudo` rule for `www-data` to invoke only the dedicated root updater.
+- The updater continues to use the existing restricted sudoers rule; no unrestricted root shell is granted to the web panel.
+- Existing Admin Panel port preservation, Bot/TLS services, and RouteBox/Apache/Nginx isolation are unchanged.
+- No changes are made to RouteBox ports `80/443` or the RouteBox panel/API listener.
+
 ## 0.1.0-beta.7 — 2026-09-29
 
 ### HTTPS / Admin Panel
