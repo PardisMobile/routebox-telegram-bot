@@ -20,44 +20,8 @@ jobs:
           p = Path('public/index.php')
           s = p.read_text()
 
-          old = """function updaterReady(): bool
-          {
-              $path = '/usr/local/sbin/routebox-telegram-bot-update';
-              if (is_file($path) && is_executable($path)) return true;
-              $probe = @shell_exec('/usr/bin/test -x ' . escapeshellarg($path) . ' && echo ready || echo missing');
-              return trim((string)$probe) === 'ready';
-          }"""
-          new = """function updaterReady(): bool
-          {
-              $path = '/usr/local/sbin/routebox-telegram-bot-update';
-              return is_file($path) && is_executable($path);
-          }"""
-          if old in s:
-              s = s.replace(old, new, 1)
-
-          old = "$remote = ($section === 'updates' || isset($_GET['check_update'])) ? remoteVersion() : null;"
-          new = "$remote = ($section === 'dashboard' || $section === 'updates' || isset($_GET['check_update'])) ? remoteVersion() : null;"
-          if old in s:
-              s = s.replace(old, new, 1)
-
-          old = '<div class="version-label">GitHub</div><div class="version-value">—</div>'
-          new = '<div class="version-label">GitHub</div><div class="version-value"><?=$remote!==null?\'v\'.h($remote):\'—\'?></div>'
-          if old in s:
-              s = s.replace(old, new, 1)
-
-          old = '''  <div class="sidebar-foot">
-    <a class="mini-link" href="<?=h(SUPPORT_URL)?>" target="_blank" rel="noopener"><?=navIcon('bot')?> <?=$T['support']?></a>
-    <a class="mini-link" href="/?section=<?=$section?>&lang=<?=$lang==='fa'?'en':'fa'?>"><?= $lang==='fa' ? 'English' : 'فارسی' ?></a>
-  </div>'''
-          new = '''  <div class="sidebar-foot">
-    <a class="mini-link github-link" href="https://github.com/PardisMobile/routebox-telegram-bot" target="_blank" rel="noopener noreferrer">GitHub</a>
-    <a class="mini-link" href="/?section=<?=$section?>&lang=<?=$lang==='fa'?'en':'fa'?>"><?= $lang==='fa' ? 'English' : 'فارسی' ?></a>
-  </div>'''
-          if old in s:
-              s = s.replace(old, new, 1)
-
-          old = '.mini-link{display:flex;align-items:center;justify-content:center;gap:7px;color:var(--muted);text-decoration:none;font-size:12px;padding:9px;border:1px solid var(--line);border-radius:11px}'
-          new = '.mini-link{display:flex;align-items:center;justify-content:center;gap:7px;color:var(--muted);text-decoration:none;font-size:12px;padding:9px;border:1px solid var(--line);border-radius:11px;background:transparent}.github-link{color:var(--text);font-weight:750}.github-link:hover{color:var(--text);background:rgba(255,255,255,.05)}'
+          old = '<a class="mini-link" href="<?=h(SUPPORT_URL)?>" target="_blank" rel="noopener"><?=navIcon(\'bot\')?> <?=$T[\'support\']?></a>'
+          new = '<a class="mini-link" href="https://github.com/PardisMobile/routebox-telegram-bot" target="_blank" rel="noopener noreferrer">GitHub</a>'
           if old in s:
               s = s.replace(old, new, 1)
 
@@ -72,5 +36,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add public/index.php
-          git commit -m 'fix(admin): replace sidebar support block with GitHub link' || exit 0
+          git commit -m 'fix(admin): replace sidebar support with GitHub link' || exit 0
           git push
