@@ -1,0 +1,19 @@
+[Unit]
+Description=RouteBox Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/routebox-telegram-bot
+ExecStart=/usr/bin/php /opt/routebox-telegram-bot/bot.php
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectHome=true
+ReadWritePaths=/opt/routebox-telegram-bot/storage
+
+[Install]
+WantedBy=multi-user.target
