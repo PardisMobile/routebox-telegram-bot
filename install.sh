@@ -88,17 +88,19 @@ return [
 PHP
   chown root:www-data "${APP_DIR}/config/config.php"
   chmod 640 "${APP_DIR}/config/config.php"
+  NEW_INSTALL=1
   echo
   echo "============================================================"
   echo " RouteBox Telegram Bot — Beta 0.1.0-beta.1"
   echo "============================================================"
-  echo " Admin URL:      http://YOUR_SERVER_IP/"
   echo " Admin username: admin"
   echo " Admin password: ${ADMIN_PASSWORD}"
   echo "------------------------------------------------------------"
   echo " SAVE THIS PASSWORD. It is not stored in the repository."
   echo "============================================================"
   echo
+else
+  NEW_INSTALL=0
 fi
 
 DB="${APP_DIR}/storage/database.sqlite"
@@ -107,10 +109,99 @@ if [[ ! -f "${DB}" ]]; then
 fi
 chown www-data:www-data "${DB}"
 chmod 640 "${DB}"
-
-# Never expose runtime configuration or SQLite through the web root.
 chmod 750 "${APP_DIR}/config"
 
+# -----------------------------------------------------------------------------
+# Interactive first-run configuration
+# -----------------------------------------------------------------------------
+if [[ "${NEW_INSTALL}" == "1" ]]; then
+  echo
+  echo "============================================================"
+  echo " Initial Configuration"
+  echo "============================================================"
+  echo "The installer can configure Telegram and RouteBox now."
+  echo "You can also skip this step and configure everything later"
+  echo "from the web admin panel."
+  echo
+
+  read -r -p "Telegram Bot Token (press Enter to configure later): " TELEGRAM_TOKEN
+  if [[ -n "${TELEGRAM_TOKEN}" ]]; then
+    echo "==> Validating Telegram Bot Token..."
+    TELEGRAM_CHECK="$(curl -fsS --max-time 15 "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getMe" || true)"
+    if ! printf '%s' "${TELEGRAM_CHECK}" | php -r '$j=json_decode(stream_get_contents(STDIN),true); exit(is_array($j)&&!empty($j["ok"])?0:1);'; then
+      echo "[ERROR] Telegram Bot Token is invalid or Telegram is unreachable."
+      echo "        Installation can continue; configure a valid token from the panel."
+      TELEGRAM_TOKEN=""
+    else
+      # Remove an old webhook so long-polling is not blocked by Telegram.
+      curl -fsS --max-time 15 -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/deleteWebhook" \
+        -d 'drop_pending_updates=false' >/dev/null || true
+      echo "[OK] Telegram Bot Token validated."
+    fi
+  fi
+
+  TRIAL_HOURS="12"
+  read -r -p "Trial duration in hours [12]: " INPUT_TRIAL
+  if [[ -n "${INPUT_TRIAL}" && "${INPUT_TRIAL}" =~ ^[0-9]+$ && ${INPUT_TRIAL} -ge 1 && ${INPUT_TRIAL} -le 720 ]]; then
+    TRIAL_HOURS="${INPUT_TRIAL}"
+  fi
+
+  read -r -p "Number of RouteBox servers to configure [0]: " SERVER_COUNT
+  SERVER_COUNT="${SERVER_COUNT:-0}"
+  if ! [[ "${SERVER_COUNT}" =~ ^[0-9]+$ ]]; then SERVER_COUNT=0; fi
+
+  if (( SERVER_COUNT > 0 )); then
+    for ((i=1; i<=SERVER_COUNT; i++)); do
+      echo
+      echo "---------------- RouteBox Server #${i} ----------------"
+      read -r -p "Name [RouteBox #${i}]: " RB_NAME
+      RB_NAME="${RB_NAME:-RouteBox #${i}}"
+      read -r -p "URL (example: https://1.2.3.4:8080): " RB_URL
+      read -r -p "Username: " RB_USER
+      read -r -s -p "Password: " RB_PASS
+      echo
+      read -r -p "Verify TLS certificate? [Y/n]: " RB_TLS
+      RB_TLS="${RB_TLS:-Y}"
+      if [[ "${RB_TLS}" =~ ^[Nn]$ ]]; then RB_VERIFY=0; else RB_VERIFY=1; fi
+
+      if [[ -z "${RB_URL}" || -z "${RB_USER}" || -z "${RB_PASS}" ]]; then
+        echo "[ERROR] URL, username and password are required. Server #${i} was skipped."
+        continue
+      fi
+
+      echo "==> Testing RouteBox API..."
+      RB_TEST="$(curl -ksS --max-time 15 -u "${RB_USER}:${RB_PASS}" -H 'Accept: application/json' "${RB_URL%/}/api/status" || true)"
+      if [[ "${RB_VERIFY}" == "1" ]]; then
+        RB_TEST="$(curl -fsS --max-time 15 -u "${RB_USER}:${RB_PASS}" -H 'Accept: application/json' "${RB_URL%/}/api/status" || true)"
+      fi
+      if [[ -z "${RB_TEST}" ]]; then
+        echo "[WARN] RouteBox API test failed. The server will not be added automatically."
+        continue
+      fi
+
+      RBT_NAME="${RB_NAME}" RBT_URL="${RB_URL%/}" RBT_USER="${RB_USER}" RBT_PASS="${RB_PASS}" RBT_TLS="${RB_VERIFY}" \
+      php -r '
+        require getenv("APP_DIR") . "/src/bootstrap.php";
+        $s=db()->prepare("INSERT INTO routebox_servers(name,base_url,user_enc,pass_enc,verify_tls,enabled,created_at) VALUES(?,?,?,?,?,?,?)");
+        $s->execute([getenv("RBT_NAME"),getenv("RBT_URL"),enc(getenv("RBT_USER")),enc(getenv("RBT_PASS")),(int)getenv("RBT_TLS"),1,time()]);
+      '
+      echo "[OK] RouteBox server added: ${RB_NAME}"
+    done
+  fi
+
+  APP_DIR="${APP_DIR}" TELEGRAM_TOKEN="${TELEGRAM_TOKEN}" TRIAL_HOURS="${TRIAL_HOURS}" \
+  php -r '
+    require getenv("APP_DIR") . "/src/bootstrap.php";
+    $trial=max(1,min(720,(int)getenv("TRIAL_HOURS")));
+    db()->prepare("INSERT INTO settings(key,value) VALUES(\"trial_hours\",?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")->execute([(string)$trial]);
+    $token=getenv("TELEGRAM_TOKEN");
+    if($token!=="") db()->prepare("INSERT INTO settings(key,value) VALUES(\"telegram_token\",?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")->execute([enc($token)]);
+  '
+  echo
+  echo "[OK] Initial configuration saved securely."
+fi
+
+# Never expose runtime configuration or SQLite through the web root.
 install -m 0644 "${APP_DIR}/systemd/routebox-telegram-bot.service" "/etc/systemd/system/${SERVICE_NAME}"
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}"
