@@ -18,6 +18,14 @@ function db():PDO{global $pdo;return $pdo;} function app_config():array{global $
 function enc(string $plain):string{$key=base64_decode(app_config()['app_key'],true);if(!$key||strlen($key)!==32)throw new RuntimeException('Invalid app key');$iv=random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);return base64_encode($iv.sodium_crypto_secretbox($plain,$iv,$key));}
 function dec(string $cipher):string{$key=base64_decode(app_config()['app_key'],true);$raw=base64_decode($cipher,true);if(!$key||strlen($key)!==32||!$raw)throw new RuntimeException('Invalid secret');$iv=substr($raw,0,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);return sodium_crypto_secretbox_open(substr($raw,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES),$iv,$key)?:'';}
 function log_event(string $level,string $message):void{$s=db()->prepare('INSERT INTO logs(level,message,created_at)VALUES(?,?,?)');$s->execute([$level,$message,time()]);}
+function admin_password_hash():string{
+    $stored=db()->query("SELECT value FROM settings WHERE key='admin_password_hash'")->fetchColumn();
+    if(is_string($stored)&&$stored!=='') return $stored;
+    return (string)($GLOBALS['config']['admin_password_hash']??'');
+}
+function set_admin_password_hash(string $hash):void{
+    db()->prepare("INSERT INTO settings(key,value) VALUES('admin_password_hash',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")->execute([$hash]);
+}
 function require_admin():void{if(empty($_SESSION['admin'])){header('Location:/login.php');exit;}}
 function csrf_token():string{if(empty($_SESSION['csrf_token'])){$_SESSION['csrf_token']=bin2hex(random_bytes(32));}return (string)$_SESSION['csrf_token'];}
 function verify_csrf():void{$token=(string)($_POST['csrf_token']??'');$expected=(string)($_SESSION['csrf_token']??'');if($expected===''||$token===''||!hash_equals($expected,$token)){http_response_code(403);exit('Invalid CSRF token.');}}
