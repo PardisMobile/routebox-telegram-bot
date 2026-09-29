@@ -1,13 +1,121 @@
 # Changelog
 
-## 0.1.0-beta.7
+All notable changes to RouteBox Telegram Bot are documented here.
+
+The repository version is defined by [`VERSION`](./VERSION). Release notes below describe the important user-visible and operational changes for each beta.
+
+## 0.1.0-beta.7 — 2026-09-29
+
+### HTTPS / Admin Panel
+
+- **Fixed the same-port TLS architecture:** enabling HTTPS no longer changes the configured Admin Panel public port.
+- HTTP and HTTPS are both accepted on the **same public Admin Panel port**. Example: `http://server:8093` and `https://domain:8093`.
+- RouteBox's own panel/API listener remains untouched.
+- RouteBox's exported panel certificate is reused for the Bot Admin Panel instead of requesting a second certificate.
+- Added a dedicated Bot-owned HAProxy TCP multiplexer to distinguish plain HTTP from a TLS ClientHello.
+- TLS traffic is terminated by a dedicated loopback-only stunnel instance and then forwarded to the same PHP backend.
+- PHP and the TLS terminator use separate loopback-only backend ports; neither is publicly exposed.
+- Added explicit HTTP and HTTPS health checks on the **same public port** before TLS setup reports success.
+- Certificate synchronization continues to watch the RouteBox certificate and reload the Bot TLS terminator after renewal.
+- Ports `80/443` and existing Apache/Nginx/RouteBox services are not claimed or reconfigured by the Bot.
+
+### Documentation / Maintenance
+
+- README rewritten for Beta 7 and aligned with the actual installer/TLS architecture.
+- `VERSION` is documented as the single source of truth so release numbers do not become stale in documentation.
+- Repository layout and the purpose of installer/repair/update scripts are documented explicitly.
+
+## 0.1.0-beta.6 — 2026-09-29
+
+### HTTPS / Admin Panel
+
+- Added reuse of the existing RouteBox panel certificate at `/etc/routebox/panel-cert/` for the Bot Admin Panel.
+- Added automatic certificate synchronization so RouteBox certificate renewal can be reflected in the Bot TLS frontend.
+- Added an independent Bot-owned TLS frontend without taking over ports `80/443` or modifying an existing RouteBox/Apache/Nginx configuration.
+- Added TLS setup/repair automation through `setup-routebox-tls.sh`.
+- Added HTTPS service health checks and service status diagnostics.
+
+### Installer / Operations
+
+- The main installer applies the optional RouteBox TLS integration after the normal Admin Panel health check.
+- Existing installations can apply the integration directly with `setup-routebox-tls.sh`.
+- The Admin Panel updater and server updater restore the optional TLS integration after an update when the RouteBox certificate is available.
+
+## 0.1.0-beta.5 — 2026-09-29
 
 ### Fixed
 
-- Admin Panel TLS integration no longer changes the configured public Admin Panel port.
-- HTTP and HTTPS are now both accepted on the same Admin Panel port.
-- RouteBox's own panel/API listener remains untouched.
-- RouteBox's exported panel certificate is reused only for the Bot Admin Panel TLS path.
-- Added a dedicated Bot-owned HAProxy TCP multiplexer: plain HTTP goes to the local PHP listener, TLS ClientHello goes to the local stunnel TLS terminator.
-- Added separate loopback-only backend ports so the PHP and TLS services are never exposed publicly.
-- TLS setup now performs explicit HTTP and HTTPS health checks on the same public port before reporting success.
+- Fixed an Admin Panel PHP/parse-error issue that could leave the panel unavailable after deployment/update.
+- Tightened the final Admin Panel health-check and repair flow so installation does not report success while the panel is broken.
+- Kept the independent PHP listener architecture and avoided taking ownership of existing web servers.
+
+### Maintenance
+
+- Improved operational diagnostics around Admin Panel permissions, service state and PHP configuration loading.
+
+## 0.1.0-beta.4 — 2026-09-29
+
+### Admin Panel
+
+- Added a modern responsive dashboard with sidebar navigation and cleaner cards/forms.
+- Added Persian and English Admin Panel UI with one-click language switching.
+- Added dark/light theme with browser preference detection and saved theme choice.
+- Server cards show country flag/code and measured TCP ping.
+- Existing servers without a country can use automatic public-IP country detection.
+- Added editable Persian/English Telegram welcome messages.
+- Added editable Persian/English labels for fixed Telegram buttons.
+- Plan management remains editable for duration and traffic quota.
+- Added Admin password change from the panel with an 8-character minimum.
+- Retained the in-panel updater.
+
+### Telegram Bot
+
+- Added Persian/English user language support.
+- First-time users receive a language selector and can switch language later.
+- Added `/start`, `/menu`, `/account`, and `/language` command handling.
+- Welcome text is controlled from the Admin Panel.
+- Fixed buttons for free trial, account and language are controlled from the Admin Panel.
+- Plan buttons continue to be generated from enabled Plans.
+
+### Database
+
+- Added persistent Telegram user language.
+- Added `telegram_buttons` storage for editable bot button labels.
+- Added bilingual welcome-message settings.
+- Added runtime migration support so existing Beta 3 installations can upgrade without manual database editing.
+
+## 0.1.0-beta.3
+
+### Admin / Maintenance
+
+- Added the restricted Admin Panel updater.
+- Added Admin password reset/change support.
+- Added Admin Panel update logs.
+- Added RouteBox/AmneziaWG repair documentation.
+- Added application version and changelog handling.
+
+## 0.1.0-beta.2
+
+### Core
+
+- Established the stable RouteBox API integration.
+- Added the independent PHP Admin Panel listener.
+- Avoided automatic Nginx/Apache reconfiguration.
+- Added the RouteBox AmneziaWG create/export/delete smoke test during installation.
+- Added the basic installer flow, Telegram validation and RouteBox validation.
+- Added encrypted storage for Telegram and RouteBox credentials.
+- Added multi-RouteBox server configuration and provisioning.
+- Added expiration and traffic-quota support for plans.
+- Added `.conf` delivery to Telegram users.
+- Added free-trial provisioning and trial reuse protection.
+- Added rollback attempts when multi-server provisioning partially fails.
+
+## 0.1.0-beta.1
+
+### Initial foundation
+
+- Initial RouteBox Telegram Bot architecture.
+- Telegram worker and independent Admin Panel foundation.
+- RouteBox client abstraction for API-based management.
+- Initial AmneziaWG provisioning flow.
+- Initial SQLite-backed configuration and user/service data model.
