@@ -124,9 +124,7 @@ function remoteVersion(): ?string
 function updaterReady(): bool
 {
     $path = '/usr/local/sbin/routebox-telegram-bot-update';
-    if (is_file($path) && is_executable($path)) return true;
-    $probe = @shell_exec('/usr/bin/test -x ' . escapeshellarg($path) . ' && echo ready || echo missing');
-    return trim((string)$probe) === 'ready';
+    return is_file($path) && is_executable($path);
 }
 
 function panelLang(): string
@@ -310,7 +308,7 @@ $we = cleanBotText((string)(db()->query("SELECT value FROM settings WHERE key='w
 $tokenValue = (string)(db()->query("SELECT value FROM settings WHERE key='telegram_token'")->fetchColumn() ?: '');
 $hasToken = $tokenValue !== '';
 $version = localVersion();
-$remote = ($section === 'updates' || isset($_GET['check_update'])) ? remoteVersion() : null;
+$remote = ($section === 'dashboard' || $section === 'updates' || isset($_GET['check_update'])) ? remoteVersion() : null;
 $updater = updaterReady();
 $flash = (string)($_SESSION['flash'] ?? '');
 unset($_SESSION['flash']);
@@ -378,7 +376,7 @@ function navIcon(string $key): string
   </div>
 
   <?php if($section==='dashboard'): ?>
-    <section class="card"><div class="section-head"><div class="section-title"><div class="section-icon"><?=navIcon('updates')?></div><div><h2><?=$T['updates']?></h2><p><?=$T['update_sub']?></p></div></div><a class="btn btn-secondary" href="/?section=updates">View status</a></div><div class="update-box"><div class="version-box"><div class="version-label">Installed</div><div class="version-value">v<?=h($version)?></div></div><div class="version-box"><div class="version-label">GitHub</div><div class="version-value">—</div></div><div class="version-box"><div class="version-label">Updater</div><div class="version-value <?=$updater?'state-ok':'state-bad'?>" style="font-size:15px"><?=$updater?$T['updater_ready']:$T['updater_missing']?></div></div></div></section>
+    <section class="card"><div class="section-head"><div class="section-title"><div class="section-icon"><?=navIcon('updates')?></div><div><h2><?=$T['updates']?></h2><p><?=$T['update_sub']?></p></div></div><a class="btn btn-secondary" href="/?section=updates">View status</a></div><div class="update-box"><div class="version-box"><div class="version-label">Installed</div><div class="version-value">v<?=h($version)?></div></div><div class="version-box"><div class="version-label">GitHub</div><div class="version-value"><?=$remote!==null?'v'.h($remote):'—'?></div></div><div class="version-box"><div class="version-label">Updater</div><div class="version-value <?=$updater?'state-ok':'state-bad'?>" style="font-size:15px"><?=$updater?$T['updater_ready']:$T['updater_missing']?></div></div></div></section>
   <?php endif; ?>
 
   <?php if($section==='servers'): ?>
