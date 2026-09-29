@@ -147,44 +147,71 @@ TLS verification is only requested for HTTPS URLs.
 
 ---
 
-## 6. RouteBox API Validation
+## 6. RouteBox Authentication and API Validation
 
-The installer performs these read-only API tests before saving a RouteBox server:
+The current RouteBox API uses cookie-based login sessions for the web panel. RouteBox also explicitly accepts HTTP Basic authentication for scripts. The Bot therefore uses this strategy:
 
 ```text
-GET /api/health
-GET /api/status
-GET /api/awg/status
-GET /api/awg/peers
-GET /api/settings
+1. POST /api/auth/login
+        ↓
+2. Store RouteBox session cookie
+        ↓
+3. Use the session cookie for protected API calls
+        ↓
+4. If session login is unavailable, fall back to HTTP Basic
+        ↓
+5. If a session expires, re-login once and retry the request
 ```
 
-The first endpoint is RouteBox's public health endpoint. The remaining endpoints verify authenticated access to the application and AmneziaWG APIs used by the Bot.
+This avoids pretending to be a browser while still following the same authentication mechanism used by the RouteBox panel.
+
+The installer validates the same flow before accepting a RouteBox server. It performs:
+
+```text
+GET  /api/health
+GET  /api/status
+GET  /api/awg/status
+GET  /api/awg/peers
+GET  /api/settings
+```
+
+Then it performs a **temporary full write/read/delete smoke test**:
+
+```text
+POST   /api/awg/peers
+GET    /api/awg/peers/{publicKey}/config
+DELETE /api/awg/peers/{publicKey}
+```
+
+The temporary peer is uniquely named and is deleted before the server is saved. This validates authentication, write permission, AWG availability, key generation, configuration rendering, public-key URL encoding, and cleanup.
 
 For example, with a VPS panel on `8443`:
 
 ```text
+https://panel.example.com:8443/api/auth/login
 https://panel.example.com:8443/api/status
 https://panel.example.com:8443/api/awg/status
 https://panel.example.com:8443/api/awg/peers
 ```
 
-This validates the **same listener and authentication mechanism** that the Bot will use later. There is no second API port.
-
-RouteBox's current backend registers the `/api/awg/*` routes under the main `/api` router, and the protected API group is guarded by the same authentication middleware. RouteBox accepts HTTP Basic authentication for scripts, so this Bot uses Basic authentication for server-to-server requests rather than imitating the browser session.
+This validates the **same listener and authentication mechanism** that the Bot uses later. There is no second API port.
 
 Expected result:
 
 ```text
+✓ RouteBox session login OK
 ✓ RouteBox health API OK
 ✓ RouteBox status API OK
-✓ AmneziaWG API OK
+✓ AmneziaWG status API OK
 ✓ AmneziaWG peers API OK
 ✓ RouteBox settings API OK
-✓ RouteBox integration verified
+✓ Full RouteBox + AmneziaWG create/export/delete smoke test OK
+✓ RouteBox 'Germany' saved securely
 ```
 
-If any required endpoint fails, the server is not saved and the wizard asks for the information again.
+If a required test fails, the server is not saved and the wizard asks for the information again.
+
+> ⚠️ The smoke test creates one temporary AWG peer on RouteBox and immediately deletes it. It is intentionally used during installation so a broken integration is detected before real customers are provisioned.
 
 ---
 
@@ -239,20 +266,15 @@ Each RouteBox creates its own cryptographic keypair/public key. The logical cust
 
 ---
 
-## 9. Authentication
-
-When RouteBox authentication is enabled, protected API endpoints require authentication.
+## 9. Credential Storage and Security
 
 The Bot stores the supplied RouteBox username and password encrypted with **libsodium SecretBox**.
 
-RouteBox currently supports both:
-
-- Cookie-based sessions for the web panel
-- HTTP Basic authentication for scripts
-
-The Bot uses **HTTP Basic authentication** for its server-to-server API calls because this is explicitly supported by RouteBox and avoids coupling the Bot to browser-only session behavior.
+The RouteBox session cookie is kept only in the running PHP process and is not written to the Bot database.
 
 The Bot does not modify RouteBox files, SQLite databases, `peers.toml`, or WireGuard configuration directly.
+
+The application encryption key is generated locally during installation and is never committed to GitHub.
 
 ---
 
@@ -267,12 +289,14 @@ Telegram user
 Bot database
      │
      ├── RouteBox #1
+     │      ├── authenticate session
      │      ├── GET peers
      │      ├── POST peer
      │      ├── PATCH expiry
      │      └── GET .conf
      │
      ├── RouteBox #2
+     │      ├── authenticate session
      │      ├── GET peers
      │      ├── POST peer
      │      ├── PATCH expiry
@@ -289,6 +313,9 @@ If a newly-created peer cannot be completed, the Bot attempts to delete peers th
 
 | Method | Endpoint | Purpose |
 |---|---|---|
+| `POST` | `/api/auth/login` | Create RouteBox session |
+| `GET` | `/api/auth/session` | Session endpoint available for compatibility |
+| `POST` | `/api/auth/logout` | Session logout endpoint |
 | `GET` | `/api/health` | Connectivity/health check |
 | `GET` | `/api/status` | RouteBox process status |
 | `GET` | `/api/settings` | Read RouteBox settings needed for integration validation |
@@ -389,7 +416,13 @@ or:
 curl -v http://YOUR_ROUTEBOX_HOST:8080/api/status
 ```
 
-A reachable URL does not prove that authentication or the required AmneziaWG API is available. The installer checks the RouteBox API endpoints before saving the server.
+A reachable URL does not prove that authentication or the required AmneziaWG API is available. The installer checks the RouteBox API and performs a real create/export/delete smoke test before saving the server.
+
+### Session login fails
+
+Verify the RouteBox username and password used to enter the panel. If the RouteBox installation has authentication disabled, leave the password empty and the installer will test the unauthenticated API path.
+
+The runtime Bot also retains HTTP Basic fallback for RouteBox installations where session login is unavailable.
 
 ### TLS errors
 
