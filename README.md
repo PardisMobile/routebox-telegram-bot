@@ -2,7 +2,7 @@
 
 > 🤖 Telegram Bot + 🖥️ Independent Web Admin Panel for RouteBox / AmneziaWG
 >
-> **Version: `0.1.0-beta.2` · Status: 🧪 Beta**
+> **Version: `0.1.0-beta.3` · Status: 🧪 Beta**
 
 ## ✨ What is it?
 
@@ -20,9 +20,16 @@ An independent backend for provisioning and managing **AmneziaWG peers** through
 - 🌍 Multi-RouteBox provisioning
 - 🆔 Same logical peer name across enabled servers (`user<telegram_id>`)
 - ⏱️ Expiration management
+- 📦 Traffic quota support per Telegram plan
+- 🛒 Dynamic Telegram plan/button management from the Admin Panel
 - 📄 Automatic `.conf` delivery
 - 🛡️ Trial reuse protection
 - 🔄 Rollback attempts after failed multi-server provisioning
+- 📡 RouteBox server ping/latency display
+- 🌍 RouteBox country flags in the Admin Panel
+- ☀️🌙 Light/Dark Admin Panel mode
+- 🔐 Web Admin password change and CLI recovery
+- 🔄 Admin Panel self-update with GitHub version checking
 - 📝 Application and provisioning logs
 - 🧪 End-to-end RouteBox validation before a server is accepted
 - 🔐 Encrypted Telegram and RouteBox credentials
@@ -182,7 +189,63 @@ Open:
 http://YOUR_SERVER_IP:<PORT>/
 ```
 
-For public production use, put the panel behind HTTPS/reverse proxy or restrict the port with your firewall.
+### 🔄 Updating from the Admin Panel
+
+Beta 3 adds a controlled software updater at:
+
+```text
+/update.php
+```
+
+The updater:
+
+1. Reads the installed `VERSION`.
+2. Checks the latest `VERSION` on the official GitHub repository.
+3. Shows whether a newer release is available.
+4. When confirmed, stops the Bot worker and its Admin Panel service.
+5. Runs the existing `update.sh` Git-based update process.
+6. Reinstalls the systemd definitions and the restricted updater permission.
+7. Starts the Admin Panel and Bot worker again.
+8. Keeps the existing RouteBox, Apache and Nginx services untouched.
+
+For security, the web user receives **only one restricted sudo permission** for `/usr/local/sbin/routebox-telegram-bot-update`; it is not granted general root access.
+
+The update log is stored at:
+
+```text
+/opt/routebox-telegram-bot/storage/logs/admin-update.log
+```
+
+If the panel updater has not yet been enabled on an existing installation, run one manual update first:
+
+```bash
+cd /opt/routebox-telegram-bot
+sudo bash update.sh
+```
+
+After that, the `/update.php` updater is installed and available from the Admin Panel security page.
+
+### 🔐 HTTPS / Reverse Proxy
+
+The Bot Admin Panel does not take over ports 80/443. For production HTTPS, use the existing TLS endpoint / reverse proxy and forward internally to the Bot's local PHP listener. Do not install another Nginx configuration on an already-used 80/443 port.
+
+## 🛒 Telegram plans and buttons
+
+Plans are managed from the Admin Panel. No PHP editing is required.
+
+Each plan supports:
+
+```text
+Name:        e.g. 30 Days / 50 GB
+Duration:    number of days
+Traffic:     GB
+Traffic = 0: unlimited
+Enabled:     show/hide Telegram button
+```
+
+Enabled plans automatically appear in the Telegram `/start` menu. Editing a plan changes future provisioning without changing existing RouteBox peers.
+
+Payment is not yet connected, so Beta 3 provisions the selected plan immediately for testing. Payment integration is planned as the next phase.
 
 ## 🌍 Multi-RouteBox
 
@@ -218,7 +281,7 @@ bash /opt/routebox-telegram-bot/uninstall.sh
 
 ## 💳 Payment & Subscription Roadmap
 
-Payment is **not implemented in Beta 2**.
+Payment is **not implemented in Beta 3**.
 
 Future updates will add both **Iranian Rial** and **Cryptocurrency** payment options, in both the **Persian and English** user experience, together with subscription management.
 
@@ -233,6 +296,7 @@ Planned features include subscription renewal/upgrades, invoices, coupons/referr
 - [x] Multiple RouteBox servers
 - [x] AWG provisioning
 - [x] Expiration
+- [x] Traffic quota per plan
 - [x] `.conf` delivery
 - [x] Encrypted credentials
 - [x] Trial reuse protection
@@ -242,6 +306,11 @@ Planned features include subscription renewal/upgrades, invoices, coupons/referr
 - [x] RouteBox API validation
 - [x] Full AWG create/export/delete smoke test
 - [x] Port-independent Admin Panel
+- [x] Plan/button manager
+- [x] Server ping + country flag
+- [x] Light/Dark mode
+- [x] Web password change + CLI recovery
+- [x] Admin Panel software updater
 - [x] Update / uninstall scripts
 
 ### 🔜 Future
@@ -249,7 +318,7 @@ Planned features include subscription renewal/upgrades, invoices, coupons/referr
 - [ ] 💰 Iranian Rial payment gateway
 - [ ] 🪙 Cryptocurrency payment gateway
 - [ ] 🔄 Subscription system
-- [ ] 🛒 Product / plan management
+- [ ] 💳 Payment-gated provisioning
 - [ ] 🌍 Region selection
 - [ ] 📊 Usage dashboard
 - [ ] 👨‍💼 Advanced user management
@@ -264,13 +333,22 @@ Planned features include subscription renewal/upgrades, invoices, coupons/referr
 - 🍪 RouteBox session cookies stay in memory.
 - 🗄️ SQLite and `config/config.php` are outside the public web root.
 - 🛡️ Admin POST actions use CSRF protection.
+- 🔐 The Admin Panel updater uses a dedicated fixed root wrapper instead of general sudo access.
 - 🚫 Never commit tokens, passwords, private keys or real `.conf` files.
 
 ## 🧪 Beta notice
 
-This is a **Beta release**. The installer is intentionally strict: it will not accept a RouteBox server until the real API + AmneziaWG create/export/delete smoke test succeeds.
+This is **Beta 3**. The installer is intentionally strict: it will not accept a RouteBox server until the real API + AmneziaWG create/export/delete smoke test succeeds.
 
 RouteBox API behavior can change between releases. Test the exact RouteBox version installed on your server before enabling real users or paid sales.
+
+## 👤 Creator
+
+**RouteBox Telegram Bot** is created and maintained by **Amir Taheri**.
+
+📱 Telegram: https://t.me/+918807085399
+
+© 2026 Amir Taheri
 
 ## 📄 License
 
