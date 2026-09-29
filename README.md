@@ -106,16 +106,71 @@ On a clean Ubuntu 22.04+ VPS:
 bash <(curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh)
 ```
 
+### 🧙 Interactive Setup Wizard
+
+The installer performs an interactive first-run configuration. You do **not** need to edit `.env` files or manually configure PHP files.
+
+#### 🤖 Telegram
+
+The installer asks for:
+
+- Telegram Bot Token
+
+It immediately calls Telegram `getMe` to verify the token before saving it.
+
+#### 🌐 RouteBox
+
+For each RouteBox server, the installer asks for:
+
+- Server name
+- RouteBox mode: `vps` or `router`
+- Panel/API scheme: `https` or `http`
+- Panel/API host
+- Panel/API port
+- RouteBox username
+- RouteBox password
+- TLS certificate verification preference for HTTPS
+
+The installer then tests `GET /api/status` before saving the server.
+
+You can add multiple RouteBox servers during installation.
+
+### 🔌 RouteBox API Port
+
+There is **no separate API port** for the bot. The RouteBox REST API is exposed through the same HTTP(S) listener as the RouteBox web panel.
+
+Typical defaults are:
+
+| RouteBox mode | Typical panel/API URL | Default port |
+|---|---|---:|
+| VPS | `https://panel.example.com:8443` | `8443/tcp` |
+| Router | `http://router-ip:8080` | `8080/tcp` |
+| Custom reverse proxy | Your configured URL | Your configured port |
+
+The bot uses RouteBox's HTTP Basic authentication support for scripts. This avoids needing to emulate a browser login session for every API request. RouteBox's protected REST endpoints remain protected by the credentials supplied to the bot.
+
+> If your RouteBox panel is behind a reverse proxy on `443`, enter `https` and port `443` during setup.
+
+### 🔐 What Gets Stored
+
+The Telegram Bot Token and RouteBox username/password are encrypted with the locally generated application key before being written to SQLite. The encryption key itself is stored in the private runtime configuration outside the public web root.
+
+The installer never writes your real credentials into GitHub or the repository.
+
+### Installer Tasks
+
 The installer automatically:
 
 1. 📦 Installs required dependencies.
 2. 📥 Downloads the project.
 3. 🗄️ Initializes SQLite.
 4. 🔐 Generates the application encryption key and administrator password.
-5. 🌐 Configures Nginx + PHP-FPM.
-6. ⚙️ Installs and enables the systemd service.
-7. 🧪 Runs PHP syntax validation.
-8. ❤️ Checks the Bot service status.
+5. 🧙 Runs the Telegram + RouteBox setup wizard.
+6. 🧪 Tests Telegram and RouteBox connectivity before saving credentials.
+7. 🌐 Configures Nginx + PHP-FPM.
+8. ⚙️ Installs and enables the systemd service.
+9. 🧪 Runs PHP syntax validation.
+10. ❤️ Checks the Bot service status.
 
 The generated administrator password is displayed by the installer. Store it securely.
 
@@ -201,6 +256,10 @@ Additional planned features include:
 - [x] Encrypted credentials
 - [x] Trial abuse protection
 - [x] Partial provisioning rollback
+- [x] Interactive installation wizard
+- [x] Telegram token validation
+- [x] RouteBox API connectivity validation
+- [x] RouteBox panel/API port configuration
 - [x] Ubuntu 22.04+ installer
 - [x] Update / uninstall scripts
 - [x] PHP syntax checks
@@ -223,7 +282,7 @@ Additional planned features include:
 
 ## 🧩 RouteBox Compatibility
 
-This project is designed around the current RouteBox API architecture. Newer RouteBox releases expose `/api/awg/*` endpoints for AWG status, peers, configuration retrieval, and expiration management.
+This project is designed around the current RouteBox API architecture. Current RouteBox releases expose `/api/awg/*` endpoints for AWG status, peers, configuration retrieval, and expiration management. RouteBox documents `/api/status` and the protected REST API alongside its panel listener; HTTP Basic authentication remains accepted for scripts. citeturn1search0turn1search1
 
 RouteBox may change its API between releases, so End-to-End testing against the RouteBox version installed on your server is part of the Beta process.
 
