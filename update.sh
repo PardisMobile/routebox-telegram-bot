@@ -12,6 +12,15 @@ STATE_DIR=/etc/${APP_NAME}
 cd "$APP_DIR"
 git fetch --prune origin
 git reset --hard origin/main
+
+# The updater itself is part of the repository. If this invocation started from
+# an older copy, restart from the freshly pulled file so stale service names or
+# old logic cannot continue running from memory.
+if [[ "${ROUTEBOX_UPDATE_REEXEC:-0}" != "1" ]]; then
+  export ROUTEBOX_UPDATE_REEXEC=1
+  exec bash "$APP_DIR/update.sh"
+fi
+
 mkdir -p storage/logs "$STATE_DIR"
 chown -R www-data:www-data storage
 chmod 750 storage
