@@ -243,7 +243,7 @@ ob_start(static function (string $html): string {
         . '<p class="help">Only the newest 10 backups are retained. Backup files live outside the public web root.</p></section>'
         . $serverSettings;
 
-    $toolsIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17v3h3l5.5-5.5a4 4 0 0 0 5.2-5.2l2.1-2.1-2.1-2.1-2.1 2.1Z"/></svg>';
+    $toolsIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17v3h3l5.5-5.5a4 4 0 0 0 5.2-5.2l-2.1 2.1-2.1-2.1 2.1-2.1Z"/></svg>';
     $toolsNav = '<a href="/?section=tools" class="' . ($section === 'tools' ? 'active' : '') . '" aria-current="' . ($section === 'tools' ? 'page' : 'false') . '">' . $toolsIcon . '<span>Tools</span></a>';
 
     $done = false;
