@@ -36,6 +36,7 @@ chmod 640 storage/database.sqlite 2>/dev/null || true
 install -m 0755 backup.sh /usr/local/sbin/routebox-telegram-bot-backup
 install -m 0755 restore-backup.sh /usr/local/sbin/routebox-telegram-bot-restore
 install -m 0755 admin-update.sh /usr/local/sbin/routebox-telegram-bot-update
+install -m 0755 admin-cli.sh /usr/local/sbin/routebox-telegram-bot-cli
 touch .updater-installed
 cat > /etc/sudoers.d/routebox-telegram-bot <<'EOF_SUDO'
 www-data ALL=(root) NOPASSWD: /usr/local/sbin/routebox-telegram-bot-update
@@ -77,7 +78,8 @@ php -l worker.php >/dev/null
 php -l src/RouteBoxClient.php >/dev/null
 php -l public/index.php >/dev/null
 php -l public/update.php >/dev/null
-bash -n install.sh install-v2.sh update.sh uninstall.sh admin-update.sh setup-routebox-tls.sh backup.sh restore-backup.sh
+php -l src/admin_features.php >/dev/null
+bash -n install.sh install-v2.sh update.sh uninstall.sh admin-update.sh setup-routebox-tls.sh backup.sh restore-backup.sh admin-cli.sh
 systemctl restart "$SERVICE"
 sleep 1
 systemctl is-active --quiet "$SERVICE" || { journalctl -u "$SERVICE" -n 80 --no-pager; exit 1; }
@@ -90,3 +92,4 @@ echo "✓ Existing Apache/Nginx/RouteBox services were not reconfigured."
 echo "✓ Telegram worker restarted."
 if [[ "$(cat "$STATE_DIR/web-tls-mode" 2>/dev/null || true)" == "routebox-panel-acme-multiplex" ]]; then echo "✓ Admin Panel HTTP+HTTPS: same port $PORT"; else echo "✓ Admin Panel HTTP: http://YOUR_SERVER_IP:$PORT/"; fi
 echo "✓ Admin Panel updater: /update.php"
+echo "✓ Recovery CLI: /usr/local/sbin/routebox-telegram-bot-cli"
