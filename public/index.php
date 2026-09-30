@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/bootstrap.php';
 require_admin();
-require __DIR__ . '/../src/RouteBoxClient.php';
+require_once __DIR__ . '/../src/RouteBoxClient.php';
 
 const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/VERSION';
 const SUPPORT_URL = 'https://t.me/+918807085399';

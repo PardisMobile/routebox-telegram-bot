@@ -255,7 +255,8 @@ ob_start(static function (string $html): string {
         // renders the Tools page. Clear that stale active state so only Tools is selected.
         $dashboardActive = '<a class="active" aria-current="page" href="/?section=dashboard">';
         $dashboardInactive = '<a class="" aria-current="false" href="/?section=dashboard">';
-        $html = str_replace($dashboardActive, $dashboardInactive, $html, 1);
+        $replaceCount = 0;
+        $html = str_replace($dashboardActive, $dashboardInactive, $html, $replaceCount);
 
         $page = '<style>'
             . 'body.rbt-extra-mode .main>*{display:none!important}'
