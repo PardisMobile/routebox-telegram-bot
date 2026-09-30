@@ -14,7 +14,7 @@ fail(){ echo "[ERROR] $*" >&2; exit 1; }
 [[ "${ID:-}" == "ubuntu" && ${VERSION_ID%%.*} -ge 22 ]] || fail "Ubuntu 22.04+ is required."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl git iproute2 sqlite3 openssl php-cli php-curl php-sqlite3 php-mbstring php-xml php-opcache
+apt-get install -y ca-certificates curl git iproute2 sqlite3 openssl qrencode php-cli php-curl php-sqlite3 php-mbstring php-xml php-opcache
 PHP_VERSION="$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')"
 (( ${PHP_VERSION%%.*} >= 8 )) || fail "PHP 8+ is required. Found ${PHP_VERSION}."
 # An existing TLS frontend may own the same Admin Panel port. Stop only this
