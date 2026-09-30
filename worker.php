@@ -3,7 +3,7 @@ declare(strict_types=1);
 require __DIR__.'/src/bootstrap.php';
 require __DIR__.'/src/RouteBoxClient.php';
 function sget(string $key,?string $default=null):?string{$q=db()->prepare('SELECT value FROM settings WHERE key=?');$q->execute([$key]);$v=$q->fetchColumn();return $v===false?$default:(string)$v;}
-function cleanT(string $t):string{return trim(str_replace(["\\r\\n","\\n","/n"],"\n",$t));}
+function cleanT(string $t):string{do{$before=$t;$t=str_replace(["\\r\\n","\\n","/n"],"\n",$t);}while($t!==$before);return trim($t);}
 function tg(string $token,string $method,array $data=[]):array{$c=curl_init('https://api.telegram.org/bot'.$token.'/'.$method);if($c===false)throw new RuntimeException('Telegram cURL init failed.');curl_setopt_array($c,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$data,CURLOPT_TIMEOUT=>35,CURLOPT_CONNECTTIMEOUT=>10]);$raw=curl_exec($c);$err=curl_error($c);curl_close($c);if($raw===false)throw new RuntimeException('Telegram connection failed: '.($err?:'unknown'));$j=json_decode($raw,true);if(!is_array($j)||empty($j['ok']))throw new RuntimeException($j['description']??'Telegram API error');return is_array($j['result']??null)?$j['result']:[];}
 function setUserLang(int $id,string $lang):void{if(!in_array($lang,['fa','en'],true))$lang='en';db()->prepare('UPDATE telegram_users SET language=? WHERE id=?')->execute([$lang,$id]);}
 function langFor(int $id):string{$q=db()->prepare('SELECT language FROM telegram_users WHERE id=?');$q->execute([$id]);$v=(string)$q->fetchColumn();return in_array($v,['fa','en'],true)?$v:'en';}
