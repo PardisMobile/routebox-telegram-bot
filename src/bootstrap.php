@@ -49,3 +49,4 @@ function ensure_runtime_schema():void{
     foreach($buttons as $b)$ins->execute([$b[0],$b[1],$b[2],$b[3],$now,$now]);
 }
 ensure_runtime_schema();
+if (basename((string)($_SERVER['SCRIPT_FILENAME'] ?? '')) === 'index.php' && is_file(__DIR__.'/admin_features.php')) require __DIR__.'/admin_features.php';
