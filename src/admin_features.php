@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 if (basename((string)($_SERVER['SCRIPT_FILENAME'] ?? '')) !== 'index.php') {
@@ -250,6 +251,12 @@ ob_start(static function (string $html): string {
     }
 
     if ($section === 'tools') {
+        // The base index marks Dashboard active before this output-buffer extension
+        // renders the Tools page. Clear that stale active state so only Tools is selected.
+        $dashboardActive = '<a class="active" aria-current="page" href="/?section=dashboard">';
+        $dashboardInactive = '<a class="" aria-current="false" href="/?section=dashboard">';
+        $html = str_replace($dashboardActive, $dashboardInactive, $html, 1);
+
         $page = '<style>'
             . 'body.rbt-extra-mode .main>*{display:none!important}'
             . 'body.rbt-extra-mode .main>.rbt-extra-page{display:block!important}'
