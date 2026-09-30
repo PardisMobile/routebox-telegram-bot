@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+// bootstrap.php may load admin_features.php before public/index.php requires this file.
+// Return early when the class is already loaded to prevent a duplicate declaration.
+if (class_exists('RouteBoxClient', false)) {
+    return;
+}
+
 final class RouteBoxClient
 {
     private string $base;
