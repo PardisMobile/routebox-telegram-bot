@@ -94,15 +94,44 @@ Telegram inline keyboards do not support arbitrary button background colors. Lab
 
 ## 📦 Installation
 
+### Production / main
+
 Ubuntu 22.04+:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh)
 ```
 
-The installer installs required packages including **`qrencode`** for QR-code workflows, validates Telegram and RouteBox, performs the AWG smoke test, installs the Bot/Admin Panel and optionally applies RouteBox TLS.
+The production installer installs required packages including **`qrencode`** for QR-code workflows, validates Telegram and RouteBox, performs the AWG smoke test, installs the Bot/Admin Panel and optionally applies RouteBox TLS.
 
 Existing RouteBox/Apache/Nginx services and ports `80/443` are left alone.
+
+### 🧪 Development / IBSng test branch
+
+For testing the modular IBSng work **without installing over the production RouteBox installation**, use the `feature/modular-services-ibsng` branch installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/feature/modular-services-ibsng/install-dev.sh -o /tmp/install-dev.sh
+sudo bash /tmp/install-dev.sh
+```
+
+Or, when already logged in as `root`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/feature/modular-services-ibsng/install-dev.sh -o /tmp/install-dev.sh
+bash /tmp/install-dev.sh
+```
+
+The development installer installs the same RouteBox panel prerequisites (including **PHP, required PHP extensions and `qrencode`**) and installs the development build separately under `/opt/routebox-telegram-bot-dev`. It must not replace the existing production installation under `/opt/routebox-telegram-bot`.
+
+After installation, the IBSng smoke test can be run with the IBSng server IP and Admin credentials; API port `1237` is the default:
+
+```bash
+cd /opt/routebox-telegram-bot-dev
+php tools/ibsng-smoke-test.php YOUR_IBSNG_IP YOUR_ADMIN_USER YOUR_ADMIN_PASSWORD
+```
+
+Existing RouteBox/Apache/Nginx services and production ports must remain untouched by the development installer.
 
 ## 🗂️ Important paths
 
