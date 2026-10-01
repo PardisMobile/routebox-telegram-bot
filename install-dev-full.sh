@@ -32,24 +32,46 @@ cd "$APP_DIR"
 VERSION="$(tr -d '[:space:]' < VERSION)"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || fail 'Invalid or missing VERSION.'
 mkdir -p config storage/logs
-chown root:www-data config; chmod 750 config
+chown root:www-data config
+chmod 750 config
+chown -R www-data:www-data storage
+chmod 750 storage
+ADMIN_PASSWORD_FILE="$STATE_DIR/admin-password"
 if [[ ! -f config/config.php ]]; then
- APP_KEY="$(openssl rand -base64 32 | tr -d '\n')"; ADMIN_PASSWORD="$(openssl rand -hex 12)"; ADMIN_HASH="$(php -r 'echo password_hash($argv[1], PASSWORD_DEFAULT);' "$ADMIN_PASSWORD")"
+ APP_KEY="$(openssl rand -base64 32 | tr -d '\n')"
+ ADMIN_PASSWORD="$(openssl rand -hex 12)"
+ ADMIN_HASH="$(php -r 'echo password_hash($argv[1], PASSWORD_DEFAULT);' "$ADMIN_PASSWORD")"
  cat > config/config.php <<PHP
 <?php
 return ['app_name'=>'RouteBox Telegram Bot DEV','version'=>'$VERSION','timezone'=>'Asia/Tehran','db'=>__DIR__.'/../storage/database.sqlite','app_key'=>'$APP_KEY','admin_user'=>'admin','admin_password_hash'=>'$ADMIN_HASH','telegram'=>['poll_timeout'=>25],'security'=>['session_name'=>'rbt_dev_session','cookie_secure'=>false]];
 PHP
- printf '\n============================================================\nRouteBox Telegram Bot DEV — %s\nAdmin username: admin\nAdmin password: %s\nSAVE THIS PASSWORD SECURELY.\n============================================================\n\n' "$VERSION" "$ADMIN_PASSWORD"
+ printf '%s\n' "$ADMIN_PASSWORD" > "$ADMIN_PASSWORD_FILE"
+ chmod 600 "$ADMIN_PASSWORD_FILE"
+else
+ APP_KEY="$(php -r '$c=require $argv[1];echo $c["app_key"]??"";' config/config.php)"
+ [[ -n "$APP_KEY" ]] || fail 'Missing application encryption key.'
+ [[ -f "$ADMIN_PASSWORD_FILE" ]] && ADMIN_PASSWORD="$(cat "$ADMIN_PASSWORD_FILE")" || ADMIN_PASSWORD='(existing admin password — not regenerated)'
 fi
-APP_KEY="$(php -r '$c=require $argv[1];echo $c["app_key"]??"";' config/config.php)"; [[ -n "$APP_KEY" ]] || fail 'Missing application encryption key.'
-DB="$APP_DIR/storage/database.sqlite"; [[ -f "$DB" ]] || sqlite3 "$DB" < database/schema.sql
+chmod 640 config/config.php
+APP_KEY="$(php -r '$c=require $argv[1];echo $c["app_key"]??"";' config/config.php)"
+[[ -n "$APP_KEY" ]] || fail 'Missing application encryption key.'
+DB="$APP_DIR/storage/database.sqlite"
+[[ -f "$DB" ]] || sqlite3 "$DB" < database/schema.sql
 enc(){ RBT_APP_KEY="$APP_KEY" RBT_SECRET="$1" php -r '$k=base64_decode(getenv("RBT_APP_KEY"),true);$p=getenv("RBT_SECRET");$n=random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);echo base64_encode($n.sodium_crypto_secretbox($p,$n,$k));'; }
 sql(){ printf '%s' "$1" | sed "s/'/''/g"; }
 if [[ "$(sqlite3 "$DB" "SELECT COUNT(*) FROM settings WHERE key='telegram_token' AND value<>'';" 2>/dev/null || echo 0)" != 1 ]]; then
  while :; do read -r -s -p 'Telegram Bot Token: ' TELEGRAM_TOKEN; echo; [[ -n "$TELEGRAM_TOKEN" ]] || continue; J="$(curl -fsS --connect-timeout 8 --max-time 20 "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getMe" 2>/dev/null || true)"; OK="$(J="$J" php -r '$j=json_decode(getenv("J"),true);echo !empty($j["ok"])?1:0;' 2>/dev/null || echo 0)"; [[ "$OK" == 1 ]] && break; printf '\033[31m✗ Telegram token rejected.\033[0m\n'; done
  E="$(enc "$TELEGRAM_TOKEN")"; sqlite3 "$DB" "INSERT INTO settings(key,value) VALUES('telegram_token','$(sql "$E")') ON CONFLICT(key) DO UPDATE SET value=excluded.value;"; unset TELEGRAM_TOKEN E
 fi
-chown -R www-data:www-data storage; chown root:www-data config; chmod 750 config storage; chmod 640 config/config.php "$DB"
+# Explicitly verify the exact permissions needed by the web user before starting services.
+chown root:www-data config
+chmod 750 config
+chown root:www-data config/config.php
+chmod 640 config/config.php
+chown -R www-data:www-data storage
+chmod 750 storage
+chmod 640 "$DB"
+runuser -u www-data -- test -r "$APP_DIR/config/config.php" || fail 'www-data cannot read config.php. Permission setup failed.'
 runuser -u www-data -- php -r 'require $argv[1];echo "✓ www-data can load config.php\n";' "$APP_DIR/config/config.php" || fail 'www-data cannot load config.php.'
 say 'Checking PHP syntax across the development branch...'
 while IFS= read -r -d '' f; do php -l "$f" >/dev/null || fail "PHP syntax error: $f"; done < <(find . -type f -name '*.php' -print0)
@@ -72,7 +94,8 @@ RestartSec=2
 [Install]
 WantedBy=multi-user.target
 EOF
-PORT=8092; while ss -ltnH "sport = :$PORT" 2>/dev/null | grep -q .; do PORT=$((PORT+1)); done
+PORT=8092
+while ss -ltnH "sport = :$PORT" 2>/dev/null | grep -q .; do PORT=$((PORT+1)); done
 cat > "/etc/systemd/system/${WEB_SERVICE}@.service" <<EOF
 [Unit]
 Description=RouteBox Telegram Bot DEV Admin Panel on port %i
@@ -92,13 +115,28 @@ ReadWritePaths=$APP_DIR/storage
 WantedBy=multi-user.target
 EOF
 echo "$PORT" > "$STATE_DIR/web-port"
-systemctl daemon-reload; systemctl enable --now "$SERVICE"; systemctl enable --now "${WEB_SERVICE}@${PORT}.service"; sleep 1
+systemctl daemon-reload
+systemctl enable --now "$SERVICE"
+systemctl enable --now "${WEB_SERVICE}@${PORT}.service"
+sleep 1
 systemctl is-active --quiet "$SERVICE" || fail 'DEV Telegram service failed.'
 systemctl is-active --quiet "${WEB_SERVICE}@${PORT}.service" || fail 'DEV Admin Panel failed.'
-HTTP_CODE="$(curl -sS -o /tmp/rbt-dev-check.$$ -w '%{http_code}' "http://127.0.0.1:${PORT}/login.php" || true)"; rm -f /tmp/rbt-dev-check.$$
+HTTP_CODE="$(curl -sS -o /tmp/rbt-dev-check.$$ -w '%{http_code}' "http://127.0.0.1:${PORT}/login.php" || true)"
+rm -f /tmp/rbt-dev-check.$$
 [[ "$HTTP_CODE" == 200 || "$HTTP_CODE" == 302 ]] || fail "Admin Panel health check failed: HTTP ${HTTP_CODE:-000}"
-printf '\n\033[32m\033[1mDEV INSTALLATION COMPLETED\033[0m\n'
-printf 'Version : %s\nPath    : %s\nBranch  : %s\nPanel   : http://SERVER-IP:%s\nIBSng API default: %s\n\n' "$VERSION" "$APP_DIR" "$BRANCH" "$PORT" "$IBSNG_API_PORT"
-printf 'IBSng smoke test:\n  cd %s\n  php tools/ibsng-smoke-test.php IBSNG_IP ADMIN_USER ADMIN_PASSWORD\n\n' "$APP_DIR"
+SERVER_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '/src/ {for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')"
+[[ -n "$SERVER_IP" ]] || SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+[[ -n "$SERVER_IP" ]] || SERVER_IP='SERVER-IP'
+printf '\n\033[32m\033[1m╔══════════════════════════════════════════════════════════════╗\033[0m\n'
+printf '\033[32m\033[1m║              DEV INSTALLATION COMPLETED ✓                 ║\033[0m\n'
+printf '\033[32m\033[1m╚══════════════════════════════════════════════════════════════╝\033[0m\n'
+printf '\033[36mPanel URL :\033[0m \033[1;33mhttp://%s:%s/\033[0m\n' "$SERVER_IP" "$PORT"
+printf '\033[36mUsername  :\033[0m \033[1;33madmin\033[0m\n'
+printf '\033[36mPassword  :\033[0m \033[1;33m%s\033[0m\n' "$ADMIN_PASSWORD"
+printf '\033[36mVersion   :\033[0m %s\n' "$VERSION"
+printf '\033[36mPath      :\033[0m %s\n' "$APP_DIR"
+printf '\033[36mBranch    :\033[0m %s\n' "$BRANCH"
+printf '\033[36mIBSng API :\033[0m default port %s\n' "$IBSNG_API_PORT"
+printf '\n\033[35mIBSng smoke test:\033[0m\n  cd %s\n  php tools/ibsng-smoke-test.php IBSNG_IP ADMIN_USER ADMIN_PASSWORD\n\n' "$APP_DIR"
 printf '\033[36mCreated & maintained by Amir Taheri\033[0m\n'
 printf '\033[33mProduction /opt/routebox-telegram-bot was not stopped, reset, or modified.\033[0m\n'
