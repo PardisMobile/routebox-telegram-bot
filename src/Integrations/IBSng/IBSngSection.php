@@ -127,7 +127,7 @@ final class IBSngSection
                 . '<details style="margin-top:14px"><summary style="cursor:pointer;font-weight:750">+ ' . $h($T['add_group']) . '</summary>'
                 . '<form method="post" style="margin-top:14px"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="add_group"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="server_id" value="' . $id . '"><div class="grid">'
                 . '<div class="field"><label>' . $h($T['plan_name']) . '</label><input name="plan_name" required placeholder="' . $h($fa ? 'یک ماهه' : 'One month') . '"></div>'
-                . '<div class="field"><label>' . $h($T['group_name']) . '</label><input name="group_name" required placeholder="p-1"></div>'
+                . '<div class="field"><label>' . $h($T['group_name']) . '</label><input name="group_name" required placeholder="Enter IBSng group name"></div>'
                 . '</div><p class="help">' . $h($T['group_hint']) . '</p><div class="form-actions"><button class="btn btn-primary" type="submit">+ ' . $h($T['add_group']) . '</button></div></form></details>'
                 . '</article>';
         }

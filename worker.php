@@ -163,7 +163,12 @@ function sendCategoryPlans(string $token, $chat, int $uid, int $categoryId): voi
     $catalog = new ServiceCatalog(db());
     $category = $catalog->category($categoryId);
     $plans = $catalog->plans($categoryId);
-    if (!$plans) throw new RuntimeException('برای این سرویس هنوز پلنی تعریف نشده است.');
+
+    // RouteBox may have no paid plans and still expose its free trial.
+    if (!$plans && (string)$category['service_key'] !== 'routebox') {
+        throw new RuntimeException('برای این سرویس هنوز پلنی تعریف نشده است.');
+    }
+
     $name = $l === 'fa' ? (string)$category['name_fa'] : (string)$category['name_en'];
     $icon = trim((string)($category['icon'] ?? ''));
     $text = ($icon !== '' ? $icon . ' ' : '') . $name . "\n\n" . ($l === 'fa' ? 'پلن موردنظر را انتخاب کنید:' : 'Choose a plan:');

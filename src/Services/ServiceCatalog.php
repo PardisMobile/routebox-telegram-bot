@@ -28,13 +28,22 @@ final class ServiceCatalog
         $sql = "SELECT c.*, COUNT(p.id) AS plan_count
                 FROM service_categories c
                 LEFT JOIN service_plans p ON p.category_id=c.id AND p.enabled=1
-                WHERE c.enabled=1";
+                WHERE c.enabled=1
+                AND (
+                    (c.service_key='routebox' AND EXISTS (
+                        SELECT 1 FROM routebox_servers rs WHERE rs.enabled=1
+                    ))
+                    OR
+                    (c.service_key='ibsng' AND EXISTS (
+                        SELECT 1 FROM ibsng_servers isrv WHERE isrv.enabled=1
+                    ))
+                )";
         $params = [];
         if ($providerKey !== '') {
             $sql .= ' AND c.provider_key=?';
             $params[] = $providerKey;
         }
-        $sql .= ' GROUP BY c.id HAVING plan_count > 0 ORDER BY c.sort_order,c.id';
+        $sql .= ' GROUP BY c.id HAVING c.service_key=\'routebox\' OR plan_count > 0 ORDER BY c.sort_order,c.id';
         $q = $this->db->prepare($sql);
         $q->execute($params);
         return $q->fetchAll(PDO::FETCH_ASSOC);
