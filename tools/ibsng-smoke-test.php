@@ -59,14 +59,12 @@ try {
     $provider = new IBSngProvider($client);
 
     if ($mode === 'test') {
+        $started = microtime(true);
         $provider->testConnection();
-        $groups = $client->listGroups();
+        $elapsedMs = round((microtime(true) - $started) * 1000);
         echo "OK: IBSng A1.24 Web Panel authenticated.\n";
         echo "Transport: HTTP/Web Panel\n";
-        echo "Groups: " . count($groups) . "\n";
-        foreach ($groups as $groupName) {
-            echo " - {$groupName}\n";
-        }
+        echo "Connection test: {$elapsedMs} ms\n";
         exit(0);
     }
 
