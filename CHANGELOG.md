@@ -4,6 +4,40 @@ All notable changes to RouteBox Telegram Bot are documented here.
 
 The repository version is defined by [`VERSION`](./VERSION). Release notes below describe the important user-visible and operational changes for each beta.
 
+## Unreleased — Modular Services Foundation
+
+### Architecture
+
+- Added an isolated provider architecture so new service backends can be added without rewriting the existing RouteBox core.
+- Added a generic `ServiceProviderInterface` for provider-neutral service operations.
+- Added an isolated `src/Integrations/IBSng/` module for the future OpenVPN / Cisco / L2TP service.
+- Added an isolated `src/Integrations/Payment/` abstraction for future payment gateways.
+- Added additive database structures for service categories, provider plans, subscriptions, orders, payment providers and coupons without repurposing the existing RouteBox tables.
+- Added architecture documentation in `docs/MODULAR_ARCHITECTURE.md`.
+
+### IBSng — planned integration
+
+- IBSng is designed as a separate service category alongside the existing RouteBox/WireGuard service.
+- One IBSng account will provide L2TP + OpenVPN + Cisco access rather than creating three separate accounts.
+- Multiple IBSng servers will be configurable from the Admin Panel using server IP/host, API port, Admin username/password and ISP settings.
+- IBSng groups will be synchronized from the IBSng API and mapped to service plans.
+- User creation, credentials, remaining time/traffic and renewal will use the IBSng Admin JSON-RPC API; direct IBSng database access is not planned.
+- Telegram will keep the existing WireGuard flow and add a separate OpenVPN / Cisco / L2TP category.
+- Free trial is planned as two separate paths: existing RouteBox/WireGuard and IBSng.
+
+### Orders / Payment / Coupons — planned
+
+- Added the foundation for provider-independent orders and payment gateways.
+- Payment gateways will be pluggable under `src/Integrations/Payment/` so adding a gateway does not require rewriting RouteBox or IBSng provisioning.
+- Coupons will be applied to orders before payment and the final discounted amount will be sent to the selected gateway.
+- Service provisioning will occur only after successful payment verification.
+
+### Telegram — planned
+
+- Planned separate broadcast messaging from the Admin Panel for informational and promotional messages.
+- Planned configurable service categories so the existing RouteBox/WireGuard plans remain intact while IBSng services are added alongside them.
+- Standard Telegram button colors are not being added to the core bot because Telegram inline keyboards do not expose arbitrary button background colors; labels, icons, ordering and categories remain configurable.
+
 ## 0.1.0-beta.9 — 2026-09-30
 
 ### Admin Panel UX / UI
