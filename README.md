@@ -41,18 +41,21 @@ IBSng is a separate service category alongside RouteBox/WireGuard.
 
 **One IBSng account provides L2TP + OpenVPN + Cisco.** They are three access methods for one subscription, not three accounts.
 
-Planned IBSng management:
+The current development adapter targets **IBSng A1.24 Free Edition** through its existing Apache Web Panel. A1.24's Core XML-RPC listener is local-only (`127.0.0.1:1235`), so RouteBox does **not** require opening port `1235` or `1237` on the IBSng server and does not access the IBSng database.
+
+Planned/implemented IBSng management:
 
 - Multiple IBSng servers
-- Server IP/host + API port (default `1237`)
+- Server IP/host + Web Panel port (default `80`)
 - IBSng Admin username/password with encrypted storage
-- Connection test
-- Real IBSng group synchronization
-- Group → service-plan mapping
-- Create/edit/renew/manage users
-- Remaining time/traffic
+- Connection test against `/IBSng/admin/`
+- Read existing IBSng group names
+- Manual Group Name mapping per RouteBox product (for example `یک ماهه` → `P1`)
+- Create/read/manage users through the IBSng Admin Web Panel
+- One account for OpenVPN / Cisco / L2TP
+- Remaining time/traffic and renewal as the adapter expands
 
-Telegram will keep the existing WireGuard category and add:
+Telegram will keep the existing WireGuard category and add a separate OpenVPN / Cisco / L2TP category:
 
 ```text
 🚀 سرویس موردنظر را انتخاب کنید
@@ -124,11 +127,25 @@ bash /tmp/install-dev.sh
 
 The development installer installs the same RouteBox panel prerequisites (including **PHP, required PHP extensions and `qrencode`**) and installs the development build separately under `/opt/routebox-telegram-bot-dev`. It must not replace the existing production installation under `/opt/routebox-telegram-bot`.
 
-After installation, the IBSng smoke test can be run with the IBSng server IP and Admin credentials; API port `1237` is the default:
+For the current IBSng A1.24 adapter, the default connection transport is the IBSng **HTTP Web Panel on port 80**. The smoke test authenticates using the IBSng Admin username/password, reads the existing Group list, and can read a user by username or create a test user. It does not require TCP/1237.
+
+Read-only connection/group test:
 
 ```bash
 cd /opt/routebox-telegram-bot-dev
 php tools/ibsng-smoke-test.php YOUR_IBSNG_IP YOUR_ADMIN_USER YOUR_ADMIN_PASSWORD
+```
+
+Read an existing IBSng user:
+
+```bash
+php tools/ibsng-smoke-test.php YOUR_IBSNG_IP YOUR_ADMIN_USER YOUR_ADMIN_PASSWORD get USERNAME
+```
+
+Create a test user in an existing IBSng group:
+
+```bash
+php tools/ibsng-smoke-test.php YOUR_IBSNG_IP YOUR_ADMIN_USER YOUR_ADMIN_PASSWORD create P1 Main 0
 ```
 
 Existing RouteBox/Apache/Nginx services and production ports must remain untouched by the development installer.
@@ -163,23 +180,29 @@ Existing RouteBox/Apache/Nginx services and production ports must remain untouch
 - [x] Updater / repair / uninstall tooling
 - [x] HTTPS/TLS integration without taking over `80/443`
 - [x] Modular provider/payment architecture foundation
-- [x] Isolated IBSng API client foundation
+- [x] Isolated IBSng A1.24 Web Panel client foundation
+- [x] IBSng Admin login/connection test
+- [x] IBSng group listing through the Web Panel
+- [x] IBSng user lookup by username
+- [x] IBSng test-user creation through the Web Panel
 - [x] Additive services/orders/payments/coupons schema foundation
 - [x] `qrencode` in installer
 
 ### 🔵 IBSng
 
+- [x] IBSng A1.24 Free Edition Web Panel transport
+- [x] Admin connection test
+- [x] Read existing groups
+- [x] Read user by username
+- [x] Create user in a specified existing group
 - [ ] IBSng Admin Panel section
 - [ ] Multiple IBSng server management
-- [ ] Encrypted Admin credentials
-- [ ] Connection test
-- [ ] Group synchronization
-- [ ] Group → plan mapping
+- [ ] Encrypted Admin credentials in the final settings UI
+- [ ] Manual Group Name mapping per product
 - [ ] OpenVPN / Cisco / L2TP Telegram category
 - [ ] One account for all three access methods
-- [ ] Create account after successful purchase
-- [ ] Username/password delivery
-- [ ] Remaining time/traffic
+- [ ] Assign username/password during provisioning
+- [ ] Remaining time/traffic display
 - [ ] Renewal/edit/delete/account management
 - [ ] Separate IBSng free trial
 
@@ -214,7 +237,7 @@ Existing RouteBox/Apache/Nginx services and production ports must remain untouch
 
 ## 🔐 Security
 
-Credentials are encrypted; RouteBox session cookies stay in memory; SQLite/config are outside the public web root; Admin POST actions use CSRF protection; the updater uses restricted sudo; IBSng uses its Admin API rather than direct database access.
+Credentials are encrypted; RouteBox session cookies stay in memory; SQLite/config are outside the public web root; Admin POST actions use CSRF protection; the updater uses restricted sudo; IBSng integration uses the IBSng Admin Web Panel/Core path rather than direct database access.
 
 ## 🧪 Beta
 
