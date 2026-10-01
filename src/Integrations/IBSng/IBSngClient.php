@@ -55,7 +55,7 @@ final class IBSngClient
         }
     }
 
-    private function request(string $path, array $post = []): array
+    private function request(string $path, array $post = [], bool $followLocation = true): array
     {
         $url = $this->baseUrl . '/' . ltrim($path, '/');
         $ch = curl_init($url);
@@ -70,7 +70,8 @@ final class IBSngClient
             'Connection: close',
         ];
         $options = [
-            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => $followLocation,
             CURLOPT_MAXREDIRS => 5,
             CURLOPT_COOKIEJAR => $this->cookieFile,
             CURLOPT_COOKIEFILE => $this->cookieFile,
@@ -87,15 +88,9 @@ final class IBSngClient
             $options[CURLOPT_HTTPHEADER][] = 'Content-Type: application/x-www-form-urlencoded';
         }
 
-        $responseBody = '';
-        $options[CURLOPT_WRITEFUNCTION] = static function ($ch, string $chunk) use (&$responseBody): int {
-            $responseBody .= $chunk;
-            return strlen($chunk);
-        };
-
         curl_setopt_array($ch, $options);
 
-        $curlResult = curl_exec($ch);
+        $responseBody = curl_exec($ch);
         $error = curl_error($ch);
         $errno = curl_errno($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
@@ -112,12 +107,12 @@ final class IBSngClient
             $errno === CURLE_OPERATION_TIMEDOUT
             && $code >= 200
             && $code < 400
-            && $responseBody !== ''
+            && $responseBody !== false
         ) {
-            $curlResult = true;
+            $responseBody = (string)$responseBody;
         }
 
-        if ($curlResult === false) {
+        if ($responseBody === false) {
             throw new RuntimeException(
                 'IBSng connection failed: ' . ($error !== '' ? $error : 'unknown cURL error')
             );
@@ -130,10 +125,38 @@ final class IBSngClient
         }
 
         return [
-            'body' => $responseBody,
+            'body' => (string)$responseBody,
             'url' => $effectiveUrl,
             'code' => $code,
         ];
+    }
+
+    /**
+     * Login without following IBSng's redirect.
+     *
+     * IBSng A1.24 returns a quick 302 to admin_index.php after a successful
+     * login, but the redirected admin page can keep the legacy HTTP connection
+     * open for a long time. Following that redirect makes the connection test
+     * appear hung even though authentication already succeeded.
+     */
+    private function loginFast(): void
+    {
+        $response = $this->request('/admin/', [
+            'username' => $this->username,
+            'password' => $this->password,
+        ], false);
+
+        if ($response['code'] < 300 || $response['code'] >= 400) {
+            $body = $response['body'];
+            $hasLoginForm = stripos($body, 'name="username"') !== false
+                && stripos($body, 'name="password"') !== false;
+            if ($hasLoginForm) {
+                throw new RuntimeException('IBSng authentication failed: Admin username/password were rejected.');
+            }
+            throw new RuntimeException('IBSng authentication failed: unexpected login response.');
+        }
+
+        $this->loggedIn = true;
     }
 
     private function ensureLogin(): void
@@ -142,39 +165,13 @@ final class IBSngClient
             return;
         }
 
-        $response = $this->request('/admin/index.php', [
-            'username' => $this->username,
-            'password' => $this->password,
-        ]);
-
-        $body = $response['body'];
-        $effectiveUrl = strtolower((string)$response['url']);
-        $hasLoginForm = stripos($body, 'name="username"') !== false
-            && stripos($body, 'name="password"') !== false;
-        $looksLikeAdmin = str_contains($effectiveUrl, '/admin/admin_index.php')
-            || str_contains($effectiveUrl, '/admin/admin_index');
-
-        if ($hasLoginForm && !$looksLikeAdmin) {
-            throw new RuntimeException('IBSng authentication failed: Admin username/password were rejected.');
-        }
-
-        if (!$looksLikeAdmin) {
-            $check = $this->request('/admin/admin_index.php');
-            $checkBody = $check['body'];
-            $stillLogin = stripos($checkBody, 'name="username"') !== false
-                && stripos($checkBody, 'name="password"') !== false;
-            if ($stillLogin) {
-                throw new RuntimeException('IBSng authentication failed: the Web Panel did not create an Admin session.');
-            }
-        }
-
-        $this->loggedIn = true;
+        $this->loginFast();
     }
 
     private function textFromHtml(string $html): string
     {
         return trim(preg_replace(
-            '/\\s+/u',
+            '/\s+/u',
             ' ',
             html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8')
         ) ?? '');
@@ -189,12 +186,12 @@ final class IBSngClient
 
     public function testConnection(): void
     {
-        $this->ensureLogin();
-        $response = $this->request('/admin/admin_index.php');
-        $text = $this->textFromHtml($response['body']);
-        if ($text === '') {
-            throw new RuntimeException('IBSng Web Panel returned an empty Admin page.');
-        }
+        /*
+         * Fast connectivity/authentication test only. Do NOT request Group List
+         * or any other slow IBSng page here. The successful A1.24 login itself
+         * is the health check.
+         */
+        $this->loginFast();
     }
 
     public function listGroups(): array
