@@ -8,8 +8,8 @@ use PDO;
 use RuntimeException;
 
 /**
- * Controller for the standalone IBSng admin module.
- * Credentials are always stored encrypted and are never returned to the view.
+ * Controller for the IBSng section inside the RouteBox Admin panel.
+ * Credentials are encrypted and never returned to the view.
  */
 final class IBSngAdmin
 {
@@ -22,7 +22,9 @@ final class IBSngAdmin
 
     public function handle(array $post, string $method): void
     {
-        if ($method !== 'POST') return;
+        if ($method !== 'POST') {
+            return;
+        }
         verify_csrf();
 
         $action = trim((string)($post['action'] ?? ''));
@@ -42,8 +44,9 @@ final class IBSngAdmin
                     throw new RuntimeException('پورت IBSng باید 80 یا 443 باشد.');
                 }
 
+                // Connection testing is deliberately independent from Group List.
                 $client = new IBSngClient($host, $username, $password, $port);
-                $groups = $client->listGroups();
+                $client->testConnection();
 
                 $now = time();
                 $st = $this->db->prepare(
@@ -62,10 +65,8 @@ final class IBSngAdmin
                     $now,
                     $now,
                 ]);
-                $serverId = (int)$this->db->lastInsertId();
 
-                $this->syncGroupsForServer($serverId, $groups, $client);
-                $_SESSION['ibsng_flash'] = '✓ اتصال IBSng موفق بود و سرور ذخیره شد. ' . count($groups) . ' گروه شناسایی شد.';
+                $_SESSION['ibsng_flash'] = '✓ اتصال IBSng موفق بود و سرور ذخیره شد.';
                 $_SESSION['ibsng_error'] = false;
             } elseif ($action === 'update_server') {
                 $id = (int)($post['id'] ?? 0);
@@ -76,13 +77,17 @@ final class IBSngAdmin
                 $username = trim((string)($post['username'] ?? ''));
                 $password = (string)($post['password'] ?? '');
                 $ispName = trim((string)($post['isp_name'] ?? ''));
-                if ($name === '' || $host === '') throw new RuntimeException('نام و Host سرور الزامی است.');
-                if (!in_array($port, [80, 443], true)) throw new RuntimeException('پورت IBSng باید 80 یا 443 باشد.');
+                if ($name === '' || $host === '') {
+                    throw new RuntimeException('نام و Host سرور الزامی است.');
+                }
+                if (!in_array($port, [80, 443], true)) {
+                    throw new RuntimeException('پورت IBSng باید 80 یا 443 باشد.');
+                }
 
                 $effectiveUser = $username !== '' ? $username : dec((string)$server['admin_user_enc']);
                 $effectivePass = $password !== '' ? $password : dec((string)$server['admin_pass_enc']);
                 $client = new IBSngClient($host, $effectiveUser, $effectivePass, $port);
-                $groups = $client->listGroups();
+                $client->testConnection();
 
                 $userEnc = $username !== '' ? enc($username) : (string)$server['admin_user_enc'];
                 $passEnc = $password !== '' ? enc($password) : (string)$server['admin_pass_enc'];
@@ -90,20 +95,49 @@ final class IBSngAdmin
                 $st = $this->db->prepare(
                     'UPDATE ibsng_servers SET name=?,host=?,port=?,admin_user_enc=?,admin_pass_enc=?,isp_name=?,verify_tls=?,last_test_at=?,last_error=NULL,updated_at=? WHERE id=?'
                 );
-                $st->execute([$name,$host,$port,$userEnc,$passEnc,$ispName !== '' ? $ispName : (string)$server['isp_name'],$port === 443 ? 1 : 0,$now,$now,$id]);
-                $this->syncGroupsForServer($id, $groups, $client);
+                $st->execute([
+                    $name,
+                    $host,
+                    $port,
+                    $userEnc,
+                    $passEnc,
+                    $ispName !== '' ? $ispName : (string)$server['isp_name'],
+                    $port === 443 ? 1 : 0,
+                    $now,
+                    $now,
+                    $id,
+                ]);
 
-                $_SESSION['ibsng_flash'] = '✓ اطلاعات سرور و اتصال با موفقیت به‌روزرسانی شد. ' . count($groups) . ' گروه شناسایی شد.';
+                $_SESSION['ibsng_flash'] = '✓ اطلاعات سرور و اتصال با موفقیت به‌روزرسانی شد.';
                 $_SESSION['ibsng_error'] = false;
             } elseif ($action === 'test_server') {
                 $id = (int)($post['id'] ?? 0);
-                $result = $this->service->test($id);
-                $_SESSION['ibsng_flash'] = '✓ اتصال موفق است. ' . count($result['groups']) . ' گروه پیدا شد.';
+                $this->service->test($id);
+                $_SESSION['ibsng_flash'] = '✓ اتصال موفق است. IBSng A1.24 Web Panel احراز هویت شد.';
                 $_SESSION['ibsng_error'] = false;
-            } elseif ($action === 'sync_groups') {
-                $id = (int)($post['id'] ?? 0);
-                $count = $this->service->syncGroups($id);
-                $_SESSION['ibsng_flash'] = '✓ همگام‌سازی گروه‌ها انجام شد: ' . $count . ' گروه.';
+            } elseif ($action === 'delete_server') {
+                $this->service->deleteServer((int)($post['id'] ?? 0));
+                $_SESSION['ibsng_flash'] = '✓ سرور IBSng حذف شد.';
+                $_SESSION['ibsng_error'] = false;
+            } elseif ($action === 'add_group') {
+                $this->service->addGroup(
+                    (int)($post['server_id'] ?? 0),
+                    (string)($post['plan_name'] ?? ''),
+                    (string)($post['group_name'] ?? '')
+                );
+                $_SESSION['ibsng_flash'] = '✓ پلن و گروه IBSng اضافه شد.';
+                $_SESSION['ibsng_error'] = false;
+            } elseif ($action === 'update_group') {
+                $this->service->updateGroup(
+                    (int)($post['id'] ?? 0),
+                    (string)($post['plan_name'] ?? ''),
+                    (string)($post['group_name'] ?? '')
+                );
+                $_SESSION['ibsng_flash'] = '✓ پلن و نام گروه IBSng به‌روزرسانی شد.';
+                $_SESSION['ibsng_error'] = false;
+            } elseif ($action === 'delete_group') {
+                $this->service->deleteGroup((int)($post['id'] ?? 0));
+                $_SESSION['ibsng_flash'] = '✓ گروه IBSng حذف شد.';
                 $_SESSION['ibsng_error'] = false;
             } else {
                 throw new RuntimeException('عملیات IBSng ناشناخته است.');
@@ -119,7 +153,7 @@ final class IBSngAdmin
         $servers = [];
         $rows = $this->db->query('SELECT id,name,host,port,isp_name,enabled,last_test_at,last_error,created_at,updated_at FROM ibsng_servers ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as $row) {
-            $q = $this->db->prepare('SELECT group_name,group_id,enabled,synced_at FROM ibsng_groups WHERE ibsng_server_id=? ORDER BY group_name COLLATE NOCASE');
+            $q = $this->db->prepare('SELECT id,plan_name,group_name,group_id,enabled,synced_at FROM ibsng_groups WHERE ibsng_server_id=? ORDER BY id DESC');
             $q->execute([(int)$row['id']]);
             $row['groups'] = $q->fetchAll(PDO::FETCH_ASSOC);
             $servers[] = $row;
@@ -130,21 +164,5 @@ final class IBSngAdmin
         unset($_SESSION['ibsng_flash'], $_SESSION['ibsng_error']);
 
         return ['servers' => $servers, 'flash' => $flash, 'error' => $error];
-    }
-
-    private function syncGroupsForServer(int $serverId, array $groups, IBSngClient $client): void
-    {
-        $now = time();
-        $st = $this->db->prepare(
-            'INSERT INTO ibsng_groups(ibsng_server_id,group_name,group_id,group_info_json,enabled,synced_at)
-             VALUES(?,?,?,?,1,?)
-             ON CONFLICT(ibsng_server_id,group_name) DO UPDATE SET group_id=excluded.group_id,group_info_json=excluded.group_info_json,synced_at=excluded.synced_at'
-        );
-        foreach ($groups as $name) {
-            $name = (string)$name;
-            $info = $client->getGroupInfo($name);
-            $groupId = isset($info['group_id']) && is_numeric($info['group_id']) ? (int)$info['group_id'] : null;
-            $st->execute([$serverId, $name, $groupId, json_encode($info, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $now]);
-        }
     }
 }
