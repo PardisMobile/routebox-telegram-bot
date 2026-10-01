@@ -40,5 +40,39 @@ final class IBSngSchema
         $st = $db->prepare("INSERT OR IGNORE INTO service_categories(service_key,name_fa,name_en,icon,provider_key,enabled,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?,?)");
         $st->execute(['routebox','WireGuard','WireGuard','🟣','routebox',10,$now,$now]);
         $st->execute(['ibsng','OpenVPN / Cisco / L2TP','OpenVPN / Cisco / L2TP','🔵','ibsng',20,$now,$now]);
+
+        // Every manually defined IBSng group is also a generic service plan so
+        // the Telegram bot can discover any number of IBSng plans dynamically.
+        // Duration/quota stay zero here: IBSng itself owns those rules through
+        // the real group; price is zero until a payment gateway is configured.
+        $cat = (int)$db->query("SELECT id FROM service_categories WHERE service_key='ibsng'")->fetchColumn();
+        if ($cat > 0) {
+            $groups = $db->query("SELECT g.* FROM ibsng_groups g JOIN ibsng_servers s ON s.id=g.ibsng_server_id WHERE s.enabled=1")->fetchAll(PDO::FETCH_ASSOC);
+            $insert = $db->prepare(
+                "INSERT INTO service_plans(category_id,provider_key,provider_server_id,provider_plan_key,display_name_fa,display_name_en,price_minor,duration_days,quota_gb,enabled,sort_order,metadata_json,created_at,updated_at)
+                 SELECT ?, 'ibsng', ?, ?, ?, ?, 0, 0, 0, ?, ?, '{}', ?, ?
+                 WHERE NOT EXISTS (SELECT 1 FROM service_plans WHERE provider_key='ibsng' AND provider_server_id=? AND provider_plan_key=?)"
+            );
+            foreach ($groups as $group) {
+                $planName = trim((string)$group['plan_name']);
+                if ($planName === '') {
+                    $planName = (string)$group['group_name'];
+                }
+                $enabled = !empty($group['enabled']) ? 1 : 0;
+                $insert->execute([
+                    $cat,
+                    (int)$group['ibsng_server_id'],
+                    (string)$group['group_name'],
+                    $planName,
+                    $planName,
+                    $enabled,
+                    (int)$group['id'],
+                    $now,
+                    $now,
+                    (int)$group['ibsng_server_id'],
+                    (string)$group['group_name'],
+                ]);
+            }
+        }
     }
 }
