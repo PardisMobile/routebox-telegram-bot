@@ -8,6 +8,7 @@ use PDO;
 use RuntimeException;
 use RouteBox\Integrations\IBSng\IBSngService;
 
+require_once __DIR__ . '/../RouteBoxClient.php';
 require_once __DIR__ . '/../Integrations/IBSng/IBSngService.php';
 require_once __DIR__ . '/../Integrations/IBSng/IBSngSchema.php';
 
@@ -31,6 +32,7 @@ final class ServiceProvisioner
 
         return match ($provider) {
             'ibsng' => $this->provisionIbsng($telegramUserId, $telegramId, $plan),
+            'routebox' => $this->provisionRoutebox($telegramUserId, $telegramId, $plan),
             default => throw new RuntimeException('ارائه‌دهنده این سرویس هنوز برای ربات فعال نشده است.'),
         };
     }
@@ -57,8 +59,6 @@ final class ServiceProvisioner
             throw new RuntimeException('گروه IBSng این پلن در RouteBox پیدا نشد.');
         }
 
-        // Keep credentials unique and easy to type. The IBSng group is the
-        // source of service/charge rules; initial credit is intentionally 0.
         $suffix = strtolower(bin2hex(random_bytes(3)));
         $username = 'rb' . preg_replace('/[^0-9]/', '', $telegramId) . $suffix;
         $username = substr($username, 0, 32);
@@ -75,8 +75,9 @@ final class ServiceProvisioner
         );
 
         $now = time();
-        $days = max(0, (int)$plan['duration_days']);
-        $expires = $days > 0 ? $now + ($days * 86400) : null;
+        // IBSng group settings own the actual duration/quota. Keep the local
+        // catalog fields at zero and therefore do not invent an expiry here.
+        $expires = null;
         $meta = [
             'protocols' => ['openvpn', 'cisco', 'l2tp'],
             'group_name' => $groupName,
@@ -116,6 +117,88 @@ final class ServiceProvisioner
             'password' => $password,
             'user_id' => (string)$created['user_id'],
             'expires_at' => $expires,
+        ];
+    }
+
+    private function provisionRoutebox(int $telegramUserId, string $telegramId, array $plan): array
+    {
+        $meta = json_decode((string)($plan['metadata_json'] ?? '{}'), true);
+        $legacyPlanId = is_array($meta) ? (int)($meta['legacy_plan_id'] ?? 0) : 0;
+        if ($legacyPlanId < 1) {
+            throw new RuntimeException('تنظیمات پلن RouteBox کامل نیست.');
+        }
+
+        $q = $this->db->prepare('SELECT * FROM plans WHERE id=? AND enabled=1');
+        $q->execute([$legacyPlanId]);
+        $legacy = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$legacy) {
+            throw new RuntimeException('این پلن RouteBox دیگر فعال نیست.');
+        }
+
+        $servers = $this->db->query('SELECT * FROM routebox_servers WHERE enabled=1 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+        if (!$servers) {
+            throw new RuntimeException('هیچ RouteBox فعالی تنظیم نشده است.');
+        }
+
+        $seconds = max(1, (int)$legacy['duration_days']) * 86400;
+        $quota = null;
+        $gb = (float)$legacy['quota_gb'];
+        if ($gb > 0) {
+            $quota = (int)round($gb * 1024 * 1024 * 1024);
+        }
+
+        $expires = time() + $seconds;
+        $peer = 'user' . $telegramId . '-' . bin2hex(random_bytes(3));
+        $created = [];
+        $out = [];
+
+        try {
+            foreach ($servers as $server) {
+                $client = new \RouteBoxClient(
+                    (string)$server['base_url'],
+                    dec((string)$server['user_enc']),
+                    dec((string)$server['pass_enc']),
+                    (bool)$server['verify_tls']
+                );
+                $createdPeer = $client->createPeer($peer);
+                $key = (string)($createdPeer['public_key'] ?? $createdPeer['publicKey'] ?? '');
+                if ($key === '') {
+                    throw new RuntimeException('RouteBox public key was not returned.');
+                }
+                $created[] = [$client, $key];
+                $client->setExpiry($key, $expires, $quota);
+                $conf = $client->config($key);
+
+                $st = $this->db->prepare('INSERT INTO provisions(telegram_user_id,server_id,peer_name,public_key,expires_at,created_at) VALUES(?,?,?,?,?,?)');
+                $st->execute([$telegramUserId, $server['id'], $peer, $key, $expires, time()]);
+
+                $out[] = [
+                    'provision_id' => (int)$this->db->lastInsertId(),
+                    'server' => (string)$server['name'],
+                    'conf' => $conf,
+                    'expires' => $expires,
+                    'plan' => (string)$legacy['name'],
+                    'public_key' => $key,
+                ];
+            }
+        } catch (\Throwable $e) {
+            foreach ($created as [$client, $key]) {
+                try {
+                    $client->deletePeer($key);
+                } catch (\Throwable $rollbackError) {
+                    log_event('error', 'Provision rollback failed: ' . $rollbackError->getMessage());
+                }
+            }
+            throw $e;
+        }
+
+        log_event('info', 'Provisioned ' . $telegramId . ' with RouteBox plan ' . $legacy['name']);
+        return [
+            'provider' => 'routebox',
+            'plan_name_fa' => (string)$plan['display_name_fa'],
+            'plan_name_en' => (string)$plan['display_name_en'],
+            'expires_at' => $expires,
+            'items' => $out,
         ];
     }
 }
