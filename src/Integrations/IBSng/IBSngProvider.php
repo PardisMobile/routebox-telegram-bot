@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace RouteBox\Integrations\IBSng;
@@ -6,7 +7,7 @@ namespace RouteBox\Integrations\IBSng;
 use RouteBox\Integrations\ServiceProviderInterface;
 use RuntimeException;
 
-/** IBSng service adapter. Provider-specific RPC details stay in IBSngClient. */
+/** IBSng service adapter. Provider-specific Web Panel details stay in IBSngClient. */
 final class IBSngProvider implements ServiceProviderInterface
 {
     public function __construct(private readonly IBSngClient $client) {}
@@ -15,16 +16,14 @@ final class IBSngProvider implements ServiceProviderInterface
 
     public function testConnection(): void
     {
-        $this->client->listGroups();
+        $this->client->testConnection();
     }
 
     public function listPlans(): array
     {
-        $plans = [];
-        foreach ($this->client->listGroups() as $group) {
-            $plans[] = ['provider_plan_key' => $group, 'name' => $group];
-        }
-        return $plans;
+        // IBSng plans are managed manually by RouteBox. The provider no longer
+        // depends on the slow/broken Group List page to discover plans.
+        return [];
     }
 
     public function createSubscription(array $context, array $plan): array
