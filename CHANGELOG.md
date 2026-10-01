@@ -4,30 +4,43 @@ All notable changes to RouteBox Telegram Bot are documented here.
 
 The repository version is defined by [`VERSION`](./VERSION). Release notes below describe the important user-visible and operational changes for each beta.
 
-## Unreleased — Modular Services Foundation
+## Unreleased — IBSng A1.24 Web Panel Integration
+
+### IBSng
+
+- Switched the development IBSng transport from the unavailable external JSON-RPC `:1237` assumption to the **IBSng A1.24 Free Edition Apache Web Panel**.
+- The adapter authenticates with the existing IBSng Admin username/password at `/IBSng/admin/` and keeps the session in a temporary cookie jar.
+- Added read-only connection testing and Group discovery through the existing Admin Web Panel.
+- Added user lookup by normal/Internet username through the existing A1.24 user-information page.
+- Added test-user creation through the existing A1.24 `add_new_users.php` flow, preserving IBSng Core validation and permissions.
+- No IBSng database access is used.
+- No requirement to expose the A1.24 Core XML-RPC listener on `127.0.0.1:1235` or to open JSON-RPC `:1237`.
+- Product-to-IBSng Group mapping is intentionally designed to be manual (for example `یک ماهه` → `P1`); Group synchronization is used for discovery/verification, not as a requirement for product creation.
+- Username/password assignment, renewal, usage display and full account management remain follow-up tasks after the connection/create/read smoke test.
+
+### Smoke test
+
+- `tools/ibsng-smoke-test.php` now defaults to HTTP port `80` for A1.24.
+- Added `get USERNAME` mode for reading an existing account.
+- Added `create GROUP [ISP] [CREDIT]` mode for creating a controlled test account.
+- The smoke test remains isolated from the production RouteBox installation.
 
 ### Architecture
 
+- Existing RouteBox/WireGuard functionality remains unchanged.
+- IBSng remains an isolated provider under `src/Integrations/IBSng/`.
+- Payment, coupons, Telegram service categories and future MikroTik integration remain separate modules.
+
+### Previous modular foundation
+
 - Added an isolated provider architecture so new service backends can be added without rewriting the existing RouteBox core.
 - Added a generic `ServiceProviderInterface` for provider-neutral service operations.
-- Added an isolated `src/Integrations/IBSng/` module for the future OpenVPN / Cisco / L2TP service.
 - Added an isolated `src/Integrations/Payment/` abstraction for future payment gateways.
 - Added additive database structures for service categories, provider plans, subscriptions, orders, payment providers and coupons without repurposing existing RouteBox tables.
 - Added architecture documentation in `docs/MODULAR_ARCHITECTURE.md`.
 
-### IBSng — planned integration
-
-- IBSng is a separate service category alongside the existing RouteBox/WireGuard service.
-- One IBSng account provides L2TP + OpenVPN + Cisco access rather than three separate accounts.
-- Multiple IBSng servers will be configurable from the Admin Panel using server IP/host, API port, Admin username/password and ISP settings.
-- IBSng groups will be synchronized from the IBSng API and mapped to service plans.
-- User creation, credentials, remaining time/traffic and renewal will use the IBSng Admin JSON-RPC API; direct IBSng database access is not planned.
-- Telegram will keep the existing WireGuard flow and add a separate OpenVPN / Cisco / L2TP category.
-- Free trial is planned as two separate paths: existing RouteBox/WireGuard and IBSng.
-
 ### Orders / Payment / Coupons — planned
 
-- Added the foundation for provider-independent orders and payment gateways.
 - Payment gateways will be pluggable under `src/Integrations/Payment/` so adding a gateway does not require rewriting RouteBox or IBSng provisioning.
 - Coupons will be applied to orders before payment and the final discounted amount will be sent to the selected gateway.
 - Service provisioning will occur only after successful payment verification.
