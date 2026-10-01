@@ -20,8 +20,9 @@ $ibsngLink = <<<'HTML'
 HTML;
 
 if (strpos($html, $navNeedle) !== false && strpos($html, 'class="ibsng-nav"') === false) {
-    $html = str_replace($navNeedle, $navNeedle . "\n" . $ibsngLink, $html, 1);
-    $html = str_replace('</head>', '<style>@media(max-width:800px){.nav{grid-template-columns:repeat(7,minmax(0,1fr))}}</style>\n</head>', $html, 1);
+    $replacement = $navNeedle . "\n" . $ibsngLink;
+    $html = str_replace($navNeedle, $replacement, $html, $count);
+    $html = str_replace('</head>', '<style>@media(max-width:800px){.nav{grid-template-columns:repeat(7,minmax(0,1fr))}}</style>\n</head>', $html, $count);
 }
 
 echo $html;
