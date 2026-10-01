@@ -9,8 +9,9 @@ use RuntimeException;
 /**
  * Thin JSON-RPC client for IBSng's Admin API.
  *
- * This class intentionally knows nothing about RouteBox, Telegram, products,
- * orders or payment. It is the only place that should know IBSng RPC details.
+ * The API port defaults to 1237, matching the standard IBSng JSON-RPC
+ * listener. The port is an advanced/override setting, not a required
+ * user-facing connection field.
  */
 final class IBSngClient
 {
@@ -24,6 +25,11 @@ final class IBSngClient
         if ($this->host === '' || $this->username === '' || $this->password === '') {
             throw new RuntimeException('IBSng connection settings are incomplete.');
         }
+    }
+
+    public static function defaultPort(): int
+    {
+        return 1237;
     }
 
     public function request(string $method, array $params = []): mixed
