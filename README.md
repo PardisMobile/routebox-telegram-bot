@@ -1,407 +1,206 @@
 # 🚀 RouteBox Telegram Bot
 
-> 🤖 Telegram Bot + 🖥️ Independent Web Admin Panel for RouteBox / AmneziaWG
->
-> **Current version: see [`VERSION`](./VERSION) · Status: 🧪 Beta**
->
-> **Version source of truth:** [`VERSION`](./VERSION). The README intentionally does not hard-code a beta number, so documentation cannot become stale after a release.
+Telegram Bot + independent Web Admin Panel for RouteBox / AmneziaWG.
 
-## ✨ What is it?
+**Version:** [`VERSION`](./VERSION) · **Status:** 🧪 Beta
 
-RouteBox Telegram Bot is an independent PHP application for provisioning and managing **AmneziaWG peers** through one or more RouteBox servers.
+**Created and maintained by Amir Taheri.**
 
-RouteBox files and databases are not modified directly. The application talks to RouteBox through its HTTP API and uses the RouteBox-provided configuration for client provisioning.
+## ✨ Current RouteBox features
 
-```text
-📱 Telegram
-    ↓
-🤖 Bot Worker
-    ↓
-🖥️ Admin Panel
-    ↓
-🌐 RouteBox API
-    ↓
-🔐 AmneziaWG
-    ↓
-📄 Client .conf
-```
+- Persian/English Telegram Bot and Admin Panel
+- Multiple RouteBox servers
+- AWG provisioning, expiration and traffic quotas
+- `.conf` delivery
+- Free trial and trial reuse protection
+- Configurable plans, welcome text and Telegram buttons
+- RouteBox API validation + real AWG create/export/delete smoke test
+- Encrypted credentials
+- Admin password recovery/change
+- Software updater
+- Light/Dark Admin Panel
+- Same-port HTTP + HTTPS without taking over RouteBox ports `80/443`
 
-## ✨ Current features
+## 🧩 Modular service architecture
 
-### Telegram Bot
-
-- 🎁 Configurable free trial
-- 👤 Telegram user identity and service status
-- 🌐 Persian / English user experience
-- ✏️ Editable bilingual welcome message
-- 🎛️ Editable bilingual fixed buttons
-- 📦 Dynamic plan/button management
-- 🔑 Automatic AmneziaWG peer creation
-- 🌍 Multi-RouteBox provisioning
-- 🆔 Same logical peer name across enabled servers (`user<telegram_id>`)
-- ⏱️ Expiration management
-- 📊 Traffic quota per plan
-- 📄 Automatic `.conf` delivery
-- 🛡️ Trial reuse protection
-- 🔄 Multi-server rollback attempts after failed provisioning
-- `/start`, `/menu`, `/account`, `/language`
-
-### Admin Panel
-
-- 🇮🇷 Persian / 🇬🇧 English UI
-- 🧭 Responsive sidebar dashboard
-- ☀️🌙 Light/Dark theme with saved preference
-- 🌍 RouteBox server cards with country flag/code
-- 📡 TCP ping/latency display
-- 🗺️ Automatic country detection when country is not configured
-- 🤖 Editable bilingual welcome messages
-- 🎛️ Editable fixed Telegram buttons
-- 📦 Plan creation/editing/enabling/disabling
-- 🔐 Admin password change and CLI recovery
-- 🔄 In-panel software updater
-- 📝 Update/application logs
-- 🧪 RouteBox integration and AWG smoke-test validation
-- 🔐 Encrypted Telegram and RouteBox credentials
-
-### HTTPS / TLS
-
-Beta 7 uses the existing RouteBox panel certificate when it is exported at:
+New providers are **separate integrations**. Existing RouteBox/WireGuard code remains the current working service and is not replaced by IBSng.
 
 ```text
-/etc/routebox/panel-cert/fullchain.pem
-/etc/routebox/panel-cert/key.pem
+src/Integrations/
+├── ServiceProviderInterface.php
+├── IBSng/          ← OpenVPN / Cisco / L2TP
+├── MikroTik/       ← future
+└── Payment/        ← future gateways
 ```
 
-The important rule is that the **Bot keeps its existing public Admin Panel port** and accepts both HTTP and HTTPS on that same port.
+Provider-specific API/provisioning code stays in its own directory. The Admin Panel is the configuration/UI layer.
 
-For example, if the panel port is `8093`:
+### 🔵 IBSng — OpenVPN / Cisco / L2TP
+
+IBSng is a separate service category alongside RouteBox/WireGuard.
+
+**One IBSng account provides L2TP + OpenVPN + Cisco.** They are three access methods for one subscription, not three accounts.
+
+Planned IBSng management:
+
+- Multiple IBSng servers
+- Server IP/host + API port (default `1237`)
+- IBSng Admin username/password with encrypted storage
+- Connection test
+- Real IBSng group synchronization
+- Group → service-plan mapping
+- Create/edit/renew/manage users
+- Remaining time/traffic
+
+Telegram will keep the existing WireGuard category and add:
 
 ```text
-http://SERVER-IP:8093/
-https://ROUTEBOX-DOMAIN:8093/
+🚀 سرویس موردنظر را انتخاب کنید
+
+🟣 WireGuard
+🔵 OpenVPN / Cisco / L2TP
+🎁 دریافت تست رایگان
 ```
 
-The Bot does not take over RouteBox's listener and does not change ports `80` or `443`.
+Free trials will have separate WireGuard and IBSng paths.
 
-Internally the Bot uses:
+### 💳 Orders / Payment / Coupons
+
+Payment is isolated so gateways can be added without rewriting RouteBox or IBSng provisioning.
 
 ```text
-                         ┌── HTTP ───────────────→ PHP
-Client → :8093 → HAProxy┤
-                         └── TLS → stunnel ──────→ PHP
+Product → Order → Coupon → Payment Gateway
+                              ↓
+                       Verified Payment
+                              ↓
+                    Service Provisioning
+                       ├─ RouteBox
+                       └─ IBSng
 ```
 
-The PHP listener and TLS terminator are loopback-only. HAProxy is a **Bot-owned dedicated instance**, not the system HAProxy service.
+Provisioning happens only after successful payment verification. Future gateways live under `src/Integrations/Payment/`.
 
-A systemd timer checks the RouteBox certificate every five minutes and reloads the Bot TLS terminator when the certificate changes.
+### 📣 Telegram administration
 
-## 🧩 RouteBox connection
+Planned separately:
 
-The Bot does not require a separate RouteBox API port. Configure the URL of the RouteBox panel/API listener itself:
+- Broadcast/announcement messages from Admin Panel
+- Queued/rate-limited delivery
+- Service-category management
+- Separate free-trial controls
+- Editable labels/icons/order
 
-```text
-https://panel.example.com:8443
-http://192.0.2.10:8093
-https://panel.example.com
-```
+Telegram inline keyboards do not support arbitrary button background colors. Labels, emoji/icons, order and categories will remain configurable. A Telegram WebApp can be added later for fully custom UI/colors.
 
-The installer accepts a URL with or without a scheme and normalizes it.
+## 📦 Installation
 
-The AmneziaWG UDP listen port is unrelated to the Bot's RouteBox API connection.
-
-## 🔐 RouteBox authentication
-
-The integration uses RouteBox's current session authentication model:
-
-```text
-POST /api/auth/login
-        ↓
-Session Cookie
-        ↓
-Protected API requests
-        ↓
-401 → re-login once → retry
-```
-
-Session cookies remain in process memory and are not stored in SQLite.
-
-## 🧪 RouteBox validation
-
-Before a RouteBox server is accepted, the installer uses the same `RouteBoxClient` used by the Bot and validates the integration, including the real AmneziaWG create/export/delete smoke test.
-
-The temporary smoke-test peer is removed after validation. If validation fails, the server is not saved.
-
-## 📦 Installation — Ubuntu 22.04+
-
-The recommended installation command is:
+Ubuntu 22.04+:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh)
 ```
 
-`install.sh` is the public entrypoint. It downloads and executes the current `install-v2.sh`, performs the final web-panel repair/health check, installs the restricted updater, and then applies the optional RouteBox certificate integration.
+The installer installs required packages including **`qrencode`** for QR-code workflows, validates Telegram and RouteBox, performs the AWG smoke test, installs the Bot/Admin Panel and optionally applies RouteBox TLS.
 
-The installer:
+Existing RouteBox/Apache/Nginx services and ports `80/443` are left alone.
 
-1. Installs required Ubuntu/PHP packages.
-2. Creates the application and SQLite database.
-3. Generates the application encryption key and Admin password on first install.
-4. Validates the Telegram Bot token.
-5. Validates every configured RouteBox server.
-6. Runs the AWG create/export/delete smoke test.
-7. Installs the Telegram worker and independent Admin Panel.
-8. Stores the selected Admin Panel port in `/etc/routebox-telegram-bot/web-port`.
-9. If the RouteBox panel certificate is available, enables same-port HTTP+HTTPS.
-
-### Existing services are left alone
-
-The Bot does **not** install, configure, stop or replace RouteBox, Apache or Nginx on ports `80/443`.
-
-```text
-RouteBox / Apache / Nginx : existing services, untouched
-Bot Admin Panel           : independent service
-Bot TLS frontend          : Bot-owned HAProxy + stunnel on the existing Bot port
-Bot Worker                : routebox-telegram-bot.service
-```
-
-## 🖥️ Admin Panel
-
-The selected port is stored here:
-
-```bash
-cat /etc/routebox-telegram-bot/web-port
-```
-
-First-run credentials:
-
-```text
-Username: admin
-Password: generated during installation
-```
-
-HTTP when TLS is unavailable:
-
-```text
-http://SERVER-IP:<PORT>/
-```
-
-When RouteBox TLS integration is enabled, both are valid on the **same `<PORT>`**:
-
-```text
-http://SERVER-IP:<PORT>/
-https://ROUTEBOX-DOMAIN:<PORT>/
-```
-
-The HTTPS hostname must match the certificate presented by RouteBox.
-
-### Useful service checks
-
-```bash
-sudo systemctl status routebox-telegram-bot.service
-sudo systemctl status routebox-telegram-bot-web@$(cat /etc/routebox-telegram-bot/web-port).service
-sudo systemctl status routebox-telegram-bot-mux.service
-sudo systemctl status routebox-telegram-bot-tls.service
-sudo systemctl status routebox-telegram-bot-tls-sync.timer
-```
-
-## 🔄 HTTPS setup / repair
-
-The integration can be applied or repaired with:
-
-```bash
-cd /opt/routebox-telegram-bot
-sudo bash setup-routebox-tls.sh
-```
-
-It will:
-
-- reuse the RouteBox panel certificate;
-- keep the existing Bot public port unchanged;
-- accept HTTP and HTTPS on that same port;
-- keep PHP and the TLS terminator on loopback;
-- run HTTP and HTTPS health checks before reporting success;
-- never bind `80/443`;
-- never change the RouteBox/Apache/Nginx configuration.
-
-If the RouteBox certificate is not available, the script leaves the HTTP panel running and exits without breaking it.
-
-## 🤖 Telegram Bot
-
-Create the Bot with **@BotFather** using `/newbot` and keep the token private.
-
-Users can use:
-
-```text
-/start
-/menu
-/account
-/language
-```
-
-The Admin Panel controls the bilingual welcome message, fixed buttons and enabled plans.
-
-## 🛒 Plans
-
-Each plan supports:
-
-```text
-Name:       e.g. 30 Days / 50 GB
-Duration:   number of days
-Traffic:    GB
-Traffic=0:  unlimited
-Enabled:    show/hide Telegram button
-```
-
-Payment is **not implemented yet**. Selected plans are provisioned immediately for testing.
-
-## 🌍 Multi-RouteBox
-
-```text
-                  🤖 Bot
-                    │
-        ┌───────────┼───────────┐
-        ▼           ▼           ▼
-   RouteBox #1  RouteBox #2  RouteBox #3
-       AWG          AWG          AWG
-```
-
-For Telegram ID `123456789`, the logical peer name is `user123456789`. Each RouteBox generates its own cryptographic keypair.
-
-## 📄 Client configuration
-
-The Bot requests the real configuration from RouteBox and sends the resulting `.conf` file to the Telegram user. It does not invent the AmneziaWG endpoint.
-
-## 🔄 Updating
-
-### From the Admin Panel
-
-The controlled updater can be run from the **Updates** section. It uses the repository's `VERSION` file as the application version source and reinstalls the required service definitions.
-
-### From the server
-
-```bash
-sudo bash /opt/routebox-telegram-bot/update.sh
-```
-
-The updater restores the optional RouteBox TLS integration when the RouteBox certificate is available.
-
-Update logs:
-
-```text
-/opt/routebox-telegram-bot/storage/logs/admin-update.log
-```
-
-The web user is granted only the fixed updater sudo command; it does not receive general root access.
-
-## 🛠️ Management
-
-```bash
-sudo systemctl status routebox-telegram-bot.service
-sudo journalctl -u routebox-telegram-bot.service -f
-sudo bash /opt/routebox-telegram-bot/update.sh
-sudo bash /opt/routebox-telegram-bot/uninstall.sh
-```
-
-For a broken/blank panel:
-
-```bash
-sudo bash /opt/routebox-telegram-bot/repair-web.sh
-```
-
-## 🗂️ Repository layout
+## 🗂️ Important paths
 
 | Path | Purpose |
 |---|---|
-| `install.sh` | Public one-command installer entrypoint |
-| `install-v2.sh` | Main installation/setup implementation used by `install.sh` |
-| `update.sh` | Full server update and service restoration |
-| `admin-update.sh` | Restricted root wrapper used by the Admin Panel updater |
-| `setup-routebox-tls.sh` | Same-port HTTP+HTTPS integration using RouteBox's certificate |
-| `repair-web.sh` | Admin Panel permission/service repair and health check |
-| `reset-admin-password.php` | Manual Admin password recovery utility |
-| `worker.php` | Telegram Bot worker |
-| `bot.php` | Backward-compatible entrypoint that loads `worker.php` |
-| `src/` | RouteBox API client and application bootstrap |
-| `public/` | Web Admin Panel |
-| `database/schema.sql` | SQLite schema |
-| `systemd/` | Telegram worker service definition |
-| `docs/` | Operational documentation |
-| `VERSION` | **Single source of truth for the application version** |
+| `install.sh` | Public installer |
+| `install-v2.sh` | Main installer implementation |
+| `worker.php` | Telegram worker |
+| `src/` | Core/application code |
+| `src/Integrations/IBSng/` | Isolated IBSng provider |
+| `src/Integrations/Payment/` | Payment abstraction/future gateways |
+| `public/` | Admin Panel |
+| `database/migrations/` | Additive schemas for new modules |
+| `VERSION` | Version source of truth |
 | `CHANGELOG.md` | Release history |
-
-`install-v2.sh` and `bot.php` are **not unused leftovers**: the first is called by `install.sh`, and the second is retained as a compatibility entrypoint.
 
 ## 🗺️ Roadmap
 
-- [x] Telegram Bot foundation
-- [x] Independent Web Admin Panel
-- [x] RouteBox API client
-- [x] Session authentication
-- [x] Multiple RouteBox servers
-- [x] AWG provisioning
-- [x] Expiration
-- [x] Traffic quota per plan
-- [x] `.conf` delivery
-- [x] Encrypted credentials
-- [x] Trial reuse protection
-- [x] Multi-server rollback attempts
-- [x] Interactive installer
-- [x] Telegram validation
-- [x] RouteBox API validation
-- [x] Full AWG create/export/delete smoke test
-- [x] Plan/button manager
-- [x] Server ping + country flag
-- [x] Light/Dark mode
-- [x] Persian/English Admin Panel
-- [x] Persian/English Telegram Bot
-- [x] Editable welcome message and fixed buttons
-- [x] Web password change + CLI recovery
-- [x] Admin Panel software updater
-- [x] Update / uninstall / repair scripts
-- [x] RouteBox certificate reuse for Admin Panel HTTPS
-- [x] Same-port HTTP + HTTPS for the Admin Panel
+### ✅ Completed
 
-### 🔜 Future
+- [x] Telegram Bot + independent Admin Panel
+- [x] RouteBox API/session authentication
+- [x] Multi-RouteBox provisioning
+- [x] AWG provisioning, expiration and traffic quotas
+- [x] `.conf` delivery and trial protection
+- [x] Persian/English Bot + Panel
+- [x] Editable plans/welcome/buttons
+- [x] Admin password recovery
+- [x] Updater / repair / uninstall tooling
+- [x] HTTPS/TLS integration without taking over `80/443`
+- [x] Modular provider/payment architecture foundation
+- [x] Isolated IBSng API client foundation
+- [x] Additive services/orders/payments/coupons schema foundation
+- [x] `qrencode` in installer
 
-- [ ] 💰 Iranian Rial payment gateway
-- [ ] 🪙 Cryptocurrency payment gateway
-- [ ] 🔄 Subscription system
-- [ ] 💳 Payment-gated provisioning
-- [ ] 🌍 Region/server selection
-- [ ] 📊 Usage dashboard
-- [ ] 👨‍💼 Advanced user management
-- [ ] 🔔 Expiration notifications
-- [ ] 🔗 Subscription links / QR workflow
+### 🔵 IBSng
+
+- [ ] IBSng Admin Panel section
+- [ ] Multiple IBSng server management
+- [ ] Encrypted Admin credentials
+- [ ] Connection test
+- [ ] Group synchronization
+- [ ] Group → plan mapping
+- [ ] OpenVPN / Cisco / L2TP Telegram category
+- [ ] One account for all three access methods
+- [ ] Create account after successful purchase
+- [ ] Username/password delivery
+- [ ] Remaining time/traffic
+- [ ] Renewal/edit/delete/account management
+- [ ] Separate IBSng free trial
+
+### 💳 Payment / Orders / Coupons
+
+- [ ] Complete Order lifecycle
+- [ ] Coupon creation, validation, expiry and usage limits
+- [ ] Payment provider management UI
+- [ ] Iranian gateway adapter (e.g. ZarinPal)
+- [ ] Additional gateway adapters
+- [ ] Callback/payment verification
+- [ ] Provision only after verified payment
+- [ ] Payment/Order history
+
+### 📣 Telegram
+
+- [ ] Service-category management UI
+- [ ] Broadcast messages
+- [ ] Queued/rate-limited broadcast delivery
+- [ ] Separate WireGuard/IBSng trial settings
+- [ ] Optional Telegram WebApp for custom colors/UI
+
+### 🔌 Future integrations
+
+- [ ] MikroTik under `src/Integrations/MikroTik/`
+- [ ] More providers as isolated modules
+- [ ] Region/server selection
+- [ ] Usage dashboard
+- [ ] Expiration notifications
+- [ ] Subscription links / QR workflow
+- [ ] Advanced user management
 
 ## 🔐 Security
 
-- 🔒 Telegram tokens and RouteBox credentials use libsodium SecretBox encryption.
-- 🔑 The application key is generated locally and is never committed.
-- 🍪 RouteBox session cookies remain in memory.
-- 🗄️ SQLite and `config/config.php` are outside the public web root.
-- 🛡️ Admin POST actions use CSRF protection.
-- 🔐 The Admin Panel updater uses a dedicated fixed root wrapper instead of general sudo access.
-- 🔒 The PHP backend and TLS terminator are loopback-only when HTTPS integration is enabled.
-- 🚫 Never commit tokens, passwords, private keys or real `.conf` files.
+Credentials are encrypted; RouteBox session cookies stay in memory; SQLite/config are outside the public web root; Admin POST actions use CSRF protection; the updater uses restricted sudo; IBSng uses its Admin API rather than direct database access.
 
-## 🧪 Beta status
+## 🧪 Beta
 
-This repository is currently **Beta**. Always use [`VERSION`](./VERSION) as the authoritative version number.
-
-RouteBox API behavior can change between RouteBox releases. Test the exact RouteBox version installed on your server before enabling real users or paid sales.
+Always use [`VERSION`](./VERSION) as the authoritative version. Test against the exact RouteBox version installed on the target server before real users or paid sales.
 
 ## 📜 Changelog
 
-See [`CHANGELOG.md`](./CHANGELOG.md) for the complete release history, including Beta 2–Beta 8.
+See [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## 👤 Creator
 
-**RouteBox Telegram Bot** is created and maintained by **Amir Taheri**.
-
-Telegram: https://t.me/+918807085399
+**RouteBox Telegram Bot — created and maintained by Amir Taheri.**
 
 © 2026 Amir Taheri
 
 ## 📄 License
 
-The final license is being determined. Review the repository license terms before commercial use or redistribution.
+The final license is being determined. Review repository license terms before commercial use or redistribution.
