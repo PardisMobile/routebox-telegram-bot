@@ -9,11 +9,8 @@ use RuntimeException;
 /**
  * IBSng A1.24 Free Edition Web Panel adapter.
  *
- * This adapter deliberately uses the documented/actual A1.24 Apache Web Panel
- * entry points. The IBSng source shows that /IBSng/admin/index.php accepts
- * username/password and then creates the normal Admin session; the admin pages
- * themselves call IBSng's internal XML-RPC layer. RouteBox therefore does not
- * expose or require IBSng's internal XML-RPC port on the public network.
+ * This adapter deliberately uses the actual A1.24 Apache Web Panel entry
+ * points. RouteBox does not expose or require IBSng's internal XML-RPC port.
  */
 final class IBSngClient
 {
@@ -37,8 +34,7 @@ final class IBSngClient
         }
 
         $scheme = $this->port === 443 ? 'https' : 'http';
-        $this->baseUrl = $scheme . '://' . $this->host . '/'
-            . trim($this->basePath, '/');
+        $this->baseUrl = $scheme . '://' . $this->host . '/' . trim($this->basePath, '/');
 
         $cookie = tempnam(sys_get_temp_dir(), 'routebox_ibsng_');
         if ($cookie === false) {
@@ -70,9 +66,10 @@ final class IBSngClient
         $headers = [
             'Accept: text/html,application/xhtml+xml',
             'Cache-Control: no-cache',
+            'Accept-Encoding: identity',
+            'Connection: close',
         ];
         $options = [
-            CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
             CURLOPT_COOKIEJAR => $this->cookieFile,
@@ -81,6 +78,7 @@ final class IBSngClient
             CURLOPT_TIMEOUT => $this->timeout,
             CURLOPT_USERAGENT => 'RouteBox-IBSng-A1.24/1.0',
             CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_0,
         ];
 
         if ($post !== []) {
@@ -89,23 +87,51 @@ final class IBSngClient
             $options[CURLOPT_HTTPHEADER][] = 'Content-Type: application/x-www-form-urlencoded';
         }
 
+        $responseBody = '';
+        $options[CURLOPT_WRITEFUNCTION] = static function ($ch, string $chunk) use (&$responseBody): int {
+            $responseBody .= $chunk;
+            return strlen($chunk);
+        };
+
         curl_setopt_array($ch, $options);
-        $body = curl_exec($ch);
+
+        $curlResult = curl_exec($ch);
         $error = curl_error($ch);
+        $errno = curl_errno($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        $url = (string)curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+        $effectiveUrl = (string)curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+
         curl_close($ch);
 
-        if ($body === false) {
-            throw new RuntimeException('IBSng connection failed: ' . ($error !== '' ? $error : 'unknown cURL error'));
+        /*
+         * IBSng A1.24 on the legacy Apache/PHP stack can send the complete
+         * response and then leave the HTTP connection open. Preserve the body
+         * already received before libcurl reports CURLE_OPERATION_TIMEDOUT.
+         */
+        if (
+            $errno === CURLE_OPERATION_TIMEDOUT
+            && $code >= 200
+            && $code < 400
+            && $responseBody !== ''
+        ) {
+            $curlResult = true;
         }
+
+        if ($curlResult === false) {
+            throw new RuntimeException(
+                'IBSng connection failed: ' . ($error !== '' ? $error : 'unknown cURL error')
+            );
+        }
+
         if ($code < 200 || $code >= 400) {
-            throw new RuntimeException('IBSng Web Panel HTTP error: ' . $code . ' (' . $url . ')');
+            throw new RuntimeException(
+                'IBSng Web Panel HTTP error: ' . $code . ' (' . $effectiveUrl . ')'
+            );
         }
 
         return [
-            'body' => (string)$body,
-            'url' => $url,
+            'body' => $responseBody,
+            'url' => $effectiveUrl,
             'code' => $code,
         ];
     }
@@ -116,9 +142,6 @@ final class IBSngClient
             return;
         }
 
-        // A1.24's real login entry point is /IBSng/admin/index.php.
-        // It accepts username/password and redirects successful logins to
-        // /IBSng/admin/admin_index.php.
         $response = $this->request('/admin/index.php', [
             'username' => $this->username,
             'password' => $this->password,
@@ -136,9 +159,6 @@ final class IBSngClient
         }
 
         if (!$looksLikeAdmin) {
-            // Some Apache configurations hide the final URL. Verify the
-            // authenticated session explicitly instead of accepting a false
-            // positive from a generic HTTP 200 response.
             $check = $this->request('/admin/admin_index.php');
             $checkBody = $check['body'];
             $stillLogin = stripos($checkBody, 'name="username"') !== false
@@ -183,8 +203,6 @@ final class IBSngClient
         $html = $this->request('/admin/group/group_list.php')['body'];
         $groups = [];
 
-        // A1.24 group_list.tpl renders links exactly as:
-        // /IBSng/admin/group/group_info.php?group_name=<url-encoded-name>
         if (preg_match_all(
             '/group_info\.php\?group_name=([^"&<>\s]+)/i',
             $html,
@@ -204,13 +222,8 @@ final class IBSngClient
     public function getGroupInfo(string $groupName): array
     {
         $this->ensureLogin();
-        $html = $this->request(
-            '/admin/group/group_info.php?group_name=' . rawurlencode($groupName)
-        )['body'];
+        $html = $this->request('/admin/group/group_info.php?group_name=' . rawurlencode($groupName))['body'];
 
-        // The A1.24 template exposes Group ID as visible text rather than a
-        // hidden field, so support both forms and retain the raw HTML for later
-        // expansion of the adapter.
         $groupId = $this->firstMatch(
             "/name=[\"']group_id[\"'][^>]*value=[\"']([^\"']+)[\"']/i",
             $html
@@ -222,19 +235,13 @@ final class IBSngClient
             );
         }
 
-        return [
-            'group_name' => $groupName,
-            'group_id' => $groupId,
-            'html' => $html,
-        ];
+        return ['group_name' => $groupName, 'group_id' => $groupId, 'html' => $html];
     }
 
     public function getUserInfoByUsername(string $username): array
     {
         $this->ensureLogin();
-        $html = $this->request(
-            '/admin/user/user_info.php?normal_username=' . rawurlencode($username)
-        )['body'];
+        $html = $this->request('/admin/user/user_info.php?normal_username=' . rawurlencode($username))['body'];
 
         $plain = $this->textFromHtml($html);
         $loginPage = stripos($html, 'name="username"') !== false
@@ -242,9 +249,7 @@ final class IBSngClient
         if ($loginPage) {
             $this->loggedIn = false;
             $this->ensureLogin();
-            $html = $this->request(
-                '/admin/user/user_info.php?normal_username=' . rawurlencode($username)
-            )['body'];
+            $html = $this->request('/admin/user/user_info.php?normal_username=' . rawurlencode($username))['body'];
             $plain = $this->textFromHtml($html);
         }
 
@@ -255,13 +260,9 @@ final class IBSngClient
             throw new RuntimeException('IBSng user was not found or the Web Panel returned an unexpected page.');
         }
 
-        $result = [
-            'username' => $username,
-            'html' => $html,
-            'text' => $plain,
-        ];
+        $result = ['username' => $username, 'html' => $html, 'text' => $plain];
         if (($uid = $this->firstMatch(
-                "/name=[\"']user_id[\"'][^>]*value=[\"']([^\"']+)[\"']/i",
+            "/name=[\"']user_id[\"'][^>]*value=[\"']([^\"']+)[\"']/i",
             $html
         )) !== null) {
             $result['user_id'] = $uid;
@@ -281,7 +282,6 @@ final class IBSngClient
             'credit_comment' => '',
         ])['body'];
 
-        // add_new_users.php redirects to plugins/edit.php with the new user_id.
         $userId = $this->firstMatch(
             "/(?:name=[\"']user_id[\"']|[?&]user_id=)[^>]*?(?:value=[\"']|[=])([^\"'&<]+)/i",
             $body
