@@ -6,6 +6,11 @@ namespace RouteBox\Integrations\IBSng;
 
 use PDO;
 
+require_once __DIR__ . '/IBSngSchema.php';
+require_once __DIR__ . '/IBSngClient.php';
+require_once __DIR__ . '/IBSngService.php';
+require_once __DIR__ . '/IBSngAdmin.php';
+
 /**
  * IBSng integration entry point.
  *
