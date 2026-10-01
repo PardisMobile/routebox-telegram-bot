@@ -12,6 +12,24 @@ $requestedSection = (string)($_GET['section'] ?? 'dashboard');
 $section = $requestedSection;
 
 /*
+ * IMPORTANT: IBSng POST actions must be handled before index.core.php.
+ * index.core.php has its own POST dispatcher and would otherwise consume the
+ * IBSng form, see an unknown action, and redirect to Dashboard with "Invalid
+ * request". IBSng still uses the same authenticated RouteBox shell and CSRF
+ * helpers from bootstrap; only the POST routing is handled here first.
+ */
+if ($requestedSection === 'ibsng' && (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST')) {
+    require __DIR__ . '/../src/bootstrap.php';
+    require_admin();
+    require_once __DIR__ . '/../src/Integrations/IBSng/IBSngModule.php';
+
+    $ibsng = \RouteBox\Integrations\IBSng\IBSngModule::admin(db());
+    $ibsng->handle($_POST, 'POST');
+    header('Location: /?section=ibsng');
+    exit;
+}
+
+/*
  * Every section must use the existing RouteBox shell. For normal sections we
  * simply pass the request through. For IBSng we render the normal Dashboard
  * shell as a template, then replace only its main content area.
@@ -70,12 +88,6 @@ if ($section !== 'ibsng') {
  * authenticated the admin. IBSngModule is logic-only; it never emits a page.
  */
 $ibsng = IBSngModule::admin(db());
-
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-    $ibsng->handle($_POST, 'POST');
-    header('Location: /?section=ibsng');
-    exit;
-}
 
 $body = IBSngSection::render($ibsng, $lang, csrf_token());
 
