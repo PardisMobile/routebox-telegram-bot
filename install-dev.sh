@@ -8,6 +8,7 @@ set -Eeuo pipefail
 BRANCH="feature/modular-services-ibsng"
 REPO="https://github.com/PardisMobile/routebox-telegram-bot.git"
 APP_DIR="/opt/routebox-telegram-bot-dev"
+IBSNG_API_PORT=1237
 
 say(){ printf '\033[36m▶\033[0m %s\n' "$*"; }
 ok(){ printf '\033[32m✓\033[0m %s\n' "$*"; }
@@ -48,14 +49,18 @@ else
   warn 'qrencode is not installed. Install with: apt-get update && apt-get install -y qrencode'
 fi
 
+say 'IBSng JSON-RPC default API port: 1237 (advanced override supported).'
 say 'Running isolated IBSng smoke-test help check...'
 php tools/ibsng-smoke-test.php 2>&1 | head -n 1 || true
 
 printf '\n\033[32m\033[1mDEV branch is ready.\033[0m\n'
 printf 'Path : %s\n' "$APP_DIR"
 printf 'Branch: %s\n' "$BRANCH"
-printf '\nNext step — test a real IBSng connection:\n'
+printf 'IBSng API default port: %s\n' "$IBSNG_API_PORT"
+printf '\nNext step — test a real IBSng connection (port is optional):\n'
 printf '  cd %s\n' "$APP_DIR"
-printf '  php tools/ibsng-smoke-test.php IBSNG_IP ADMIN_USER ADMIN_PASSWORD [1237]\n'
+printf '  php tools/ibsng-smoke-test.php IBSNG_IP ADMIN_USER ADMIN_PASSWORD\n'
+printf '\nOptional custom API port:\n'
+printf '  php tools/ibsng-smoke-test.php IBSNG_IP ADMIN_USER ADMIN_PASSWORD 1237\n'
 printf '\nThis installer does NOT replace the production installation at /opt/routebox-telegram-bot.\n'
 printf '\033[36mCreated & maintained by Amir Taheri\033[0m\n'
