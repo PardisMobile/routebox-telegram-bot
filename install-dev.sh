@@ -36,6 +36,15 @@ fi
 
 cd "$APP_DIR"
 
+say 'Installing QR-code support (qrencode)...'
+if command -v apt-get >/dev/null 2>&1; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y -qq qrencode >/dev/null
+fi
+command -v qrencode >/dev/null 2>&1 || fail 'qrencode installation failed.'
+ok 'qrencode is installed.'
+
 say 'Checking PHP syntax in modular PHP files...'
 mapfile -t PHP_FILES < <(find src/Integrations tools -type f -name '*.php' -print 2>/dev/null)
 for f in "${PHP_FILES[@]}"; do
@@ -43,11 +52,9 @@ for f in "${PHP_FILES[@]}"; do
 done
 ok 'PHP syntax checks passed.'
 
-if command -v qrencode >/dev/null 2>&1; then
-  ok 'qrencode is installed.'
-else
-  warn 'qrencode is not installed. Install with: apt-get update && apt-get install -y qrencode'
-fi
+say 'Applying the safe IBSng sidebar integration...'
+php tools/patch-ibsng-sidebar.php || fail 'Sidebar patch failed; production installation was not touched.'
+ok 'IBSng sidebar integration prepared.'
 
 say 'IBSng JSON-RPC default API port: 1237 (advanced override supported).'
 say 'Running isolated IBSng smoke-test help check...'
