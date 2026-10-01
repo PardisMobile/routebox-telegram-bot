@@ -5,8 +5,17 @@ declare(strict_types=1);
 // can expose their own UI without duplicating integration logic.
 require __DIR__ . '/../src/bootstrap.php';
 require_admin();
+
+// This module intentionally does not depend on Composer. Load its small provider
+// classes explicitly so the standalone /ibsng.php entry point works on the same
+// PHP installation as the main RouteBox admin panel.
+require_once __DIR__ . '/../src/Integrations/IBSng/IBSngSchema.php';
+require_once __DIR__ . '/../src/Integrations/IBSng/IBSngClient.php';
+require_once __DIR__ . '/../src/Integrations/IBSng/IBSngService.php';
 require_once __DIR__ . '/../src/Integrations/IBSng/IBSngAdmin.php';
 
+// Creating the service also guarantees that the IBSng module schema exists
+// before the admin controller reads ibsng_servers / ibsng_groups.
 $admin = new \RouteBox\Integrations\IBSng\IBSngAdmin(db());
 $admin->handle($_POST, $_SERVER['REQUEST_METHOD'] ?? 'GET');
 $data = $admin->viewData();
@@ -29,5 +38,5 @@ body{margin:0;background:#070b16;color:#eef4ff;font-family:-apple-system,BlinkMa
 <div><label>Admin Username</label><input name="username" required autocomplete="username"></div>
 <div><label>Admin Password</label><input type="password" name="password" required autocomplete="new-password"></div>
 </div><p class="muted">IBSng A1.24 Web Panel: HTTP port 80. اتصال از طریق پنل مدیریت انجام می‌شود؛ نیازی به باز کردن 1235 یا 1237 نیست.</p><button>تست و ذخیره</button></form></section>
-<section class="card"><h2>سرورها</h2><?php if (!$data['servers']): ?><p class="muted">هنوز سروری اضافه نشده است.</p><?php else: ?><?php foreach($data['servers'] as $s): ?><div class="card"><strong><?=h((string)$s['name'])?></strong><p class="muted"><?=h((string)$s['host'])?> · Web Panel HTTP :80</p><p>Username: <span class="secret">••••••••</span> &nbsp; Password: <span class="secret">••••••••</span></p><p>Groups: <?php foreach(($s['groups']??[]) as $g): ?><span class="tag"><?=h((string)$g['name'])?></span><?php endforeach; ?></p></div><?php endforeach; ?><?php endif; ?></section>
+<section class="card"><h2>سرورها</h2><?php if (!$data['servers']): ?><p class="muted">هنوز سروری اضافه نشده است.</p><?php else: ?><?php foreach($data['servers'] as $s): ?><div class="card"><strong><?=h((string)$s['name'])?></strong><p class="muted"><?=h((string)$s['host'])?> · Web Panel HTTP :80</p><p>Username: <span class="secret">••••••••</span> &nbsp; Password: <span class="secret">••••••••</span></p><p>Groups: <?php foreach(($s['groups']??[]) as $g): ?><span class="tag"><?=h((string)$g['group_name'])?></span><?php endforeach; ?></p></div><?php endforeach; ?><?php endif; ?></section>
 </main></body></html>
