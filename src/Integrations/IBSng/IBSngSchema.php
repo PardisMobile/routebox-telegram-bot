@@ -38,8 +38,12 @@ final class IBSngSchema
 
         $now = time();
         $st = $db->prepare("INSERT OR IGNORE INTO service_categories(service_key,name_fa,name_en,icon,provider_key,enabled,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?,?)");
-        $st->execute(['routebox','WireGuard','WireGuard','🟣','routebox',10,$now,$now]);
+        $st->execute(['routebox','RouteBox / WireGuard','RouteBox / WireGuard','🟣','routebox',10,$now,$now]);
         $st->execute(['ibsng','OpenVPN / Cisco / L2TP','OpenVPN / Cisco / L2TP','🔵','ibsng',20,$now,$now]);
+        $db->prepare("UPDATE service_categories SET name_fa=?, name_en=?, icon=?, enabled=1, sort_order=?, updated_at=? WHERE service_key='routebox'")
+            ->execute(['RouteBox / WireGuard', 'RouteBox / WireGuard', '🟣', 10, $now]);
+        $db->prepare("UPDATE service_categories SET name_fa=?, name_en=?, icon=?, enabled=1, sort_order=?, updated_at=? WHERE service_key='ibsng'")
+            ->execute(['OpenVPN / Cisco / L2TP', 'OpenVPN / Cisco / L2TP', '🔵', 20, $now]);
 
         // Every manually defined IBSng group is also a generic service plan so
         // the Telegram bot can discover any number of IBSng plans dynamically.
@@ -72,6 +76,60 @@ final class IBSngSchema
                     (int)$group['ibsng_server_id'],
                     (string)$group['group_name'],
                 ]);
+            }
+        }
+
+        // Legacy RouteBox plans are mirrored into the generic service catalog.
+        // The original `plans` table remains the source of truth for existing
+        // RouteBox provisioning, while service_plans provides the modular UI.
+        $routeCat = (int)$db->query("SELECT id FROM service_categories WHERE service_key='routebox'")->fetchColumn();
+        $hasLegacyPlans = (int)$db->query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='plans'")->fetchColumn() > 0;
+        if ($routeCat > 0 && $hasLegacyPlans) {
+            $legacy = $db->query('SELECT id,name,duration_days,quota_gb,enabled,sort_order FROM plans ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
+            $find = $db->prepare("SELECT id FROM service_plans WHERE provider_key='routebox' AND provider_plan_key=? LIMIT 1");
+            $insert = $db->prepare(
+                "INSERT INTO service_plans(category_id,provider_key,provider_server_id,provider_plan_key,display_name_fa,display_name_en,price_minor,duration_days,quota_gb,enabled,sort_order,metadata_json,created_at,updated_at)
+                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            );
+            $update = $db->prepare(
+                "UPDATE service_plans SET category_id=?, display_name_fa=?, display_name_en=?, duration_days=?, quota_gb=?, enabled=?, sort_order=?, metadata_json=?, updated_at=? WHERE id=?"
+            );
+            foreach ($legacy as $plan) {
+                $key = 'routebox:' . (int)$plan['id'];
+                $find->execute([$key]);
+                $existingId = $find->fetchColumn();
+                $meta = json_encode(['legacy_plan_id' => (int)$plan['id']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                if ($existingId !== false) {
+                    $update->execute([
+                        $routeCat,
+                        (string)$plan['name'],
+                        (string)$plan['name'],
+                        (int)$plan['duration_days'],
+                        (float)$plan['quota_gb'],
+                        !empty($plan['enabled']) ? 1 : 0,
+                        (int)$plan['sort_order'],
+                        $meta,
+                        $now,
+                        (int)$existingId,
+                    ]);
+                } else {
+                    $insert->execute([
+                        $routeCat,
+                        'routebox',
+                        null,
+                        $key,
+                        (string)$plan['name'],
+                        (string)$plan['name'],
+                        0,
+                        (int)$plan['duration_days'],
+                        (float)$plan['quota_gb'],
+                        !empty($plan['enabled']) ? 1 : 0,
+                        (int)$plan['sort_order'],
+                        $meta,
+                        $now,
+                        $now,
+                    ]);
+                }
             }
         }
     }
