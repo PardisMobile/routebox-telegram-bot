@@ -12,13 +12,13 @@ The repository version is defined by [`VERSION`](./VERSION). Release notes below
 - Added a generic `ServiceProviderInterface` for provider-neutral service operations.
 - Added an isolated `src/Integrations/IBSng/` module for the future OpenVPN / Cisco / L2TP service.
 - Added an isolated `src/Integrations/Payment/` abstraction for future payment gateways.
-- Added additive database structures for service categories, provider plans, subscriptions, orders, payment providers and coupons without repurposing the existing RouteBox tables.
+- Added additive database structures for service categories, provider plans, subscriptions, orders, payment providers and coupons without repurposing existing RouteBox tables.
 - Added architecture documentation in `docs/MODULAR_ARCHITECTURE.md`.
 
 ### IBSng — planned integration
 
-- IBSng is designed as a separate service category alongside the existing RouteBox/WireGuard service.
-- One IBSng account will provide L2TP + OpenVPN + Cisco access rather than creating three separate accounts.
+- IBSng is a separate service category alongside the existing RouteBox/WireGuard service.
+- One IBSng account provides L2TP + OpenVPN + Cisco access rather than three separate accounts.
 - Multiple IBSng servers will be configurable from the Admin Panel using server IP/host, API port, Admin username/password and ISP settings.
 - IBSng groups will be synchronized from the IBSng API and mapped to service plans.
 - User creation, credentials, remaining time/traffic and renewal will use the IBSng Admin JSON-RPC API; direct IBSng database access is not planned.
@@ -37,6 +37,12 @@ The repository version is defined by [`VERSION`](./VERSION). Release notes below
 - Planned separate broadcast messaging from the Admin Panel for informational and promotional messages.
 - Planned configurable service categories so the existing RouteBox/WireGuard plans remain intact while IBSng services are added alongside them.
 - Standard Telegram button colors are not being added to the core bot because Telegram inline keyboards do not expose arbitrary button background colors; labels, icons, ordering and categories remain configurable.
+
+### Installer / Documentation
+
+- Confirmed `qrencode` as an installer dependency for QR-code workflows in the Admin Panel.
+- Improved the installer presentation with branded status output identifying **Amir Taheri** as the creator/maintainer, while preserving the existing installation and service-isolation logic.
+- Updated README roadmap and future-integration documentation to reflect the modular IBSng, payment, coupon, broadcast and MikroTik plans.
 
 ## 0.1.0-beta.9 — 2026-09-30
 
