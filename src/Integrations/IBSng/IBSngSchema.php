@@ -8,6 +8,17 @@ use PDO;
 
 final class IBSngSchema
 {
+    private static function ensureColumn(PDO $db, string $table, string $column, string $definition): void
+    {
+        $columns = $db->query('PRAGMA table_info(' . $table . ')')->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($columns as $row) {
+            if ((string)($row['name'] ?? '') === $column) {
+                return;
+            }
+        }
+        $db->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $definition);
+    }
+
     public static function ensure(PDO $db): void
     {
         $db->exec("CREATE TABLE IF NOT EXISTS service_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, service_key TEXT UNIQUE NOT NULL, name_fa TEXT NOT NULL, name_en TEXT NOT NULL, icon TEXT NOT NULL DEFAULT '', provider_key TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
@@ -19,7 +30,14 @@ final class IBSngSchema
         $db->exec("CREATE TABLE IF NOT EXISTS payment_providers (id INTEGER PRIMARY KEY AUTOINCREMENT, provider_key TEXT UNIQUE NOT NULL, display_name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, config_json TEXT NOT NULL DEFAULT '{}', sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
         $db->exec("CREATE TABLE IF NOT EXISTS coupons (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE NOT NULL, discount_type TEXT NOT NULL, discount_value INTEGER NOT NULL, max_uses INTEGER NOT NULL DEFAULT 0, used_count INTEGER NOT NULL DEFAULT 0, per_user_limit INTEGER NOT NULL DEFAULT 1, min_amount_minor INTEGER NOT NULL DEFAULT 0, starts_at INTEGER, expires_at INTEGER, enabled INTEGER NOT NULL DEFAULT 1, metadata_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
         $db->exec("CREATE TABLE IF NOT EXISTS coupon_redemptions (id INTEGER PRIMARY KEY AUTOINCREMENT, coupon_id INTEGER NOT NULL, telegram_user_id INTEGER NOT NULL, order_id INTEGER NOT NULL, discount_minor INTEGER NOT NULL, created_at INTEGER NOT NULL, UNIQUE(coupon_id, telegram_user_id, order_id), FOREIGN KEY(coupon_id) REFERENCES coupons(id) ON DELETE CASCADE, FOREIGN KEY(telegram_user_id) REFERENCES telegram_users(id) ON DELETE CASCADE, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE)");
-        $now=time();$st=$db->prepare("INSERT OR IGNORE INTO service_categories(service_key,name_fa,name_en,icon,provider_key,enabled,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?,?)");
+
+        // Manual IBSng plan/group mapping. Existing installations are upgraded
+        // in-place without dropping their current groups.
+        self::ensureColumn($db, 'ibsng_groups', 'plan_name', "TEXT NOT NULL DEFAULT ''");
+        $db->exec("UPDATE ibsng_groups SET plan_name=group_name WHERE plan_name='' OR plan_name IS NULL");
+
+        $now = time();
+        $st = $db->prepare("INSERT OR IGNORE INTO service_categories(service_key,name_fa,name_en,icon,provider_key,enabled,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?,?)");
         $st->execute(['routebox','WireGuard','WireGuard','🟣','routebox',10,$now,$now]);
         $st->execute(['ibsng','OpenVPN / Cisco / L2TP','OpenVPN / Cisco / L2TP','🔵','ibsng',20,$now,$now]);
     }
