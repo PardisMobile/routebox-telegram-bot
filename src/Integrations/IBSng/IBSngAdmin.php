@@ -44,7 +44,6 @@ final class IBSngAdmin
                     throw new RuntimeException('پورت IBSng باید 80 یا 443 باشد.');
                 }
 
-                // Connection testing is deliberately independent from Group List.
                 $client = new IBSngClient($host, $username, $password, $port);
                 $client->testConnection();
 
@@ -125,7 +124,7 @@ final class IBSngAdmin
                     (string)($post['plan_name'] ?? ''),
                     (string)($post['group_name'] ?? '')
                 );
-                $_SESSION['ibsng_flash'] = '✓ پلن و گروه IBSng اضافه شد.';
+                $_SESSION['ibsng_flash'] = '✓ پلن و گروه IBSng اضافه شد و برای ربات فعال شد.';
                 $_SESSION['ibsng_error'] = false;
             } elseif ($action === 'update_group') {
                 $this->service->updateGroup(
@@ -135,9 +134,13 @@ final class IBSngAdmin
                 );
                 $_SESSION['ibsng_flash'] = '✓ پلن و نام گروه IBSng به‌روزرسانی شد.';
                 $_SESSION['ibsng_error'] = false;
+            } elseif ($action === 'toggle_group') {
+                $this->service->toggleGroup((int)($post['id'] ?? 0));
+                $_SESSION['ibsng_flash'] = '✓ وضعیت نمایش پلن در ربات تغییر کرد.';
+                $_SESSION['ibsng_error'] = false;
             } elseif ($action === 'delete_group') {
                 $this->service->deleteGroup((int)($post['id'] ?? 0));
-                $_SESSION['ibsng_flash'] = '✓ گروه IBSng حذف شد.';
+                $_SESSION['ibsng_flash'] = '✓ گروه IBSng و پلن ربات حذف شد.';
                 $_SESSION['ibsng_error'] = false;
             } else {
                 throw new RuntimeException('عملیات IBSng ناشناخته است.');
