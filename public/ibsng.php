@@ -20,14 +20,14 @@ body{margin:0;background:#070b16;color:#eef4ff;font-family:-apple-system,BlinkMa
 </style>
 </head>
 <body><main class="wrap">
-<a class="back" href="/?section=dashboard">← بازگشت به RouteBox Admin</a>
-<h1>🔌 مدیریت IBSng</h1><p class="muted">اتصال و مدیریت مستقل IBSng — بدون دستکاری هسته RouteBox</p>
+<a class="back" href="/">← بازگشت به RouteBox Admin</a>
+<h1>🔌 مدیریت IBSng</h1><p class="muted">اتصال و مدیریت مستقل IBSng A1.24 — از طریق Web Panel، بدون دستکاری هسته RouteBox</p>
 <?php if (!empty($data['flash'])): ?><div class="card <?=!empty($data['error'])?'err':'ok'?>"><?=h((string)$data['flash'])?></div><?php endif; ?>
 <section class="card"><h2>افزودن سرور IBSng</h2><form method="post"><input type="hidden" name="action" value="add_server"><div class="row">
 <div><label>نام</label><input name="name" required maxlength="80"></div>
 <div><label>IP / Host</label><input name="host" required></div>
 <div><label>Admin Username</label><input name="username" required autocomplete="username"></div>
 <div><label>Admin Password</label><input type="password" name="password" required autocomplete="new-password"></div>
-</div><p class="muted">پورت API پیش‌فرض: 1237 — فقط در تنظیمات پیشرفته قابل تغییر است.</p><button>تست و ذخیره</button></form></section>
-<section class="card"><h2>سرورها</h2><?php if (!$data['servers']): ?><p class="muted">هنوز سروری اضافه نشده است.</p><?php else: ?><?php foreach($data['servers'] as $s): ?><div class="card"><strong><?=h((string)$s['name'])?></strong><p class="muted"><?=h((string)$s['host'])?> · API <?=h((string)$s['api_port'])?></p><p>Username: <span class="secret">••••••••</span> &nbsp; Password: <span class="secret">••••••••</span></p><p>Groups: <?php foreach(($s['groups']??[]) as $g): ?><span class="tag"><?=h((string)$g['name'])?></span><?php endforeach; ?></p></div><?php endforeach; ?><?php endif; ?></section>
+</div><p class="muted">IBSng A1.24 Web Panel: HTTP port 80. اتصال از طریق پنل مدیریت انجام می‌شود؛ نیازی به باز کردن 1235 یا 1237 نیست.</p><button>تست و ذخیره</button></form></section>
+<section class="card"><h2>سرورها</h2><?php if (!$data['servers']): ?><p class="muted">هنوز سروری اضافه نشده است.</p><?php else: ?><?php foreach($data['servers'] as $s): ?><div class="card"><strong><?=h((string)$s['name'])?></strong><p class="muted"><?=h((string)$s['host'])?> · Web Panel HTTP :80</p><p>Username: <span class="secret">••••••••</span> &nbsp; Password: <span class="secret">••••••••</span></p><p>Groups: <?php foreach(($s['groups']??[]) as $g): ?><span class="tag"><?=h((string)$g['name'])?></span><?php endforeach; ?></p></div><?php endforeach; ?><?php endif; ?></section>
 </main></body></html>
