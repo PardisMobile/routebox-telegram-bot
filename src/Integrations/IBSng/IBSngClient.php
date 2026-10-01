@@ -186,7 +186,7 @@ final class IBSngClient
         // A1.24 group_list.tpl renders links exactly as:
         // /IBSng/admin/group/group_info.php?group_name=<url-encoded-name>
         if (preg_match_all(
-            '/group_info\\.php\\?group_name=([^"\\'&<>\\s]+)/i',
+            '/group_info\.php\?group_name=([^"&<>\s]+)/i',
             $html,
             $matches
         )) {
@@ -212,12 +212,12 @@ final class IBSngClient
         // hidden field, so support both forms and retain the raw HTML for later
         // expansion of the adapter.
         $groupId = $this->firstMatch(
-            '/name=["\\']group_id["\\'][^>]*value=["\\']([^"\\']+)["\\']/i',
+            "/name=[\"']group_id[\"'][^>]*value=[\"']([^\"']+)[\"']/i",
             $html
         );
         if ($groupId === null) {
             $groupId = $this->firstMatch(
-                '/(?:Group\\s+ID|group_id)\\s*(?:<[^>]+>\\s*)+([0-9]+)/i',
+                '/(?:Group\s+ID|group_id)\s*(?:<[^>]+>\s*)+([0-9]+)/i',
                 $html
             );
         }
@@ -261,7 +261,7 @@ final class IBSngClient
             'text' => $plain,
         ];
         if (($uid = $this->firstMatch(
-            '/name=["\\']user_id["\\'][^>]*value=["\\']([^"\\']+)["\\']/i',
+                "/name=[\"']user_id[\"'][^>]*value=[\"']([^\"']+)[\"']/i",
             $html
         )) !== null) {
             $result['user_id'] = $uid;
@@ -283,7 +283,7 @@ final class IBSngClient
 
         // add_new_users.php redirects to plugins/edit.php with the new user_id.
         $userId = $this->firstMatch(
-            '/(?:name=["\\']user_id["\\']|[?&]user_id=)[^>]*?(?:value=["\\']|[=])([^"\\'&<]+)/i',
+            "/(?:name=[\"']user_id[\"']|[?&]user_id=)[^>]*?(?:value=[\"']|[=])([^\"'&<]+)/i",
             $body
         );
         if ($userId === null) {
