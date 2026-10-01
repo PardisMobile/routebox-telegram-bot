@@ -8,17 +8,23 @@ declare(strict_types=1);
  * There is intentionally no standalone public/ibsng.php page.
  */
 
-$section = (string)($_GET['section'] ?? 'dashboard');
+$requestedSection = (string)($_GET['section'] ?? 'dashboard');
+$section = $requestedSection;
 
 /*
  * Every section must use the existing RouteBox shell. For normal sections we
  * simply pass the request through. For IBSng we render the normal Dashboard
  * shell as a template, then replace only its main content area.
+ *
+ * IMPORTANT: index.core.php uses the variable name $section itself. Because
+ * PHP includes execute in the current scope, its value would otherwise leak
+ * back here as "dashboard" and IBSng would never reach its renderer.
  */
-if ($section !== 'ibsng') {
+if ($requestedSection !== 'ibsng') {
     ob_start();
     require __DIR__ . '/index.core.php';
     $html = (string)ob_get_clean();
+    $section = $requestedSection;
 } else {
     $originalGet = $_GET;
     $_GET['section'] = 'dashboard';
@@ -26,6 +32,7 @@ if ($section !== 'ibsng') {
     require __DIR__ . '/index.core.php';
     $html = (string)ob_get_clean();
     $_GET = $originalGet;
+    $section = $requestedSection;
 }
 
 require_once __DIR__ . '/../src/Integrations/IBSng/IBSngModule.php';
@@ -81,19 +88,24 @@ $subtitleEsc = htmlspecialchars($subtitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
 
 /* Make the existing RouteBox topbar describe the active IBSng section. */
 $html = preg_replace(
-    '~(<header class="topbar">.*?<div><div class="eyebrow">.*?</div><h1>).*?(</h1><p>).*?(</p>)~s',
-    '$1' . $titleEsc . '$2' . $subtitleEsc . '$3',
+    '~(<header class="topbar">.*?<div><div class="eyebrow">).*?(</div><h1>).*?(</h1><p>).*?(</p>)~s',
+    '$1ROUTEBOX TELEGRAM BOT$2' . $titleEsc . '$3' . $subtitleEsc . '$4',
     $html,
     1
 ) ?? $html;
 
-/* The Dashboard shell is only a template; replace its entire main content. */
-$html = preg_replace(
-    '~(</header>).*?(<div class="footer">)~s',
-    '$1' . $body . '$2',
-    $html,
-    1
-) ?? $html;
+/*
+ * The shell is rendered by index.core.php, but its main content is generated
+ * for Dashboard. Replace only everything after the topbar and before the
+ * existing footer. Use exact string positions instead of a broad regex so a
+ * small markup change in another section cannot make this silently fail.
+ */
+$headerEnd = strpos($html, '</header>');
+$footerStart = strpos($html, '<div class="footer">', $headerEnd === false ? 0 : $headerEnd);
+if ($headerEnd !== false && $footerStart !== false && $footerStart > $headerEnd) {
+    $contentStart = $headerEnd + strlen('</header>');
+    $html = substr($html, 0, $contentStart) . "\n\n" . $body . "\n\n" . substr($html, $footerStart);
+}
 
 /* The template was generated as Dashboard; IBSng must be the only active item. */
 $html = preg_replace_callback(
