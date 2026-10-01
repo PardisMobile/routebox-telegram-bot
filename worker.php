@@ -130,17 +130,6 @@ function provision(int $uid, string $tgid, ?int $planId = null): array
     return $out;
 }
 
-function routeboxPlanButtons(): array
-{
-    $ps = db()->query('SELECT id,name,duration_days,quota_gb FROM plans WHERE enabled=1 ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
-    $o = [];
-    foreach ($ps as $p) {
-        $q = (float)$p['quota_gb'] > 0 ? rtrim(rtrim(number_format((float)$p['quota_gb'], 1, '.', ''), '0'), '.') . 'GB' : '∞';
-        $o[] = [['text' => '🚀 ' . $p['name'] . ' • ' . $p['duration_days'] . ' روز • ' . $q, 'callback_data' => 'plan:' . $p['id']]];
-    }
-    return $o;
-}
-
 function modularCategoryButtons(string $lang): array
 {
     $catalog = new ServiceCatalog(db());
@@ -158,11 +147,7 @@ function menu(string $token, $chat, int $uid): void
 {
     $l = langFor($uid);
     $b = buttons($l);
-    $k = routeboxPlanButtons();
-    foreach (modularCategoryButtons($l) as $row) $k[] = $row;
-    $k[] = [
-        ['text' => $b['trial'] ?? ($l === 'fa' ? '🎁 تست رایگان' : '🎁 Free trial'), 'callback_data' => 'trial'],
-    ];
+    $k = modularCategoryButtons($l);
     $k[] = [
         ['text' => '📋 ' . ($l === 'fa' ? 'سرویس‌های من' : 'My services'), 'callback_data' => 'services'],
         ['text' => $b['language'] ?? '🌐 Language', 'callback_data' => 'language'],
@@ -180,31 +165,47 @@ function sendCategoryPlans(string $token, $chat, int $uid, int $categoryId): voi
     $plans = $catalog->plans($categoryId);
     if (!$plans) throw new RuntimeException('برای این سرویس هنوز پلنی تعریف نشده است.');
     $name = $l === 'fa' ? (string)$category['name_fa'] : (string)$category['name_en'];
-    $text = ($l === 'fa' ? '🔵 ' : '🔵 ') . $name . "\n\n" . ($l === 'fa' ? 'پلن موردنظر را انتخاب کنید:' : 'Choose a plan:');
+    $icon = trim((string)($category['icon'] ?? ''));
+    $text = ($icon !== '' ? $icon . ' ' : '') . $name . "\n\n" . ($l === 'fa' ? 'پلن موردنظر را انتخاب کنید:' : 'Choose a plan:');
     $k = [];
     foreach ($plans as $p) {
         $days = (int)$p['duration_days'];
+        $quota = (float)$p['quota_gb'] > 0
+            ? rtrim(rtrim(number_format((float)$p['quota_gb'], 1, '.', ''), '0'), '.') . 'GB'
+            : '∞';
         $price = (int)$p['price_minor'];
         $priceText = $price > 0 ? ' • ' . number_format($price) . ' IRR' : '';
         $duration = $days > 0 ? $days . ($l === 'fa' ? ' روز' : ' days') : '';
         $label = ($l === 'fa' ? (string)$p['display_name_fa'] : (string)$p['display_name_en']);
         if ($duration !== '') $label .= ' • ' . $duration;
-        $label .= $priceText;
+        $label .= ' • ' . $quota . $priceText;
         $k[] = [['text' => '🛒 ' . $label, 'callback_data' => 'svcplan:' . (int)$p['id']]];
+    }
+    if ((string)$category['service_key'] === 'routebox') {
+        $k[] = [['text' => $l === 'fa' ? '🎁 دریافت تست رایگان' : '🎁 Get free trial', 'callback_data' => 'trial']];
     }
     $k[] = [['text' => $l === 'fa' ? '↩️ بازگشت' : '↩️ Back', 'callback_data' => 'menu']];
     tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
 }
 
-function sendIbsngPurchase(string $token, $chat, int $uid, string $tgid, int $planId): void
+function sendServicePurchase(string $token, $chat, int $uid, string $tgid, int $planId): void
 {
     $provisioner = new ServiceProvisioner(db());
     $r = $provisioner->provision($uid, $tgid, $planId);
     $l = langFor($uid);
-    $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : ($l === 'fa' ? 'طبق قوانین گروه IBSng' : 'According to IBSng group rules');
-    $text = $l === 'fa'
-        ? "✅ سرویس IBSng فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n🖥️ سرور: {$r['server_name']}\n👥 گروه: {$r['group_name']}\n🔐 نام کاربری: {$r['username']}\n🔑 رمز عبور: {$r['password']}\n🆔 User ID: {$r['user_id']}\n⏱️ اعتبار: {$expiry}\n\n🌐 قابل استفاده برای OpenVPN / Cisco / L2TP"
-        : "✅ IBSng service activated.\n\n📦 Plan: {$r['plan_name_en']}\n🖥️ Server: {$r['server_name']}\n👥 Group: {$r['group_name']}\n🔐 Username: {$r['username']}\n🔑 Password: {$r['password']}\n🆔 User ID: {$r['user_id']}\n⏱️ Validity: {$expiry}\n\n🌐 Usable with OpenVPN / Cisco / L2TP";
+    if (($r['provider'] ?? '') === 'ibsng') {
+        $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : ($l === 'fa' ? 'طبق قوانین گروه IBSng' : 'According to IBSng group rules');
+        $text = $l === 'fa'
+            ? "✅ سرویس IBSng فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n🖥️ سرور: {$r['server_name']}\n👥 گروه: {$r['group_name']}\n🔐 نام کاربری: {$r['username']}\n🔑 رمز عبور: {$r['password']}\n🆔 User ID: {$r['user_id']}\n⏱️ اعتبار: {$expiry}\n\n🌐 قابل استفاده برای OpenVPN / Cisco / L2TP"
+            : "✅ IBSng service activated.\n\n📦 Plan: {$r['plan_name_en']}\n🖥️ Server: {$r['server_name']}\n👥 Group: {$r['group_name']}\n🔐 Username: {$r['username']}\n🔑 Password: {$r['password']}\n🆔 User ID: {$r['user_id']}\n⏱️ Validity: {$expiry}\n\n🌐 Usable with OpenVPN / Cisco / L2TP";
+    } elseif (($r['provider'] ?? '') === 'routebox') {
+        $expiry = date('Y-m-d H:i', (int)$r['expires_at']);
+        $text = $l === 'fa'
+            ? "✅ سرویس RouteBox فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n⏱️ اعتبار تا: {$expiry}\n🟣 WireGuard / RouteBox\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید."
+            : "✅ RouteBox service activated.\n\n📦 Plan: {$r['plan_name_en']}\n⏱️ Valid until: {$expiry}\n🟣 WireGuard / RouteBox\n\n📋 Use My services to get your Config or QR.";
+    } else {
+        throw new RuntimeException('ارائه‌دهنده این سرویس هنوز برای ربات فعال نشده است.');
+    }
     tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '📋 سرویس‌های من' : '📋 My services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
 }
 
@@ -222,7 +223,7 @@ function sendServices(string $token, $chat, int $uid): void
         tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $l === 'fa' ? '📋 سرویس فعال ندارید.' : '📋 No active services.']);
         return;
     }
-    $text = $l === 'fa' ? '📋 سرویس‌های فعال شما:\n\n' : '📋 Your active services:\n\n';
+    $text = $l === 'fa' ? "📋 سرویس‌های فعال شما:\n\n" : "📋 Your active services:\n\n";
     $k = [];
     foreach ($routebox as $i => $r) {
         $text .= '🟣 RouteBox — ' . $r['server_name'] . ' — ' . $r['peer_name'] . ' — ' . date('Y-m-d H:i', (int)$r['expires_at']) . "\n";
@@ -314,6 +315,15 @@ $stored = sget('telegram_token');
 if (!$stored) exit("Telegram token is not configured\n");
 $token = dec($stored);
 @mkdir(__DIR__ . '/storage', 0700, true);
+
+// Telegram getUpdates must have exactly one active consumer. This process lock
+// prevents accidental duplicate workers from processing the same callback.
+$workerLock = fopen(__DIR__ . '/storage/worker.lock', 'c');
+if ($workerLock === false || !flock($workerLock, LOCK_EX | LOCK_NB)) {
+    fwrite(STDERR, "Another worker is already running.\n");
+    exit(0);
+}
+
 $offset = (int)(@file_get_contents(__DIR__ . '/storage/update.offset') ?: 0);
 
 while (true) {
@@ -350,13 +360,10 @@ while (true) {
                 } elseif ($a === 'trial') {
                     provision($uid, (string)$from['id']);
                     tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => langFor($uid) === 'fa' ? '✅ تست رایگان شما فعال شد.' : '✅ Your free trial is active.']);
-                } elseif (str_starts_with($a, 'plan:')) {
-                    provision($uid, (string)$from['id'], (int)substr($a, 5));
-                    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => langFor($uid) === 'fa' ? '✅ پلن RouteBox شما فعال شد.' : '✅ Your RouteBox plan is active.']);
                 } elseif (str_starts_with($a, 'servicecat:')) {
                     sendCategoryPlans($token, $chat, $uid, (int)substr($a, 11));
                 } elseif (str_starts_with($a, 'svcplan:')) {
-                    sendIbsngPurchase($token, $chat, $uid, (string)$from['id'], (int)substr($a, 8));
+                    sendServicePurchase($token, $chat, $uid, (string)$from['id'], (int)substr($a, 8));
                 } elseif (str_starts_with($a, 'service:')) {
                     serviceActions($token, $chat, $uid, (int)substr($a, 8));
                 } elseif (str_starts_with($a, 'ibsservice:')) {
