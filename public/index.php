@@ -15,8 +15,19 @@ if ($section !== 'ibsng') {
     exit;
 }
 
-require __DIR__ . '/../src/bootstrap.php';
-require_admin();
+/*
+ * Build the existing RouteBox shell first. index.core.php loads bootstrap and
+ * authenticates the admin. Do not load bootstrap before it: index.core.php
+ * historically used a plain require, and doing so twice causes a db() redeclare
+ * fatal error on the IBSng section.
+ */
+$originalGet = $_GET;
+$_GET['section'] = 'dashboard';
+ob_start();
+require __DIR__ . '/index.core.php';
+$html = (string)ob_get_clean();
+$_GET = $originalGet;
+
 require_once __DIR__ . '/../src/Integrations/IBSng/IBSngModule.php';
 require_once __DIR__ . '/../src/Integrations/IBSng/IBSngSection.php';
 
@@ -32,15 +43,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     exit;
 }
 
-/* Build the exact existing RouteBox shell using the normal core page. */
-$originalGet = $_GET;
-$_GET['section'] = 'dashboard';
-ob_start();
-require __DIR__ . '/index.core.php';
-$html = (string)ob_get_clean();
-$_GET = $originalGet;
-
-/** Replace the dashboard main-content block while preserving the shell. */
+/** Replace the dashboard content while keeping the exact RouteBox shell. */
 function replaceDashboardContent(string $html, string $body): string
 {
     $stats = strpos($html, '<div class="stats">');
@@ -57,7 +60,7 @@ function replaceDashboardContent(string $html, string $body): string
 $body = IBSngSection::render($ibsng, $lang, csrf_token());
 $html = replaceDashboardContent($html, $body);
 
-/* Replace only the page heading inside the existing RouteBox topbar. */
+/* Update only the existing RouteBox page heading. */
 $title = $lang === 'fa' ? 'مدیریت IBSng' : 'IBSng Management';
 $subtitle = $lang === 'fa'
     ? 'مدیریت اتصال و تنظیمات IBSng از داخل پنل RouteBox'
@@ -71,20 +74,30 @@ $html = preg_replace(
     1
 ) ?? $html;
 
-/* Insert IBSng into the exact same sidebar navigation element used by RouteBox. */
+/* Insert IBSng into the same sidebar navigation used by RouteBox. */
 $ibsngNav = '<a class="active" aria-current="page" href="/?section=ibsng">'
     . '<span class="nav-icon">' . IBSngSection::navIcon() . '</span><span>'
     . IBSngSection::navLabel($lang) . '</span></a>';
 
-$navMarker = '<nav class="nav" aria-label="Main navigation">';
+/* Match the real RouteBox nav by class, not by its aria-label text. */
 if (strpos($html, 'href="/?section=ibsng"') === false) {
-    $html = str_replace($navMarker, $navMarker . $ibsngNav, $html, $navCount);
+    $html = preg_replace(
+        '~(<nav\b[^>]*\bclass="[^"]*\bnav\b[^"]*"[^>]*>)~i',
+        '$1' . $ibsngNav,
+        $html,
+        1
+    ) ?? $html;
 }
 
-/* Make Dashboard non-active on the IBSng page. */
-$html = preg_replace(
-    '~(<a class=")active("[^>]*href="/\?section=dashboard")~',
-    '$1$2',
+/* Dashboard was used only as the shell template; IBSng is the active item. */
+$html = preg_replace_callback(
+    '~<a\b([^>]*)href="/\?section=dashboard"([^>]*)>~i',
+    static function (array $m): string {
+        $attrs = $m[1] . $m[2];
+        $attrs = preg_replace('/\s+class="active"/i', '', $attrs) ?? $attrs;
+        $attrs = preg_replace('/\s+class="active\s+"/i', '', $attrs) ?? $attrs;
+        return '<a' . $attrs . ' href="/?section=dashboard">';
+    },
     $html,
     1
 ) ?? $html;
