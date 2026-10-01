@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 /*
  * RouteBox Admin front controller.
- * Existing RouteBox sections continue to be rendered by index.core.php.
- * IBSng is only an additional section and uses the exact same shell.
+ * IBSng is an additional section rendered inside the exact same RouteBox shell.
+ * There is intentionally no standalone public/ibsng.php page.
  */
 
 $section = (string)($_GET['section'] ?? 'dashboard');
@@ -32,7 +32,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     exit;
 }
 
-/* Render the real RouteBox shell first, then replace only its content area. */
+/*
+ * Build the real RouteBox shell using the existing core page.
+ * We render Dashboard only as the shell source; its content is replaced below.
+ */
 $originalGet = $_GET;
 $_GET['section'] = 'dashboard';
 ob_start();
@@ -40,42 +43,55 @@ require __DIR__ . '/index.core.php';
 $html = (string)ob_get_clean();
 $_GET = $originalGet;
 
-function replaceStatsContent(string $html, string $body): string
+/** Find the matching closing div for a known opening <div>. */
+function matchingDivEnd(string $html, int $start): ?int
 {
-    $start = strpos($html, '<div class="stats">');
-    if ($start === false) return $html;
+    $open = stripos($html, '<div', $start);
+    if ($open !== $start) return null;
 
-    $pos = $start;
     $depth = 0;
+    $pos = $start;
     $length = strlen($html);
+
     while ($pos < $length) {
         $nextOpen = stripos($html, '<div', $pos);
         $nextClose = stripos($html, '</div>', $pos);
-        if ($nextClose === false) return $html;
+        if ($nextClose === false) return null;
 
         if ($nextOpen !== false && $nextOpen < $nextClose) {
             $depth++;
             $gt = strpos($html, '>', $nextOpen);
-            if ($gt === false) return $html;
+            if ($gt === false) return null;
             $pos = $gt + 1;
         } else {
             $depth--;
-            $pos = $nextClose + 6;
-            if ($depth === 0) {
-                $footer = preg_match('~<(?:div|footer)\s+class="footer"~i', $html, $m, PREG_OFFSET_CAPTURE, $pos)
-                    ? $m[0][1]
-                    : strpos($html, '</main>', $pos);
-                if ($footer === false) return $html;
-                return substr($html, 0, $pos) . $body . substr($html, $footer);
-            }
+            $closeEnd = $nextClose + 6;
+            if ($depth === 0) return $closeEnd;
+            $pos = $closeEnd;
         }
     }
-    return $html;
+
+    return null;
+}
+
+/** Replace the dashboard content area while preserving the RouteBox shell. */
+function replaceDashboardContent(string $html, string $body): string
+{
+    $stats = strpos($html, '<div class="stats">');
+    if ($stats === false) return $html;
+
+    $footer = preg_match('~<(?:div|footer)\s+class="footer"~i', $html, $m, PREG_OFFSET_CAPTURE, $stats)
+        ? (int)$m[0][1]
+        : null;
+    if ($footer === null) return $html;
+
+    return substr($html, 0, $stats) . $body . substr($html, $footer);
 }
 
 $body = IBSngSection::render($ibsng, $lang, csrf_token());
-$html = replaceStatsContent($html, $body);
+$html = replaceDashboardContent($html, $body);
 
+/* Replace only the page heading inside the existing RouteBox topbar. */
 $title = $lang === 'fa' ? 'مدیریت IBSng' : 'IBSng Management';
 $subtitle = $lang === 'fa'
     ? 'مدیریت اتصال و تنظیمات IBSng از داخل پنل RouteBox'
@@ -83,25 +99,27 @@ $subtitle = $lang === 'fa'
 $titleEsc = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 $subtitleEsc = htmlspecialchars($subtitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 $html = preg_replace(
-    '~(<header class="topbar">.*?<h1>).*?(</h1>.*?<p>).*?(</p>)~s',
+    '~(<div class="topbar">.*?<h1>).*?(</h1>.*?<p>).*?(</p>)~s',
     '$1' . $titleEsc . '$2' . $subtitleEsc . '$3',
     $html,
     1
 ) ?? $html;
 
-/* Add IBSng to the existing RouteBox sidebar and make it the active item. */
+/* Add IBSng to the same sidebar navigation used by every other section. */
+$nav = '<a class="active" aria-current="page" href="/?section=ibsng">'
+    . '<span class="nav-icon">' . IBSngSection::navIcon() . '</span><span>'
+    . IBSngSection::navLabel($lang) . '</span></a>';
+
+if (strpos($html, 'href="/?section=ibsng"') === false) {
+    $html = preg_replace('~(<nav[^>]*class="[^"]*nav[^"]*"[^>]*>)~i', '$1' . $nav, $html, 1) ?? $html;
+}
+
+/* Make Dashboard non-active on the IBSng page. */
 $html = preg_replace(
-    '~(<a class=")active(" aria-current="page" href="/\?section=dashboard")~',
+    '~(<a class=")active("[^>]*href="/\?section=dashboard")~',
     '$1$2',
     $html,
     1
 ) ?? $html;
-
-$ibsngNav = '<a class="active" aria-current="page" href="/?section=ibsng">'
-    . '<span class="nav-icon">' . IBSngSection::navIcon() . '</span><span>'
-    . IBSngSection::navLabel($lang) . '</span></a>';
-if (strpos($html, 'href="/?section=ibsng"') === false) {
-    $html = str_replace('</nav>', $ibsngNav . '</nav>', $html, $count);
-}
 
 echo $html;
