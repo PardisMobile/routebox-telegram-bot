@@ -17,6 +17,7 @@ The repository version is defined by [`VERSION`](./VERSION). Release notes below
 - Added test-user creation through the existing A1.24 `add_new_users.php` flow, preserving IBSng Core validation and permissions.
 - Added an admin UI for testing connection, syncing Groups, reading an existing User, and creating a controlled test User.
 - The Web Panel port now defaults to `80`; the previous `1237` default has been removed from the IBSng setup UI.
+- Restored the **IBSng** entry in the main Admin Panel sidebar as a separate module entry point, without rewriting the existing RouteBox Admin UI.
 - No IBSng database access is used.
 - No requirement to expose the A1.24 Core XML-RPC listener on `127.0.0.1:1235` or to open JSON-RPC `:1237`.
 - Product-to-IBSng Group mapping is intentionally designed to be manual (for example `یک ماهه` → `P1`); Group synchronization is used for discovery/verification and convenient selection, not as a requirement for product creation.
