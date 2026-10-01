@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace RouteBox\Services;
 
 use PDO;
+use RouteBox\Integrations\IBSng\IBSngSchema;
+
+require_once __DIR__ . '/../Integrations/IBSng/IBSngSchema.php';
 
 /**
  * Generic catalog for services exposed by the Telegram bot.
@@ -15,6 +18,9 @@ final class ServiceCatalog
 {
     public function __construct(private readonly PDO $db)
     {
+        // Keep the catalog schema/data in sync whenever the catalog is used.
+        // This also migrates legacy RouteBox plans into the modular catalog.
+        IBSngSchema::ensure($db);
     }
 
     public function categories(string $providerKey = ''): array
