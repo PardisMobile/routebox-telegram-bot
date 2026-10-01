@@ -8,9 +8,8 @@ use PDO;
 use RuntimeException;
 
 /**
- * Small controller for the IBSng admin screen.
- * Provider logic stays in IBSngService/IBSngClient; this class only maps
- * HTTP form actions to the provider and prepares safe view data.
+ * Controller for the standalone IBSng admin module.
+ * Credentials are always stored encrypted and are never returned to the view.
  */
 final class IBSngAdmin
 {
@@ -24,6 +23,7 @@ final class IBSngAdmin
     public function handle(array $post, string $method): void
     {
         if ($method !== 'POST') return;
+        verify_csrf();
 
         $action = trim((string)($post['action'] ?? ''));
         try {
@@ -33,6 +33,7 @@ final class IBSngAdmin
                 $username = trim((string)($post['username'] ?? ''));
                 $password = (string)($post['password'] ?? '');
                 $port = (int)($post['port'] ?? 80);
+                $ispName = trim((string)($post['isp_name'] ?? 'Main')) ?: 'Main';
 
                 if ($name === '' || $host === '' || $username === '' || $password === '') {
                     throw new RuntimeException('تمام اطلاعات اتصال IBSng الزامی است.');
@@ -41,7 +42,6 @@ final class IBSngAdmin
                     throw new RuntimeException('پورت IBSng باید 80 یا 443 باشد.');
                 }
 
-                // Test the Web Panel before writing credentials to the database.
                 $client = new IBSngClient($host, $username, $password, $port);
                 $groups = $client->listGroups();
 
@@ -56,7 +56,7 @@ final class IBSngAdmin
                     $port,
                     enc($username),
                     enc($password),
-                    'Main',
+                    $ispName,
                     $port === 443 ? 1 : 0,
                     $now,
                     $now,
@@ -66,6 +66,34 @@ final class IBSngAdmin
 
                 $this->syncGroupsForServer($serverId, $groups, $client);
                 $_SESSION['ibsng_flash'] = '✓ اتصال IBSng موفق بود و سرور ذخیره شد. ' . count($groups) . ' گروه شناسایی شد.';
+                $_SESSION['ibsng_error'] = false;
+            } elseif ($action === 'update_server') {
+                $id = (int)($post['id'] ?? 0);
+                $server = $this->service->server($id);
+                $name = trim((string)($post['name'] ?? ''));
+                $host = trim((string)($post['host'] ?? ''));
+                $port = (int)($post['port'] ?? 80);
+                $username = trim((string)($post['username'] ?? ''));
+                $password = (string)($post['password'] ?? '');
+                $ispName = trim((string)($post['isp_name'] ?? ''));
+                if ($name === '' || $host === '') throw new RuntimeException('نام و Host سرور الزامی است.');
+                if (!in_array($port, [80, 443], true)) throw new RuntimeException('پورت IBSng باید 80 یا 443 باشد.');
+
+                $effectiveUser = $username !== '' ? $username : dec((string)$server['admin_user_enc']);
+                $effectivePass = $password !== '' ? $password : dec((string)$server['admin_pass_enc']);
+                $client = new IBSngClient($host, $effectiveUser, $effectivePass, $port);
+                $groups = $client->listGroups();
+
+                $userEnc = $username !== '' ? enc($username) : (string)$server['admin_user_enc'];
+                $passEnc = $password !== '' ? enc($password) : (string)$server['admin_pass_enc'];
+                $now = time();
+                $st = $this->db->prepare(
+                    'UPDATE ibsng_servers SET name=?,host=?,port=?,admin_user_enc=?,admin_pass_enc=?,isp_name=?,verify_tls=?,last_test_at=?,last_error=NULL,updated_at=? WHERE id=?'
+                );
+                $st->execute([$name,$host,$port,$userEnc,$passEnc,$ispName !== '' ? $ispName : (string)$server['isp_name'],$port === 443 ? 1 : 0,$now,$now,$id]);
+                $this->syncGroupsForServer($id, $groups, $client);
+
+                $_SESSION['ibsng_flash'] = '✓ اطلاعات سرور و اتصال با موفقیت به‌روزرسانی شد. ' . count($groups) . ' گروه شناسایی شد.';
                 $_SESSION['ibsng_error'] = false;
             } elseif ($action === 'test_server') {
                 $id = (int)($post['id'] ?? 0);
@@ -89,7 +117,7 @@ final class IBSngAdmin
     public function viewData(): array
     {
         $servers = [];
-        $rows = $this->db->query('SELECT id,name,host,port,enabled,last_test_at,last_error FROM ibsng_servers ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $this->db->query('SELECT id,name,host,port,isp_name,enabled,last_test_at,last_error,created_at,updated_at FROM ibsng_servers ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as $row) {
             $q = $this->db->prepare('SELECT group_name,group_id,enabled,synced_at FROM ibsng_groups WHERE ibsng_server_id=? ORDER BY group_name COLLATE NOCASE');
             $q->execute([(int)$row['id']]);
