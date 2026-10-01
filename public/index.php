@@ -32,10 +32,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     exit;
 }
 
-/*
- * Build the real RouteBox shell using the existing core page.
- * We render Dashboard only as the shell source; its content is replaced below.
- */
+/* Build the exact existing RouteBox shell using the normal core page. */
 $originalGet = $_GET;
 $_GET['section'] = 'dashboard';
 ob_start();
@@ -43,38 +40,7 @@ require __DIR__ . '/index.core.php';
 $html = (string)ob_get_clean();
 $_GET = $originalGet;
 
-/** Find the matching closing div for a known opening <div>. */
-function matchingDivEnd(string $html, int $start): ?int
-{
-    $open = stripos($html, '<div', $start);
-    if ($open !== $start) return null;
-
-    $depth = 0;
-    $pos = $start;
-    $length = strlen($html);
-
-    while ($pos < $length) {
-        $nextOpen = stripos($html, '<div', $pos);
-        $nextClose = stripos($html, '</div>', $pos);
-        if ($nextClose === false) return null;
-
-        if ($nextOpen !== false && $nextOpen < $nextClose) {
-            $depth++;
-            $gt = strpos($html, '>', $nextOpen);
-            if ($gt === false) return null;
-            $pos = $gt + 1;
-        } else {
-            $depth--;
-            $closeEnd = $nextClose + 6;
-            if ($depth === 0) return $closeEnd;
-            $pos = $closeEnd;
-        }
-    }
-
-    return null;
-}
-
-/** Replace the dashboard content area while preserving the RouteBox shell. */
+/** Replace the dashboard main-content block while preserving the shell. */
 function replaceDashboardContent(string $html, string $body): string
 {
     $stats = strpos($html, '<div class="stats">');
@@ -105,13 +71,14 @@ $html = preg_replace(
     1
 ) ?? $html;
 
-/* Add IBSng to the same sidebar navigation used by every other section. */
-$nav = '<a class="active" aria-current="page" href="/?section=ibsng">'
+/* Insert IBSng into the exact same sidebar navigation element used by RouteBox. */
+$ibsngNav = '<a class="active" aria-current="page" href="/?section=ibsng">'
     . '<span class="nav-icon">' . IBSngSection::navIcon() . '</span><span>'
     . IBSngSection::navLabel($lang) . '</span></a>';
 
+$navMarker = '<nav class="nav" aria-label="Main navigation">';
 if (strpos($html, 'href="/?section=ibsng"') === false) {
-    $html = preg_replace('~(<nav[^>]*class="[^"]*nav[^"]*"[^>]*>)~i', '$1' . $nav, $html, 1) ?? $html;
+    $html = str_replace($navMarker, $navMarker . $ibsngNav, $html, $navCount);
 }
 
 /* Make Dashboard non-active on the IBSng page. */
