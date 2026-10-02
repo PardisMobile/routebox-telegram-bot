@@ -116,7 +116,16 @@ final class MikroTikClient
     public function routerInfo(): array
     {
         $rows = $this->request('GET', 'system/resource');
-        return $rows[0] ?? [];
+
+        // RouterOS returns /system/resource as a single JSON object, while
+        // collection endpoints return an array of objects. Keep both forms
+        // compatible so fields such as version/uptime/cpu-load are preserved.
+        if (array_is_list($rows)) {
+            $first = $rows[0] ?? [];
+            return is_array($first) ? $first : [];
+        }
+
+        return $rows;
     }
 
     public function lastRequestLatencyMs(): float
@@ -156,7 +165,11 @@ final class MikroTikClient
     public function dnsSettings(): array
     {
         $rows = $this->request('GET', 'ip/dns');
-        return $rows[0] ?? [];
+        if (array_is_list($rows)) {
+            $first = $rows[0] ?? [];
+            return is_array($first) ? $first : [];
+        }
+        return $rows;
     }
 
     /** @return array<string,mixed> */
