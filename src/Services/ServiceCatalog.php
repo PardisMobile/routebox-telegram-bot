@@ -6,8 +6,10 @@ namespace RouteBox\Services;
 
 use PDO;
 use RouteBox\Integrations\IBSng\IBSngSchema;
+use RouteBox\Integrations\MikroTik\MikroTikSchema;
 
 require_once __DIR__ . '/../Integrations/IBSng/IBSngSchema.php';
+require_once __DIR__ . '/../Integrations/MikroTik/MikroTikSchema.php';
 
 /**
  * Generic catalog for services exposed by the Telegram bot.
@@ -18,9 +20,8 @@ final class ServiceCatalog
 {
     public function __construct(private readonly PDO $db)
     {
-        // Keep the catalog schema/data in sync whenever the catalog is used.
-        // This also migrates legacy RouteBox plans into the modular catalog.
         IBSngSchema::ensure($db);
+        MikroTikSchema::migrate($db);
     }
 
     public function categories(string $providerKey = ''): array
@@ -36,6 +37,10 @@ final class ServiceCatalog
                     OR
                     (c.service_key='ibsng' AND EXISTS (
                         SELECT 1 FROM ibsng_servers isrv WHERE isrv.enabled=1
+                    ))
+                    OR
+                    (c.service_key='mikrotik_wireguard' AND EXISTS (
+                        SELECT 1 FROM mikrotik_servers ms WHERE ms.enabled=1
                     ))
                 )";
         $params = [];
