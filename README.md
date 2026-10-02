@@ -185,6 +185,12 @@ Existing RouteBox/Apache/Nginx services and production ports must remain untouch
 - [x] IBSng group listing through the Web Panel
 - [x] IBSng user lookup by username
 - [x] IBSng test-user creation through the Web Panel
+- [x] End-to-end IBSng account provisioning from Telegram
+- [x] Automatic IBSng Internet Username + password assignment
+- [x] IBSng subscription persistence in service_subscriptions
+- [x] IBSng provider/server/group-aware service provisioning
+- [x] Worker loading of the isolated IBSng client
+- [x] Real IBSng provisioning flow tested successfully
 - [x] Additive services/orders/payments/coupons schema foundation
 - [x] `qrencode` in installer
 
@@ -200,8 +206,8 @@ Existing RouteBox/Apache/Nginx services and production ports must remain untouch
 - [ ] Encrypted Admin credentials in the final settings UI
 - [ ] Manual Group Name mapping per product
 - [ ] OpenVPN / Cisco / L2TP Telegram category
-- [ ] One account for all three access methods
-- [ ] Assign username/password during provisioning
+- [x] One account for all three access methods
+- [x] Assign username/password during provisioning
 - [ ] Remaining time/traffic display
 - [ ] Renewal/edit/delete/account management
 - [ ] Separate IBSng free trial
