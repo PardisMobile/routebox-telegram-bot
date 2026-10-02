@@ -70,7 +70,7 @@ final class MikroTikAdmin
                     $client = $this->client($server);
                     $result = $client->testConnection();
                     $this->db->prepare('UPDATE mikrotik_servers SET last_test_at=?,last_error=NULL,updated_at=? WHERE id=?')->execute([time(),time(),$server['id']]);
-                    $_SESSION['mikrotik_flash'] = '✓ RouterOS ' . (string)($result['router']['version'] ?? 'unknown') . ' connected; WireGuard interfaces: ' . count($result['wireguard_interfaces'] ?? []);
+                    $_SESSION['mikrotik_flash'] = '✓ RouterOS ' . (string)($result['router']['version'] ?? 'unknown') . ' connected; latency ' . (string)($result['latency_ms'] ?? '—') . ' ms; WireGuard interfaces: ' . count($result['wireguard_interfaces'] ?? []);
                     $_SESSION['mikrotik_error'] = false;
                     break;
 
@@ -145,8 +145,12 @@ final class MikroTikAdmin
             $server['interfaces'] = [];
             $server['pools'] = [];
             $server['dns'] = '';
+            $server['router'] = [];
+            $server['latency_ms'] = null;
             try {
                 $client = $this->client($server);
+                $server['router'] = $client->routerInfo();
+                $server['latency_ms'] = $client->lastRequestLatencyMs();
                 $server['interfaces'] = $client->wireguardInterfaces();
                 $server['pools'] = $client->ipPools();
                 $server['dns'] = (string)($client->dnsSettings()['servers'] ?? '');
