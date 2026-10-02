@@ -2,43 +2,28 @@
 
 declare(strict_types=1);
 
-/*
- * RouteBox Admin front controller.
- * IBSng is an additional section rendered inside the exact same RouteBox shell.
- * There is intentionally no standalone public/ibsng.php page.
- */
-
+/* RouteBox Admin front controller. IBSng and MikroTik share the existing shell. */
 $requestedSection = (string)($_GET['section'] ?? 'dashboard');
 $section = $requestedSection;
 
-/*
- * IMPORTANT: IBSng POST actions must be handled before index.core.php.
- * index.core.php has its own POST dispatcher and would otherwise consume the
- * IBSng form, see an unknown action, and redirect to Dashboard with "Invalid
- * request". IBSng still uses the same authenticated RouteBox shell and CSRF
- * helpers from bootstrap; only the POST routing is handled here first.
- */
-if ($requestedSection === 'ibsng' && (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST')) {
+if (in_array($requestedSection, ['ibsng', 'mikrotik'], true) && (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST')) {
     require __DIR__ . '/../src/bootstrap.php';
     require_admin();
-    require_once __DIR__ . '/../src/Integrations/IBSng/IBSngModule.php';
 
-    $ibsng = \RouteBox\Integrations\IBSng\IBSngModule::admin(db());
-    $ibsng->handle($_POST, 'POST');
-    header('Location: /?section=ibsng');
+    if ($requestedSection === 'ibsng') {
+        require_once __DIR__ . '/../src/Integrations/IBSng/IBSngModule.php';
+        $module = \RouteBox\Integrations\IBSng\IBSngModule::admin(db());
+    } else {
+        require_once __DIR__ . '/../src/Integrations/MikroTik/MikroTikModule.php';
+        $module = \RouteBox\Integrations\MikroTik\MikroTikModule::admin(db());
+    }
+    $module->handle($_POST, 'POST');
+    header('Location: /?section=' . rawurlencode($requestedSection));
     exit;
 }
 
-/*
- * Every section must use the existing RouteBox shell. For normal sections we
- * simply pass the request through. For IBSng we render the normal Dashboard
- * shell as a template, then replace only its main content area.
- *
- * IMPORTANT: index.core.php uses the variable name $section itself. Because
- * PHP includes execute in the current scope, its value would otherwise leak
- * back here as "dashboard" and IBSng would never reach its renderer.
- */
-if ($requestedSection !== 'ibsng') {
+/* Every section uses the exact RouteBox Admin shell; special sections replace only the body. */
+if (!in_array($requestedSection, ['ibsng', 'mikrotik'], true)) {
     ob_start();
     require __DIR__ . '/index.core.php';
     $html = (string)ob_get_clean();
@@ -55,50 +40,52 @@ if ($requestedSection !== 'ibsng') {
 
 require_once __DIR__ . '/../src/Integrations/IBSng/IBSngModule.php';
 require_once __DIR__ . '/../src/Integrations/IBSng/IBSngSection.php';
+require_once __DIR__ . '/../src/Integrations/MikroTik/MikroTikModule.php';
+require_once __DIR__ . '/../src/Integrations/MikroTik/MikroTikSection.php';
 
 use RouteBox\Integrations\IBSng\IBSngModule;
 use RouteBox\Integrations\IBSng\IBSngSection;
+use RouteBox\Integrations\MikroTik\MikroTikModule;
+use RouteBox\Integrations\MikroTik\MikroTikSection;
 
 $lang = (string)($_SESSION['panel_lang'] ?? 'fa') === 'en' ? 'en' : 'fa';
 
-/* IBSng is a permanent item in the same RouteBox navigation. */
-$ibsngActive = $section === 'ibsng';
-$ibsngNav = '<a class="' . ($ibsngActive ? 'active' : '') . '"'
-    . ($ibsngActive ? ' aria-current="page"' : '')
-    . ' href="/?section=ibsng">'
-    . '<span class="nav-icon">' . IBSngSection::navIcon() . '</span><span>'
-    . IBSngSection::navLabel($lang) . '</span></a>';
+/* Permanent navigation entries, inserted into the existing sidebar. */
+$navItems = [
+    'ibsng' => '<a class="' . ($section === 'ibsng' ? 'active' : '') . '"' . ($section === 'ibsng' ? ' aria-current="page"' : '') . ' href="/?section=ibsng"><span class="nav-icon">' . IBSngSection::navIcon() . '</span><span>' . IBSngSection::navLabel($lang) . '</span></a>',
+    'mikrotik' => '<a class="' . ($section === 'mikrotik' ? 'active' : '') . '"' . ($section === 'mikrotik' ? ' aria-current="page"' : '') . ' href="/?section=mikrotik"><span class="nav-icon">' . MikroTikSection::navIcon() . '</span><span>' . MikroTikSection::navLabel($lang) . '</span></a>',
+];
 
-if (strpos($html, 'href="/?section=ibsng"') === false) {
-    $html = preg_replace(
-        '~(<nav\b[^>]*\bclass="[^"]*\bnav\b[^"]*"[^>]*>)(.*?)</nav>~is',
-        '$1$2' . $ibsngNav . '</nav>',
-        $html,
-        1
-    ) ?? $html;
+foreach ($navItems as $key => $nav) {
+    if (strpos($html, 'href="/?section=' . $key . '"') === false) {
+        $html = preg_replace(
+            '~(<nav\b[^>]*\bclass="[^"]*\bnav\b[^"]*"[^>]*>)(.*?)</nav>~is',
+            '$1$2' . $nav . '</nav>',
+            $html,
+            1
+        ) ?? $html;
+    }
 }
 
-if ($section !== 'ibsng') {
+if ($section !== 'ibsng' && $section !== 'mikrotik') {
     echo $html;
     exit;
 }
 
-/*
- * Build the IBSng admin object after index.core.php has loaded bootstrap and
- * authenticated the admin. IBSngModule is logic-only; it never emits a page.
- */
-$ibsng = IBSngModule::admin(db());
+if ($section === 'ibsng') {
+    $admin = IBSngModule::admin(db());
+    $body = IBSngSection::render($admin, $lang, csrf_token());
+    $title = $lang === 'fa' ? 'مدیریت IBSng' : 'IBSng Management';
+    $subtitle = $lang === 'fa' ? 'مدیریت اتصال و تنظیمات IBSng از داخل پنل RouteBox' : 'Manage IBSng connectivity and settings from RouteBox Admin';
+} else {
+    $admin = MikroTikModule::admin(db());
+    $body = MikroTikSection::render($admin, $lang, csrf_token());
+    $title = 'MikroTik WireGuard';
+    $subtitle = $lang === 'fa' ? 'مدیریت RouterOS، WireGuard، کاربران و پلن‌ها از داخل پنل RouteBox' : 'Manage RouterOS, WireGuard peers and plans from RouteBox Admin';
+}
 
-$body = IBSngSection::render($ibsng, $lang, csrf_token());
-
-$title = $lang === 'fa' ? 'مدیریت IBSng' : 'IBSng Management';
-$subtitle = $lang === 'fa'
-    ? 'مدیریت اتصال و تنظیمات IBSng از داخل پنل RouteBox'
-    : 'Manage IBSng connectivity and settings from RouteBox Admin';
 $titleEsc = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 $subtitleEsc = htmlspecialchars($subtitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-
-/* Make the existing RouteBox topbar describe the active IBSng section. */
 $html = preg_replace(
     '~(<header class="topbar">.*?<div><div class="eyebrow">).*?(</div><h1>).*?(</h1><p>).*?(</p>)~s',
     '$1ROUTEBOX TELEGRAM BOT$2' . $titleEsc . '$3' . $subtitleEsc . '$4',
@@ -106,12 +93,6 @@ $html = preg_replace(
     1
 ) ?? $html;
 
-/*
- * The shell is rendered by index.core.php, but its main content is generated
- * for Dashboard. Replace only everything after the topbar and before the
- * existing footer. Use exact string positions instead of a broad regex so a
- * small markup change in another section cannot make this silently fail.
- */
 $headerEnd = strpos($html, '</header>');
 $footerStart = strpos($html, '<div class="footer">', $headerEnd === false ? 0 : $headerEnd);
 if ($headerEnd !== false && $footerStart !== false && $footerStart > $headerEnd) {
@@ -119,7 +100,6 @@ if ($headerEnd !== false && $footerStart !== false && $footerStart > $headerEnd)
     $html = substr($html, 0, $contentStart) . "\n\n" . $body . "\n\n" . substr($html, $footerStart);
 }
 
-/* The template was generated as Dashboard; IBSng must be the only active item. */
 $html = preg_replace_callback(
     '~<a\b([^>]*)href="/\?section=dashboard"([^>]*)>~i',
     static function (array $m): string {
