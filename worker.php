@@ -208,6 +208,11 @@ function sendServicePurchase(string $token, $chat, int $uid, string $tgid, int $
         $text = $l === 'fa'
             ? "✅ سرویس RouteBox فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n⏱️ اعتبار تا: {$expiry}\n🟣 WireGuard / RouteBox\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید."
             : "✅ RouteBox service activated.\n\n📦 Plan: {$r['plan_name_en']}\n⏱️ Valid until: {$expiry}\n🟣 WireGuard / RouteBox\n\n📋 Use My services to get your Config or QR.";
+    } elseif (($r['provider'] ?? '') === 'mikrotik_wireguard') {
+        $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
+        $text = $l === 'fa'
+            ? "✅ سرویس MikroTik WireGuard فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n🖥️ سرور: {$r['server_name']}\n👤 نام کاربری: {$r['username']}\n🌐 IP: {$r['assigned_ip']}\n⏱️ اعتبار تا: {$expiry}\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید."
+            : "✅ MikroTik WireGuard service activated.\n\n📦 Plan: {$r['plan_name_en']}\n🖥️ Server: {$r['server_name']}\n👤 Username: {$r['username']}\n🌐 IP: {$r['assigned_ip']}\n⏱️ Valid until: {$expiry}\n\n📋 Use My services to get your Config or QR.";
     } else {
         throw new RuntimeException('ارائه‌دهنده این سرویس هنوز برای ربات فعال نشده است.');
     }
@@ -224,7 +229,10 @@ function sendServices(string $token, $chat, int $uid): void
     $q = db()->prepare('SELECT s.id,s.username,s.expires_at,s.status,p.display_name_fa,p.display_name_en,r.name server_name,s.metadata_json FROM service_subscriptions s JOIN service_plans p ON p.id=s.plan_id JOIN ibsng_servers r ON r.id=s.provider_server_id WHERE s.telegram_user_id=? AND s.provider_key="ibsng" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?) ORDER BY s.created_at DESC,s.id DESC');
     $q->execute([$uid, $now]);
     $ibs = $q->fetchAll(PDO::FETCH_ASSOC);
-    if (!$routebox && !$ibs) {
+    $q = db()->prepare('SELECT s.id,s.username,s.expires_at,s.status,p.display_name_fa,p.display_name_en,r.name server_name,s.metadata_json FROM service_subscriptions s JOIN service_plans p ON p.id=s.plan_id JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?) ORDER BY s.created_at DESC,s.id DESC');
+    $q->execute([$uid, $now]);
+    $mikrotik = $q->fetchAll(PDO::FETCH_ASSOC);
+    if (!$routebox && !$ibs && !$mikrotik) {
         tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $l === 'fa' ? '📋 سرویس فعال ندارید.' : '📋 No active services.']);
         return;
     }
@@ -239,6 +247,15 @@ function sendServices(string $token, $chat, int $uid): void
         $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
         $text .= '🔵 IBSng — ' . $plan . ' — ' . $r['username'] . ' — ' . $expiry . "\n";
         $k[] = [['text' => '⚙️ IBSng · ' . ($i + 1), 'callback_data' => 'ibsservice:' . $r['id']]];
+    }
+    foreach ($mikrotik as $i => $r) {
+        $plan = $l === 'fa' ? $r['display_name_fa'] : $r['display_name_en'];
+        $meta = json_decode((string)$r['metadata_json'], true);
+        if (!is_array($meta)) $meta = [];
+        $ip = (string)($meta['assigned_ip'] ?? '—');
+        $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
+        $text .= '🟢 MikroTik — ' . $r['server_name'] . ' — ' . $ip . ' — ' . $expiry . "\n";
+        $k[] = [['text' => '⚙️ MikroTik · ' . ($i + 1), 'callback_data' => 'mikrotikservice:' . $r['id']]];
     }
     tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
 }
@@ -270,6 +287,69 @@ function ibsngServiceActions(string $token, $chat, int $uid, int $id): void
     $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
     $text = $l === 'fa' ? "🔵 سرویس IBSng\n\n📦 پلن: {$plan}\n🖥️ سرور: {$r['server_name']}\n🔐 نام کاربری: {$r['username']}\n🔑 رمز عبور: {$password}\n⏱️ اعتبار: {$expiry}\n\n🌐 OpenVPN / Cisco / L2TP" : "🔵 IBSng service\n\n📦 Plan: {$plan}\n🖥️ Server: {$r['server_name']}\n🔐 Username: {$r['username']}\n🔑 Password: {$password}\n⏱️ Validity: {$expiry}\n\n🌐 OpenVPN / Cisco / L2TP";
     tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
+}
+
+function mikrotikServiceActions(string $token, $chat, int $uid, int $id): void
+{
+    $l = langFor($uid);
+    $q = db()->prepare('SELECT s.id,s.username,s.expires_at,s.status,p.display_name_fa,p.display_name_en,r.name server_name,s.metadata_json FROM service_subscriptions s JOIN service_plans p ON p.id=s.plan_id JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.id=? AND s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?)');
+    $q->execute([$id, $uid, time()]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) throw new RuntimeException('سرویس MikroTik WireGuard پیدا نشد یا منقضی شده است.');
+    $meta = json_decode((string)$r['metadata_json'], true);
+    if (!is_array($meta)) $meta = [];
+    $ip = (string)($meta['assigned_ip'] ?? '—');
+    $plan = $l === 'fa' ? (string)$r['display_name_fa'] : (string)$r['display_name_en'];
+    $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
+    $text = $l === 'fa'
+        ? "🟢 سرویس MikroTik WireGuard\n\n📦 پلن: {$plan}\n🖥️ سرور: {$r['server_name']}\n👤 نام کاربری: {$r['username']}\n🌐 IP: {$ip}\n⏱️ اعتبار تا: {$expiry}"
+        : "🟢 MikroTik WireGuard service\n\n📦 Plan: {$plan}\n🖥️ Server: {$r['server_name']}\n👤 Username: {$r['username']}\n🌐 IP: {$ip}\n⏱️ Valid until: {$expiry}";
+    $k = [
+        [['text' => $l === 'fa' ? '📄 دریافت Config' : '📄 Get Config', 'callback_data' => 'mkconfig:' . $id], ['text' => $l === 'fa' ? '📷 دریافت QR' : '📷 Get QR', 'callback_data' => 'mkqr:' . $id]],
+        [['text' => $l === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']],
+    ];
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
+}
+
+function sendMikroTikConfig(string $token, $chat, int $uid, int $id): void
+{
+    $q = db()->prepare('SELECT s.*,r.name server_name FROM service_subscriptions s JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.id=? AND s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?)');
+    $q->execute([$id, $uid, time()]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) throw new RuntimeException('سرویس MikroTik WireGuard پیدا نشد یا منقضی شده است.');
+    $meta = json_decode((string)$r['metadata_json'], true);
+    if (!is_array($meta)) $meta = [];
+    $conf = trim((string)($meta['config'] ?? ''));
+    if ($conf === '') throw new RuntimeException('Config سرویس MikroTik در دیتابیس موجود نیست.');
+    $tmp = tempnam(sys_get_temp_dir(), 'mkconf');
+    file_put_contents($tmp, $conf);
+    try {
+        tg($token, 'sendDocument', ['chat_id' => $chat, 'document' => new CURLFile($tmp, 'text/plain', 'MikroTik-WireGuard-' . $r['server_name'] . '.conf'), 'caption' => '📄 ' . $r['server_name'] . ' — WireGuard']);
+    } finally { @unlink($tmp); }
+}
+
+function sendMikroTikQr(string $token, $chat, int $uid, int $id): void
+{
+    $q = db()->prepare('SELECT s.*,r.name server_name FROM service_subscriptions s JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.id=? AND s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?)');
+    $q->execute([$id, $uid, time()]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) throw new RuntimeException('سرویس MikroTik WireGuard پیدا نشد یا منقضی شده است.');
+    $meta = json_decode((string)$r['metadata_json'], true);
+    if (!is_array($meta)) $meta = [];
+    $conf = trim((string)($meta['config'] ?? ''));
+    if ($conf === '') throw new RuntimeException('Config سرویس MikroTik در دیتابیس موجود نیست.');
+    $bin = trim((string)shell_exec('command -v qrencode 2>/dev/null'));
+    if ($bin === '') throw new RuntimeException('qrencode نصب نیست.');
+    $tmp = tempnam(sys_get_temp_dir(), 'mkqr');
+    @unlink($tmp);
+    $proc = proc_open([$bin, '-l', 'L', '-m', '2', '-s', '8', '-o', $tmp], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    if (!is_resource($proc)) throw new RuntimeException('QR generation failed.');
+    fwrite($pipes[0], $conf); fclose($pipes[0]); fclose($pipes[1]); fclose($pipes[2]);
+    $code = proc_close($proc);
+    if ($code !== 0 || !is_file($tmp)) throw new RuntimeException('QR generation failed.');
+    try {
+        tg($token, 'sendPhoto', ['chat_id' => $chat, 'photo' => new CURLFile($tmp, 'image/png', 'MikroTik-WireGuard-QR.png'), 'caption' => '📷 ' . $r['server_name'] . ' — WireGuard']);
+    } finally { @unlink($tmp); }
 }
 
 function sendConfig(string $token, $chat, int $uid, int $id): void
@@ -373,6 +453,12 @@ while (true) {
                     serviceActions($token, $chat, $uid, (int)substr($a, 8));
                 } elseif (str_starts_with($a, 'ibsservice:')) {
                     ibsngServiceActions($token, $chat, $uid, (int)substr($a, 11));
+                } elseif (str_starts_with($a, 'mikrotikservice:')) {
+                    mikrotikServiceActions($token, $chat, $uid, (int)substr($a, 16));
+                } elseif (str_starts_with($a, 'mkconfig:')) {
+                    sendMikroTikConfig($token, $chat, $uid, (int)substr($a, 9));
+                } elseif (str_starts_with($a, 'mkqr:')) {
+                    sendMikroTikQr($token, $chat, $uid, (int)substr($a, 5));
                 } elseif (str_starts_with($a, 'config:')) {
                     sendConfig($token, $chat, $uid, (int)substr($a, 7));
                 } elseif (str_starts_with($a, 'qr:')) {
