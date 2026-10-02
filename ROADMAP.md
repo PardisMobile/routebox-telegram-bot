@@ -95,13 +95,18 @@
 - [ ] Verified-payment-only customer provisioning.
 - [ ] Invoice and payment history.
 
-## 📦 Installer / deployment documentation
+## 📦 Completed — Installer refactor and deployment documentation
 
-- [x] Document `install.sh` as the production user-facing entry point.
-- [x] Document `install-v2.sh` as the production setup implementation used by `install.sh`.
-- [x] Document `install-dev.sh` as the development entry point for `feature/modular-services-ibsng`.
-- [x] Document `install-dev-full.sh` as the isolated development installer implementation.
-- [ ] Improve installer UX further only when it can be done without destabilizing the production installation path.
+- [x] `install.sh` remains the production user-facing entry point.
+- [x] `install-v2.sh` renamed to `installer-core.sh`.
+- [x] `install.sh` updated to download and execute `installer-core.sh`.
+- [x] `install-dev.sh` remains the development entry point for `feature/modular-services-ibsng`.
+- [x] `install-dev-full.sh` remains the full development / IBSng developer setup.
+- [x] Final repository structure contains exactly four installer files.
+- [x] Production installer UX improved with professional/colorful output, clear sections and final installation summary.
+- [x] Installer core UX improved without rewriting the production installation architecture.
+- [x] Existing production ports, systemd services, Worker, Web/Admin Panel and RouteBox installation behavior preserved.
+- [x] README and CHANGELOG updated to the final installer structure.
 
 ## Rules for future development
 
