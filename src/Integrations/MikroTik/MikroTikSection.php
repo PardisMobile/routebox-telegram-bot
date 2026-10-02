@@ -52,7 +52,8 @@ final class MikroTikSection
             $latency=$s['latency_ms'] !== null ? number_format((float)$s['latency_ms'],1).' ms' : '—';
             $status=!empty($s['discovery_error'])?'Connection issue':'Connected';
             $statusClass=!empty($s['discovery_error'])?'err':'';
-            $serverCards .= '<article class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>' . $h($serverName) . '</h2><p dir="ltr">' . $h((string)$s['host']) . ':' . $h((string)$s['api_port']) . ' · ' . (!empty($s['tls_mode'])?'HTTPS REST':'HTTP REST') . '</p></div></div><div class="help '.($statusClass?'err':'').'">'.$h($status).'</div></div>'
+            $statusDot=!empty($s['discovery_error'])?'var(--red)':'var(--green)';
+            $serverCards .= '<article class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>' . $h($serverName) . '</h2><p dir="ltr">' . $h((string)$s['host']) . ':' . $h((string)$s['api_port']) . ' · ' . (!empty($s['tls_mode'])?'HTTPS REST':'HTTP REST') . '</p></div></div><span class="status"><span class="dot" style="background:'.$statusDot.'"></span>'.$h($status).'</span></div>'
                 . '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0">'
                 . '<div style="padding:12px;border:1px solid var(--line);border-radius:12px"><div class="help">Server / RouterOS</div><strong>'.$h($version).'</strong></div>'
                 . '<div style="padding:12px;border:1px solid var(--line);border-radius:12px"><div class="help">Uptime</div><strong dir="ltr">'.$h($uptime).'</strong></div>'
