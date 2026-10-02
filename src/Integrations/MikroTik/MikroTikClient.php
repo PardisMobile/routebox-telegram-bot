@@ -17,6 +17,7 @@ use RuntimeException;
 final class MikroTikClient
 {
     private string $baseUrl;
+    private float $lastRequestMs = 0.0;
 
     public function __construct(
         private readonly string $host,
@@ -67,8 +68,10 @@ final class MikroTikClient
             $options[CURLOPT_POSTFIELDS] = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         }
 
+        $started = microtime(true);
         curl_setopt_array($ch, $options);
         $body = curl_exec($ch);
+        $this->lastRequestMs = round((microtime(true) - $started) * 1000, 1);
         $error = curl_error($ch);
         $errno = curl_errno($ch);
         $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
@@ -95,11 +98,13 @@ final class MikroTikClient
     public function testConnection(): array
     {
         $info = $this->routerInfo();
+        $latency = $this->lastRequestMs;
         $interfaces = $this->wireguardInterfaces();
         return [
             'status' => 'ok',
             'message' => 'RouterOS REST API connection successful.',
             'router' => $info,
+            'latency_ms' => $latency,
             'wireguard_available' => count($interfaces) > 0,
             'wireguard_interfaces' => $interfaces,
             'pools' => $this->ipPools(),
@@ -112,6 +117,11 @@ final class MikroTikClient
     {
         $rows = $this->request('GET', 'system/resource');
         return $rows[0] ?? [];
+    }
+
+    public function lastRequestLatencyMs(): float
+    {
+        return $this->lastRequestMs;
     }
 
     /** @return array<int,array<string,mixed>> */
@@ -152,8 +162,7 @@ final class MikroTikClient
     /** @return array<string,mixed> */
     public function createPeer(array $peer): array
     {
-        $result = $this->request('PUT', 'interface/wireguard/peers', $peer);
-        return $result;
+        return $this->request('PUT', 'interface/wireguard/peers', $peer);
     }
 
     /** @return array<string,mixed> */
