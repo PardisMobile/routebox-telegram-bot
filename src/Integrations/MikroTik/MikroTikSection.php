@@ -7,7 +7,10 @@ namespace RouteBox\Integrations\MikroTik;
 /** Renders MikroTik inside the existing RouteBox Admin shell. */
 final class MikroTikSection
 {
-    public static function navIcon(): string { return '◉'; }
+    public static function navIcon(): string
+    {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2"></rect><path d="M7 17v2"></path><path d="M17 17v2"></path><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle></svg>';
+    }
     public static function navLabel(string $lang): string { return 'MikroTik WireGuard'; }
 
     public static function handlePost(MikroTikAdmin $admin): void
@@ -52,7 +55,7 @@ final class MikroTikSection
         $peers='';
         foreach (($data['peers']??[]) as $p) {
             $action=$p['status']==='active'?'disable_peer':'enable_peer'; $label=$p['status']==='active'?'Disable':'Enable';
-            $peers.='<tr><td><strong>'.$h((string)$p['username']).'</strong></td><td dir="ltr"><code>'.$h((string)$p['assigned_ip']).'</code></td><td>'.$h((string)$p['server_name']).'</td><td>'.$h((string)$p['interface_name']).'</td><td>'.$h((string)$p['status']).'</td><td>'.($p['expires_at']?(int)$p['expires_at']:'—').'</td><td><form method="post"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="'.$action.'"><input type="hidden" name="id" value="'.(int)$p['id'].'"><button class="btn btn-secondary" type="submit">'.$label.'</button></form></td></tr>';
+            $peers.='<tr><td><strong>'.$h((string)$p['username']).'</strong></td><td dir="ltr"><code>'.$h((string)$p['assigned_ip']).'</code></td><td>'.$h((string)$p['server_name']).'</td><td>'.$h((string)$p['interface_name']).'</td><td>'.$h((string)$p['status']).'</td><td>'.$h((string)($p['expires_at'] ?? '—')).'</td><td><form method="post"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="'.$action.'"><input type="hidden" name="id" value="'.(int)$p['id'].'"><button class="btn btn-secondary" type="submit">'.$label.'</button></form></td></tr>';
         }
         if($peers==='')$peers='<tr><td colspan="7" class="help">No RouteBox MikroTik peers yet.</td></tr>';
 
