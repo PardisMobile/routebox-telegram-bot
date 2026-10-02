@@ -1,0 +1,53 @@
+name: One-time Services button fix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch worker
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('worker.php')
+          s = p.read_text(encoding='utf-8')
+
+          old_doc = "tg($token, 'sendDocument', ['chat_id' => $chat, 'document' => new CURLFile($tmp, 'text/plain', 'RouteBox-' . $r['server_name'] . '.conf'), 'caption' => '📄 ' . $r['server_name']]);"
+          new_doc = "tg($token, 'sendDocument', ['chat_id' => $chat, 'document' => new CURLFile($tmp, 'text/plain', 'RouteBox-' . $r['server_name'] . '.conf'), 'caption' => '📄 ' . $r['server_name'], 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => langFor($uid) === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);"
+
+          old_qr = "tg($token, 'sendPhoto', ['chat_id' => $chat, 'photo' => new CURLFile($tmp, 'image/png', 'RouteBox-QR.png'), 'caption' => '📷 ' . $r['server_name'] . ' — AmneziaWG']);"
+          new_qr = "tg($token, 'sendPhoto', ['chat_id' => $chat, 'photo' => new CURLFile($tmp, 'image/png', 'RouteBox-QR.png'), 'caption' => '📷 ' . $r['server_name'] . ' — AmneziaWG', 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => langFor($uid) === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);"
+
+          if old_doc not in s:
+              raise SystemExit('Config sendDocument pattern not found')
+          if old_qr not in s:
+              raise SystemExit('QR sendPhoto pattern not found')
+
+          s = s.replace(old_doc, new_doc, 1).replace(old_qr, new_qr, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Validate PHP
+        run: php -l worker.php
+
+      - name: Commit patch and remove one-time workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/one-time-services-button-fix.yml
+          git add worker.php
+          git commit -m 'fix: add Services button after config and QR'
+          git push
