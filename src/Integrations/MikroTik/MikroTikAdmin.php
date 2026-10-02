@@ -17,9 +17,7 @@ final class MikroTikAdmin
 
     public function handle(array $post, string $method): void
     {
-        if ($method !== 'POST') {
-            return;
-        }
+        if ($method !== 'POST') return;
         verify_csrf();
         $action = trim((string)($post['action'] ?? ''));
         try {
@@ -29,18 +27,13 @@ final class MikroTikAdmin
                     $client = $this->clientFromData($data);
                     $result = $client->testConnection();
                     $interfaces = $result['wireguard_interfaces'] ?? [];
-                    if (!$interfaces) {
-                        throw new RuntimeException('RouterOS is reachable, but no WireGuard interface was found.');
-                    }
+                    if (!$interfaces) throw new RuntimeException('RouterOS is reachable, but no WireGuard interface was found.');
                     $data = $this->resolveWireGuardSettings($data, $interfaces);
                     $now = time();
-                    $this->db->prepare(
-                        'INSERT INTO mikrotik_servers(name,host,api_port,username,password_enc,tls_mode,vpn_endpoint,vpn_port,interface_name,pool_name,dns_servers,enabled,created_at,updated_at,last_test_at,last_error)
-                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)'
-                    )->execute([
+                    $this->db->prepare('INSERT INTO mikrotik_servers(name,host,api_port,username,password_enc,tls_mode,vpn_endpoint,vpn_port,interface_name,pool_name,dns_servers,enabled,created_at,updated_at,last_test_at,last_error) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)')->execute([
                         $data['name'], $data['host'], $data['api_port'], $data['username'], enc($data['password']), $data['tls_mode'],
-                        $data['vpn_endpoint'], $data['vpn_port'], $data['interface_name'],
-                        $data['pool_name'], $data['dns_servers'] ?: (string)($result['dns']['servers'] ?? ''), 1, $now, $now, $now,
+                        $data['vpn_endpoint'], $data['vpn_port'], $data['interface_name'], $data['pool_name'],
+                        $data['dns_servers'] ?: (string)($result['dns']['servers'] ?? ''), 1, $now, $now, $now,
                     ]);
                     $_SESSION['mikrotik_flash'] = '✓ MikroTik connection succeeded and the server was saved.';
                     $_SESSION['mikrotik_error'] = false;
@@ -56,9 +49,7 @@ final class MikroTikAdmin
                     $interfaces = $result['wireguard_interfaces'] ?? [];
                     if (!$interfaces) throw new RuntimeException('No WireGuard interface was found on this RouterOS device.');
                     $data = $this->resolveWireGuardSettings($data, $interfaces);
-                    $this->db->prepare(
-                        'UPDATE mikrotik_servers SET name=?,host=?,api_port=?,username=?,password_enc=?,tls_mode=?,vpn_endpoint=?,vpn_port=?,interface_name=?,pool_name=?,dns_servers=?,last_test_at=?,last_error=NULL,updated_at=? WHERE id=?'
-                    )->execute([
+                    $this->db->prepare('UPDATE mikrotik_servers SET name=?,host=?,api_port=?,username=?,password_enc=?,tls_mode=?,vpn_endpoint=?,vpn_port=?,interface_name=?,pool_name=?,dns_servers=?,last_test_at=?,last_error=NULL,updated_at=? WHERE id=?')->execute([
                         $data['name'], $data['host'], $data['api_port'], $data['username'], enc($data['password']), $data['tls_mode'],
                         $data['vpn_endpoint'], $data['vpn_port'], $data['interface_name'], $data['pool_name'], $data['dns_servers'], time(), time(), $id,
                     ]);
@@ -78,39 +69,37 @@ final class MikroTikAdmin
 
                 case 'delete_server':
                     $id = (int)($post['id'] ?? 0);
+                    $peerCount = (int)$this->db->prepare('SELECT COUNT(*) FROM mikrotik_wireguard_peers WHERE server_id=? AND status != ?')->execute([$id,'deleted']);
                     $this->db->prepare('DELETE FROM mikrotik_servers WHERE id=?')->execute([$id]);
                     $_SESSION['mikrotik_flash'] = '✓ MikroTik server removed.';
                     $_SESSION['mikrotik_error'] = false;
                     break;
 
                 case 'add_plan':
-                    $serverId = (int)($post['server_id'] ?? 0);
-                    $server = $this->server($serverId);
-                    if (!$server) throw new RuntimeException('Select a valid MikroTik server.');
-                    $categoryId = (int)$this->db->query("SELECT id FROM service_categories WHERE service_key='mikrotik_wireguard'")->fetchColumn();
-                    if ($categoryId < 1) throw new RuntimeException('MikroTik service category is unavailable.');
-                    $nameFa = trim((string)($post['display_name_fa'] ?? ''));
-                    $nameEn = trim((string)($post['display_name_en'] ?? ''));
-                    if ($nameFa === '' || $nameEn === '') throw new RuntimeException('Plan names are required.');
-                    $metadata = json_encode([
-                        'upload_limit' => trim((string)($post['upload_limit'] ?? '')),
-                        'download_limit' => trim((string)($post['download_limit'] ?? '')),
-                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                    $this->db->prepare(
-                        'INSERT INTO service_plans(category_id,provider_key,provider_server_id,provider_plan_key,display_name_fa,display_name_en,price_minor,duration_days,quota_gb,enabled,sort_order,metadata_json,created_at,updated_at)
-                         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
-                    )->execute([
-                        $categoryId, 'mikrotik_wireguard', $serverId, 'mt:' . bin2hex(random_bytes(5)), $nameFa, $nameEn,
-                        max(0, (int)($post['price_minor'] ?? 0)), max(0, (int)($post['duration_days'] ?? 0)), max(0, (float)($post['quota_gb'] ?? 0)), 1,
-                        max(0, (int)($post['sort_order'] ?? 0)), $metadata, time(), time(),
-                    ]);
+                    $this->savePlan($post, null);
                     $_SESSION['mikrotik_flash'] = '✓ MikroTik WireGuard plan created.';
                     $_SESSION['mikrotik_error'] = false;
                     break;
 
+                case 'update_plan':
+                    $this->savePlan($post, (int)($post['id'] ?? 0));
+                    $_SESSION['mikrotik_flash'] = '✓ MikroTik WireGuard plan updated.';
+                    $_SESSION['mikrotik_error'] = false;
+                    break;
+
                 case 'delete_plan':
-                    $this->db->prepare("UPDATE service_plans SET enabled=0,updated_at=? WHERE id=? AND provider_key='mikrotik_wireguard'")->execute([time(),(int)($post['id'] ?? 0)]);
-                    $_SESSION['mikrotik_flash'] = '✓ MikroTik plan disabled.';
+                    $id = (int)($post['id'] ?? 0);
+                    if ($id < 1) throw new RuntimeException('Invalid MikroTik plan.');
+                    $q = $this->db->prepare("SELECT COUNT(*) FROM service_subscriptions WHERE plan_id=? AND provider_key='mikrotik_wireguard'");
+                    $q->execute([$id]);
+                    $hasSubscriptions = (int)$q->fetchColumn() > 0;
+                    if ($hasSubscriptions) {
+                        $this->db->prepare("UPDATE service_plans SET enabled=0,updated_at=? WHERE id=? AND provider_key='mikrotik_wireguard'")->execute([time(),$id]);
+                        $_SESSION['mikrotik_flash'] = '✓ Plan has subscription history, so it was disabled instead of permanently deleted.';
+                    } else {
+                        $this->db->prepare("DELETE FROM service_plans WHERE id=? AND provider_key='mikrotik_wireguard'")->execute([$id]);
+                        $_SESSION['mikrotik_flash'] = '✓ MikroTik plan deleted.';
+                    }
                     $_SESSION['mikrotik_error'] = false;
                     break;
 
@@ -123,6 +112,19 @@ final class MikroTikAdmin
                     $status = $action === 'disable_peer' ? 'disabled' : 'active';
                     $this->db->prepare('UPDATE mikrotik_wireguard_peers SET status=?,updated_at=? WHERE id=?')->execute([$status,time(),$peer['id']]);
                     $_SESSION['mikrotik_flash'] = $status === 'active' ? '✓ Peer enabled.' : '✓ Peer disabled.';
+                    $_SESSION['mikrotik_error'] = false;
+                    break;
+
+                case 'delete_peer':
+                    $peer = $this->peer((int)($post['id'] ?? 0));
+                    if (!$peer) throw new RuntimeException('WireGuard peer was not found.');
+                    $service = $this->service($peer);
+                    if ((string)$peer['routeros_id'] !== '') $service->deletePeer((string)$peer['routeros_id']);
+                    if ((int)($peer['subscription_id'] ?? 0) > 0) {
+                        $this->db->prepare("UPDATE service_subscriptions SET status='deleted',updated_at=? WHERE id=?")->execute([time(),(int)$peer['subscription_id']]);
+                    }
+                    $this->db->prepare("UPDATE mikrotik_wireguard_peers SET status='deleted',updated_at=? WHERE id=?")->execute([time(),$peer['id']]);
+                    $_SESSION['mikrotik_flash'] = '✓ WireGuard peer deleted from RouterOS and RouteBox.';
                     $_SESSION['mikrotik_error'] = false;
                     break;
 
@@ -139,7 +141,7 @@ final class MikroTikAdmin
     {
         $servers = $this->db->query('SELECT * FROM mikrotik_servers ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
         $plans = $this->db->query("SELECT p.*,s.name server_name FROM service_plans p LEFT JOIN mikrotik_servers s ON s.id=p.provider_server_id WHERE p.provider_key='mikrotik_wireguard' ORDER BY p.sort_order,p.id")->fetchAll(PDO::FETCH_ASSOC);
-        $peers = $this->db->query('SELECT p.*,s.name server_name FROM mikrotik_wireguard_peers p LEFT JOIN mikrotik_servers s ON s.id=p.server_id ORDER BY p.id DESC LIMIT 100')->fetchAll(PDO::FETCH_ASSOC);
+        $peers = $this->db->query('SELECT p.*,s.name server_name FROM mikrotik_wireguard_peers p LEFT JOIN mikrotik_servers s ON s.id=p.server_id WHERE p.status != \'deleted\' ORDER BY p.id DESC LIMIT 100')->fetchAll(PDO::FETCH_ASSOC);
         $flash = (string)($_SESSION['mikrotik_flash'] ?? '');
         $error = (bool)($_SESSION['mikrotik_error'] ?? false);
         unset($_SESSION['mikrotik_flash'], $_SESSION['mikrotik_error']);
@@ -162,6 +164,36 @@ final class MikroTikAdmin
         }
         unset($server);
         return compact('servers','plans','peers','flash','error');
+    }
+
+    private function savePlan(array $post, ?int $id): void
+    {
+        $serverId = (int)($post['server_id'] ?? 0);
+        $server = $this->server($serverId);
+        if (!$server) throw new RuntimeException('Select a valid MikroTik server.');
+        $categoryId = (int)$this->db->query("SELECT id FROM service_categories WHERE service_key='mikrotik_wireguard'")->fetchColumn();
+        if ($categoryId < 1) throw new RuntimeException('MikroTik service category is unavailable.');
+        $nameFa = trim((string)($post['display_name_fa'] ?? ''));
+        $nameEn = trim((string)($post['display_name_en'] ?? ''));
+        if ($nameFa === '' || $nameEn === '') throw new RuntimeException('Plan names are required.');
+        $metadata = json_encode([
+            'upload_limit' => trim((string)($post['upload_limit'] ?? '')),
+            'download_limit' => trim((string)($post['download_limit'] ?? '')),
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $price = max(0, (int)($post['price_minor'] ?? 0));
+        $duration = max(0, (int)($post['duration_days'] ?? 0));
+        $quota = max(0, (float)($post['quota_gb'] ?? 0));
+        $sort = max(0, (int)($post['sort_order'] ?? 0));
+        if ($id === null) {
+            $this->db->prepare('INSERT INTO service_plans(category_id,provider_key,provider_server_id,provider_plan_key,display_name_fa,display_name_en,price_minor,duration_days,quota_gb,enabled,sort_order,metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)')->execute([
+                $categoryId, 'mikrotik_wireguard', $serverId, 'mt:' . bin2hex(random_bytes(5)), $nameFa, $nameEn, $price, $duration, $quota, 1, $sort, $metadata, time(), time(),
+            ]);
+            return;
+        }
+        if ($id < 1) throw new RuntimeException('Invalid MikroTik plan.');
+        $this->db->prepare("UPDATE service_plans SET category_id=?,provider_server_id=?,display_name_fa=?,display_name_en=?,price_minor=?,duration_days=?,quota_gb=?,sort_order=?,metadata_json=?,updated_at=? WHERE id=? AND provider_key='mikrotik_wireguard'")->execute([
+            $categoryId, $serverId, $nameFa, $nameEn, $price, $duration, $quota, $sort, $metadata, time(), $id,
+        ]);
     }
 
     private function serverInput(array $post, ?array $old = null): array
@@ -188,12 +220,7 @@ final class MikroTikAdmin
         ];
     }
 
-    /**
-     * WireGuard is a UDP service and its listen-port belongs to the RouterOS
-     * WireGuard interface, not to the REST API port. When the admin leaves the
-     * VPN port blank, discover it directly from RouterOS so the generated client
-     * config cannot accidentally inherit the REST port (for example :80).
-     */
+    /** WireGuard listen-port belongs to RouterOS, not the REST API port. */
     private function resolveWireGuardSettings(array $data, array $interfaces): array
     {
         $selected = null;
@@ -203,20 +230,12 @@ final class MikroTikAdmin
                 break;
             }
         }
-        if ($selected === null) {
-            $selected = $interfaces[0] ?? null;
-        }
-        if (!$selected) {
-            throw new RuntimeException('No WireGuard interface was found on this RouterOS device.');
-        }
-        if (trim((string)($data['interface_name'] ?? '')) === '') {
-            $data['interface_name'] = (string)($selected['name'] ?? '');
-        }
+        if ($selected === null) $selected = $interfaces[0] ?? null;
+        if (!$selected) throw new RuntimeException('No WireGuard interface was found on this RouterOS device.');
+        if (trim((string)($data['interface_name'] ?? '')) === '') $data['interface_name'] = (string)($selected['name'] ?? '');
         if ((int)($data['vpn_port'] ?? 0) === 0) {
             $listenPort = (int)($selected['listen-port'] ?? 0);
-            if ($listenPort < 1 || $listenPort > 65535) {
-                throw new RuntimeException('WireGuard interface listen-port could not be detected.');
-            }
+            if ($listenPort < 1 || $listenPort > 65535) throw new RuntimeException('WireGuard interface listen-port could not be detected.');
             $data['vpn_port'] = $listenPort;
         }
         return $data;
