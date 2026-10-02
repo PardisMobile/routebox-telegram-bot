@@ -7,15 +7,23 @@ namespace RouteBox\Services;
 use PDO;
 use RuntimeException;
 use RouteBox\Integrations\IBSng\IBSngService;
+use RouteBox\Integrations\MikroTik\MikroTikClient;
+use RouteBox\Integrations\MikroTik\MikroTikSchema;
+use RouteBox\Integrations\MikroTik\MikroTikWireGuardProvider;
 
 require_once __DIR__ . '/../RouteBoxClient.php';
 require_once __DIR__ . '/../Integrations/IBSng/IBSngClient.php';
 require_once __DIR__ . '/../Integrations/IBSng/IBSngService.php';
 require_once __DIR__ . '/../Integrations/IBSng/IBSngSchema.php';
+require_once __DIR__ . '/../Integrations/MikroTik/MikroTikClient.php';
+require_once __DIR__ . '/../Integrations/MikroTik/MikroTikSchema.php';
+require_once __DIR__ . '/../Integrations/MikroTik/MikroTikWireGuardService.php';
+require_once __DIR__ . '/../Integrations/MikroTik/MikroTikWireGuardProvider.php';
 
 /**
  * Provider-agnostic provisioning entry point for modular Telegram services.
- * The worker only calls provision(); provider-specific logic stays here.
+ * Existing RouteBox and IBSng provisioning paths remain unchanged; MikroTik
+ * WireGuard is added as another provider selected by service_plans.provider_key.
  */
 final class ServiceProvisioner
 {
@@ -24,6 +32,7 @@ final class ServiceProvisioner
     public function __construct(private readonly PDO $db)
     {
         $this->catalog = new ServiceCatalog($db);
+        MikroTikSchema::migrate($db);
     }
 
     public function provision(int $telegramUserId, string $telegramId, int $planId): array
@@ -34,6 +43,7 @@ final class ServiceProvisioner
         return match ($provider) {
             'ibsng' => $this->provisionIbsng($telegramUserId, $telegramId, $plan),
             'routebox' => $this->provisionRoutebox($telegramUserId, $telegramId, $plan),
+            'mikrotik_wireguard' => $this->provisionMikroTik($telegramUserId, $telegramId, $plan),
             default => throw new RuntimeException('ارائه‌دهنده این سرویس هنوز برای ربات فعال نشده است.'),
         };
     }
@@ -76,8 +86,6 @@ final class ServiceProvisioner
         );
 
         $now = time();
-        // IBSng group settings own the actual duration/quota. Keep the local
-        // catalog fields at zero and therefore do not invent an expiry here.
         $expires = null;
         $meta = [
             'protocols' => ['openvpn', 'cisco', 'l2tp'],
@@ -119,6 +127,33 @@ final class ServiceProvisioner
             'user_id' => (string)$created['user_id'],
             'expires_at' => $expires,
         ];
+    }
+
+    private function provisionMikroTik(int $telegramUserId, string $telegramId, array $plan): array
+    {
+        $serverId = (int)($plan['provider_server_id'] ?? 0);
+        if ($serverId < 1) {
+            throw new RuntimeException('تنظیمات سرور MikroTik این پلن کامل نیست.');
+        }
+        $q = $this->db->prepare('SELECT * FROM mikrotik_servers WHERE id=? AND enabled=1');
+        $q->execute([$serverId]);
+        $server = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$server) {
+            throw new RuntimeException('سرور MikroTik این پلن فعال نیست.');
+        }
+
+        $client = new MikroTikClient(
+            (string)$server['host'],
+            (string)$server['username'],
+            dec((string)$server['password_enc']),
+            (int)$server['api_port'],
+            !empty($server['tls_mode'])
+        );
+        $provider = new MikroTikWireGuardProvider($this->db, $client);
+        return $provider->createSubscription([
+            'telegram_user_id' => $telegramUserId,
+            'telegram_id' => $telegramId,
+        ], $plan);
     }
 
     private function provisionRoutebox(int $telegramUserId, string $telegramId, array $plan): array
