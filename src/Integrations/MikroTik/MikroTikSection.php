@@ -8,7 +8,7 @@ namespace RouteBox\Integrations\MikroTik;
 final class MikroTikSection
 {
     public static function navIcon(): string { return '◉'; }
-    public static function navLabel(string $lang): string { return $lang === 'fa' ? 'MikroTik WireGuard' : 'MikroTik WireGuard'; }
+    public static function navLabel(string $lang): string { return 'MikroTik WireGuard'; }
 
     public static function handlePost(MikroTikAdmin $admin): void
     {
@@ -32,8 +32,8 @@ final class MikroTikSection
             $serverCards .= '<article class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>' . $h((string)$s['name']) . '</h2><p dir="ltr">' . $h((string)$s['host']) . ':' . $h((string)$s['api_port']) . ' · ' . (!empty($s['tls_mode'])?'HTTPS REST':'HTTP REST') . '</p></div></div></div>'
                 . '<div class="grid">'
                 . '<div><div class="help">RouterOS</div><strong>' . $h((string)($s['discovery_error'] ?? 'Connected / discovery available')) . '</strong></div>'
-                . '<div><div class="help">WireGuard interfaces</div><code>' . $h(implode(', ', array_map(static fn(array $x):(string)($x['name']??''), $interfaces))) . '</code></div>'
-                . '<div><div class="help">IP pools</div><code>' . $h(implode(', ', array_map(static fn(array $x):(string)($x['name']??''), $pools))) . '</code></div>'
+                . '<div><div class="help">WireGuard interfaces</div><code>' . $h(implode(', ', array_map(static fn(array $x): string => (string)($x['name']??''), $interfaces))) . '</code></div>'
+                . '<div><div class="help">IP pools</div><code>' . $h(implode(', ', array_map(static fn(array $x): string => (string)($x['name']??''), $pools))) . '</code></div>'
                 . '<div><div class="help">DNS</div><code>' . $h((string)($s['dns'] ?: $s['dns_servers'])) . '</code></div>'
                 . '</div>'
                 . '<div class="form-actions"><form method="post"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="mikrotik"><input type="hidden" name="id" value="'.$id.'"><button class="btn btn-secondary" type="submit">↻ Test Connection</button></form>'
