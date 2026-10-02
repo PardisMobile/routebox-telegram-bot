@@ -31,15 +31,17 @@ Version source of truth: [`VERSION`](./VERSION)
 - The existing RouteBox provisioning implementation remains backward-compatible.
 - IBSng `owner` / `owner_name` terminology remains an IBSng-specific concept and is not treated as Telegram Bot Admin authorization.
 
-### 📦 Installer tooling and documentation
+### 📦 Installer refactor — completed
 
-- Documented `install.sh` as the user-facing production entry point.
-- Documented that production `install.sh` delegates to `install-v2.sh` and then performs the existing repair, restricted updater and optional RouteBox TLS integration steps.
-- Documented the production one-command installation path.
-- Documented `install-dev.sh` as the development entry point for `feature/modular-services-ibsng`.
-- Documented that `install-dev.sh` delegates to `install-dev-full.sh` and uses the isolated `routebox-telegram-bot-dev` deployment paths.
-- Documented the actual production/development installer responsibilities instead of treating the four installer files as interchangeable.
-- Updated README installation, IBSng architecture and upcoming Admin roadmap documentation.
+- Renamed the production implementation from `install-v2.sh` to `installer-core.sh`.
+- Kept `install.sh` as the user-facing production entrypoint.
+- Updated `install.sh` to download and execute `installer-core.sh` from `main`.
+- Retained `install-dev.sh` and `install-dev-full.sh` as the development/IBSng installer flow.
+- Removed the retired `install-v2.sh` path from the production installer structure.
+- Improved `install.sh` with a professional banner, colored status output, clear sections, error handling and a final installation summary.
+- Improved `installer-core.sh` output with section headers, readable progress messages and service/installation summary information.
+- Preserved the existing production installation architecture, systemd services, Admin Panel, RouteBox ports and RouteBox/IBSng application code.
+- Updated installation documentation and roadmap terminology to the final four-file installer structure.
 
 ### 💳 Payment foundation
 
@@ -110,7 +112,7 @@ Version source of truth: [`VERSION`](./VERSION)
 ## 📝 Release / development rules
 
 - Production installs use `install.sh`.
-- `install-v2.sh` remains the production setup implementation used by the main entry point.
+- `installer-core.sh` is the internal production setup implementation used by the public entry point.
 - `install-dev.sh` / `install-dev-full.sh` are isolated development tools for the modular-services/IBSng branch.
 - Existing tested IBSng provisioning must be extended, not rewritten.
 - Existing RouteBox provisioning must remain backward-compatible.
