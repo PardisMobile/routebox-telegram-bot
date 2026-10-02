@@ -6,92 +6,72 @@ Version source of truth: [`VERSION`](./VERSION).
 
 ## Unreleased — Modular Services / IBSng
 
-### 🧩 Modular architecture
+### Completed
 
 - Added provider-isolation architecture with `ServiceProviderInterface`.
-- Added isolated `src/Integrations/IBSng/` provider for OpenVPN / Cisco / L2TP.
-- Added isolated `src/Integrations/Payment/` abstraction for future gateways.
-- Added additive service categories, provider plans, subscriptions, orders, payment providers and coupons schema.
-- Existing RouteBox/WireGuard functionality remains separate and operational.
-- Completed the shared-worker design so new service providers do not require rewriting the Telegram worker.
+- Added RouteBox and IBSng provider-based provisioning.
+- Added IBSng A1.24 Web Panel integration.
+- Added IBSng login and session management.
+- Added real IBSng user creation.
+- Added Internet Username and password assignment.
+- Added subscription persistence in `service_subscriptions`.
+- Added Plan → Server → Group mapping.
+- Added IBSng provisioning from Telegram flow.
+- Fixed IBSng client loading inside Worker.
+- Completed real IBSng provisioning verification.
+- Preserved existing RouteBox provisioning flow.
 
-### 🔵 IBSng A1.24 — operational
+### Telegram Worker
 
-- Switched the integration to the IBSng A1.24 Apache Web Panel instead of relying on an external `:1237` JSON-RPC endpoint.
-- Added Admin authentication, server configuration and connection testing.
-- Added non-destructive Group discovery/synchronization.
-- Added IBSng products/plans linked to real existing Groups.
-- Any number of configured IBSng plans/groups can be exposed automatically through Telegram.
-- Added existing-user lookup by username / Internet Username.
-- Added real user creation in an existing IBSng Group.
-- Added automatic Internet Username + password assignment.
-- Added one subscription/account for L2TP + OpenVPN + Cisco access methods.
-- Added IBSng subscription persistence and provider/server/group-aware provisioning.
-- Connected the IBSng provisioning flow to Telegram.
-- Completed worker loading of the isolated IBSng provider.
-- Verified the real end-to-end IBSng provisioning flow successfully.
-- No direct IBSng database access is used.
-- No requirement to expose local Core XML-RPC or open JSON-RPC `1237`.
+- Worker remains provider-neutral.
+- RouteBox and IBSng use the same operational worker architecture.
+- Single-instance protection remains enabled.
 
-### 🤖 Telegram worker
+## 🗺️ Next Development Phase
 
-- Completed the shared worker integration for RouteBox and IBSng.
-- Added/retained single-instance protection so Telegram updates are not consumed by multiple workers.
-- Provider-specific provisioning remains inside provider integrations; the worker stays provider-neutral.
-- Verified the operational worker path with the modular service architecture.
+### Telegram Bot Admin
 
-### 🛠️ Admin / reliability
+- [ ] Independent admin permission system separate from IBSng
+- [ ] Multiple Telegram ID support
+- [ ] Admin management from Web Panel
+- [ ] Dedicated Telegram Admin menu
 
-- Expanded Admin Tools, backup/guide/RouteBox management and recovery tooling.
-- Hardened RouteBox client loading and prevented duplicate `RouteBoxClient` declarations.
-- Improved updater self-refresh and canonical `update.sh` execution.
-- Added/fixed Admin navigation and GitHub version visibility.
-- Added Telegram usage guide and fixed escaped/newline rendering.
-- Added `qrencode` to installer requirements for QR workflows.
-- Added development installer isolation under `/opt/routebox-telegram-bot-dev`.
-- Finalized RouteBox free-trial visibility and service visibility rules.
+### Admin Skip Payment
 
-## 0.1.0-beta.11.x
+- [ ] Allow Bot Admin to create services without payment
+- [ ] Keep normal customer payment flow unchanged
 
-- Continued Admin Panel stabilization and updater/repair improvements.
-- Introduced the modular-services development line and IBSng integration work.
-- Added the service/order/payment/coupon architecture foundation.
+### IBSng Management
 
-## Earlier releases
+- [ ] Username search
+- [ ] User information display
+- [ ] Persian expiry date display
+- [ ] Traffic usage display
+- [ ] Create IBSng user from Bot Admin
+- [ ] Server and Plan/Group selection
+- [ ] Configurable username prefix (`rb`, `tgbot`, custom)
+- [ ] Renewal based only on RouteBox defined IBSng plans
+- [ ] User edit support
+- [ ] Move IBSng test tools into Admin Panel
 
-- RouteBox Telegram Bot + independent Web Admin Panel.
-- Multi-RouteBox server support and AWG provisioning.
-- Expiration and traffic quota handling.
-- `.conf` delivery and free-trial protection.
-- Persian/English Bot and Admin Panel.
-- Configurable plans, welcome text and Telegram buttons.
-- RouteBox API validation and AWG create/export/delete smoke testing.
-- Encrypted credentials and admin password recovery/change.
-- Software updater, backup, restore and repair tooling.
-- Light/Dark Admin Panel.
-- HTTPS/TLS integration without taking over existing RouteBox ports `80/443`.
+### Worker Management
 
-## 🗺️ Roadmap
+- [ ] Worker status display
+- [ ] Restart Worker from Admin Panel
+- [ ] Worker health monitoring
 
-### 🔜 Next
+### Payment
 
-- [ ] IBSng remaining time/traffic display
-- [ ] IBSng renewal / edit / delete / account management
-- [ ] Separate IBSng free-trial controls
 - [ ] Complete Order lifecycle
-- [ ] Coupon creation, validation, expiry and usage limits
-- [ ] Payment provider management and callback verification
-- [ ] Provision only after verified payment
+- [ ] Coupons
+- [ ] Payment verification
 - [ ] ZarinPal adapter
-- [ ] Payment/Order history
+- [ ] Provision after verified payment only
 
-### 📣 After payment
+## Development rules
 
-- [ ] Telegram broadcast with queue/rate limiting
-- [ ] Service-category management UI
-- [ ] Expiration notifications
-- [ ] Usage dashboard
-- [ ] Server/region selection
-- [ ] MikroTik provider
-- [ ] Additional isolated service providers
-- [ ] Optional Telegram WebApp
+- `owner` and `owner_name` are IBSng-specific only.
+- Telegram Bot Admin is independent from IBSng permissions.
+- Tested IBSng flow will not be rewritten.
+- Existing customer payment flow will not change.
+- New features extend the existing provisioning architecture.
