@@ -27,18 +27,46 @@ final class MikroTikSection
         $h = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $flash = !empty($data['flash']) ? '<div class="flash ' . (!empty($data['error']) ? 'err' : '') . '">' . $h((string)$data['flash']) . '</div>' : '';
 
+        $formatBytes = static function ($bytes): string {
+            $bytes = max(0, (float)$bytes);
+            if ($bytes >= 1073741824) return number_format($bytes / 1073741824, 1) . ' GB';
+            if ($bytes >= 1048576) return number_format($bytes / 1048576, 1) . ' MB';
+            if ($bytes >= 1024) return number_format($bytes / 1024, 1) . ' KB';
+            return number_format($bytes, 0) . ' B';
+        };
+
         $serverCards = '';
         foreach (($data['servers'] ?? []) as $s) {
             $id=(int)$s['id'];
             $interfaces=is_array($s['interfaces']??null)?$s['interfaces']:[];
             $pools=is_array($s['pools']??null)?$s['pools']:[];
-            $serverCards .= '<article class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>' . $h((string)$s['name']) . '</h2><p dir="ltr">' . $h((string)$s['host']) . ':' . $h((string)$s['api_port']) . ' · ' . (!empty($s['tls_mode'])?'HTTPS REST':'HTTP REST') . '</p></div></div></div>'
+            $router=is_array($s['router']??null)?$s['router']:[];
+            $serverName=(string)($s['name'] ?? 'MikroTik');
+            $version=(string)($router['version'] ?? '—');
+            $uptime=(string)($router['uptime'] ?? '—');
+            $cpu=(string)($router['cpu-load'] ?? '—');
+            $totalMemory=(float)($router['total-memory'] ?? 0);
+            $freeMemory=(float)($router['free-memory'] ?? 0);
+            $usedMemory=max(0, $totalMemory-$freeMemory);
+            $memoryText=$totalMemory>0 ? $formatBytes($usedMemory).' / '.$formatBytes($totalMemory) : '—';
+            $latency=$s['latency_ms'] !== null ? number_format((float)$s['latency_ms'],1).' ms' : '—';
+            $status=!empty($s['discovery_error'])?'Connection issue':'Connected';
+            $statusClass=!empty($s['discovery_error'])?'err':'';
+            $serverCards .= '<article class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>' . $h($serverName) . '</h2><p dir="ltr">' . $h((string)$s['host']) . ':' . $h((string)$s['api_port']) . ' · ' . (!empty($s['tls_mode'])?'HTTPS REST':'HTTP REST') . '</p></div></div><div class="help '.($statusClass?'err':'').'">'.$h($status).'</div></div>'
+                . '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0">'
+                . '<div style="padding:12px;border:1px solid var(--line);border-radius:12px"><div class="help">Server / RouterOS</div><strong>'.$h($version).'</strong></div>'
+                . '<div style="padding:12px;border:1px solid var(--line);border-radius:12px"><div class="help">Uptime</div><strong dir="ltr">'.$h($uptime).'</strong></div>'
+                . '<div style="padding:12px;border:1px solid var(--line);border-radius:12px"><div class="help">CPU Load</div><strong dir="ltr">'.$h($cpu).'%</strong></div>'
+                . '<div style="padding:12px;border:1px solid var(--line);border-radius:12px"><div class="help">Memory</div><strong dir="ltr">'.$h($memoryText).'</strong></div>'
+                . '<div style="padding:12px;border:1px solid var(--line);border-radius:12px"><div class="help">Ping / REST latency</div><strong dir="ltr">'.$h($latency).'</strong></div>'
+                . '</div>'
                 . '<div class="grid">'
-                . '<div><div class="help">RouterOS</div><strong>' . $h((string)($s['discovery_error'] ?? 'Connected / discovery available')) . '</strong></div>'
+                . '<div><div class="help">Architecture / Board</div><strong>' . $h((string)($router['architecture-name'] ?? '—')) . ' · ' . $h((string)($router['board-name'] ?? '—')) . '</strong></div>'
                 . '<div><div class="help">WireGuard interfaces</div><code>' . $h(implode(', ', array_map(static fn(array $x): string => (string)($x['name']??''), $interfaces))) . '</code></div>'
                 . '<div><div class="help">IP pools</div><code>' . $h(implode(', ', array_map(static fn(array $x): string => (string)($x['name']??''), $pools))) . '</code></div>'
                 . '<div><div class="help">DNS</div><code>' . $h((string)($s['dns'] ?: $s['dns_servers'])) . '</code></div>'
                 . '</div>'
+                . (!empty($s['discovery_error']) ? '<div class="help err" style="margin-top:12px">'.$h((string)$s['discovery_error']).'</div>' : '')
                 . '<div class="form-actions"><form method="post"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="mikrotik"><input type="hidden" name="id" value="'.$id.'"><button class="btn btn-secondary" type="submit">↻ Test Connection</button></form>'
                 . '<form method="post" onsubmit="return confirm(' . htmlspecialchars(json_encode($fa?'این سرور حذف شود؟':'Delete this MikroTik server?',JSON_UNESCAPED_UNICODE),ENT_QUOTES,'UTF-8') . ')"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="delete_server"><input type="hidden" name="section" value="mikrotik"><input type="hidden" name="id" value="'.$id.'"><button class="btn btn-secondary" style="color:var(--red)" type="submit">× Delete</button></form></div>'
                 . '<details style="margin-top:14px"><summary style="cursor:pointer;font-weight:750">✎ Edit server</summary>' . self::serverForm($s,$csrf,true) . '</details></article>';
@@ -64,7 +92,9 @@ final class MikroTikSection
 
         $peerTable='<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◌</div><div><h2>WireGuard Peers</h2><p>Each peer is a RouteBox account. Traffic counters come directly from RouterOS.</p></div></div></div><div style="overflow:auto"><table style="width:100%"><thead><tr><th>Username</th><th>IP</th><th>Server</th><th>Interface</th><th>Status</th><th>Expiry</th><th>Action</th></tr></thead><tbody>'.$peers.'</tbody></table></div></section>';
 
-        return $flash.$addServer.'<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>MikroTik Servers</h2><p>RouterOS version, WireGuard interfaces, IP pools and DNS are discovered from the router.</p></div></div></div>'.$serverCards.'</section>'.$planForm.$peerTable;
+        $guide='<section class="card"><details><summary style="cursor:pointer;font-weight:800">⚙ MikroTik Setup Guide</summary><div style="margin-top:14px"><p class="help">Configure RouterOS REST access, create the RouteBox user and verify the connection before adding the server.</p><ol style="line-height:1.9;padding-inline-start:22px"><li>Enable <code>www</code> for temporary HTTP testing, or preferably <code>www-ssl</code> with a valid certificate for production.</li><li>Create a dedicated RouterOS user with <code>rest-api</code> plus only the permissions RouteBox needs.</li><li>Allow the REST port from the RouteBox server IP in the firewall.</li><li>In RouteBox enter the router IP/hostname, REST port, username and password. For temporary HTTP testing disable the TLS checkbox and use port 80.</li><li>Use <strong>Test Connection</strong>. The panel will display RouterOS version, uptime, CPU, memory and REST latency.</li></ol><p class="help">HTTP REST sends credentials without transport encryption. Use it only for controlled testing; production should use HTTPS/TLS.</p></div></details></section>';
+
+        return $flash.$addServer.$guide.'<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>MikroTik Servers</h2><p>RouterOS version, uptime, CPU, memory, REST latency, WireGuard interfaces, IP pools and DNS are discovered from the router.</p></div></div></div>'.$serverCards.'</section>'.$planForm.$peerTable;
     }
 
     private static function serverForm(array $s,string $csrf,bool $edit): string
