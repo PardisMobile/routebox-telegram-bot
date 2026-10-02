@@ -112,17 +112,17 @@ Future gateways can be added without rewriting the RouteBox or IBSng provisionin
 
 ### Production Installation
 
-The production entry point is `install.sh`. It delegates to the tested `install-v2.sh` setup implementation and then performs the additional production repair/update/TLS integration steps already defined by the installer.
+`install.sh` is the **user-facing production installer**. It downloads and executes the internal `installer-core.sh`, then performs the existing production repair, restricted updater and optional RouteBox TLS integration steps.
 
-One-command installation:
+One-command production installation:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh | bash
 ```
 
-The production installer is intended for **Ubuntu 22.04+** and, based on the current installer implementation, handles the production installation requirements including:
+The production installer is intended for **Ubuntu 22.04+** and the current installer flow handles:
 
-- required system packages and PHP 8+ validation
+- required system dependencies and PHP 8+ validation
 - SQLite/database initialization
 - application configuration and first-install Admin credentials
 - Telegram Bot token validation
@@ -133,11 +133,9 @@ The production installer is intended for **Ubuntu 22.04+** and, based on the cur
 - restricted Admin Panel update tooling
 - optional reuse of the existing RouteBox TLS certificate without taking over ports 80/443
 
-For normal production deployments, use `install.sh`. Do not run `install-v2.sh` directly unless you specifically need the underlying setup implementation.
-
 ### Development / IBSng Environment
 
-The development installer is a separate, isolated deployment intended for development/testing of the modular-services and IBSng work. It targets the `feature/modular-services-ibsng` branch and uses the separate application/state paths `routebox-telegram-bot-dev`, so it does not replace the normal production installation.
+The development installer is an isolated deployment for development/testing of the modular-services and IBSng work. It targets the `feature/modular-services-ibsng` branch and uses separate `routebox-telegram-bot-dev` application/state paths, leaving the production installation separate.
 
 One-command development installation:
 
@@ -145,33 +143,22 @@ One-command development installation:
 curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/feature/modular-services-ibsng/install-dev.sh | bash
 ```
 
-The development entry point delegates to `install-dev-full.sh`. The current development installer:
+`install-dev.sh` is the developer-facing entrypoint and delegates to `install-dev-full.sh`. The current development flow installs the development checkout, PHP/SQLite/Git/curl/OpenSSL/QR prerequisites, an isolated Worker and Admin Panel, performs syntax validation and web-panel health checks, and exposes the IBSng development/test tooling present on that branch.
 
-- requires Ubuntu 22.04+
-- installs the same core PHP/SQLite/Git/curl/OpenSSL/QR prerequisites
-- checks PHP 8+
-- checks out `feature/modular-services-ibsng`
-- uses `/opt/routebox-telegram-bot-dev`
-- creates an isolated DEV Admin Panel and systemd Worker
-- runs PHP syntax validation across the development checkout
-- validates the web panel health
-- keeps production `/opt/routebox-telegram-bot` untouched
-- exposes the IBSng development smoke-test tooling included in that branch
+### Final installer structure
 
-The development installer should be used for testing the modular IBSng environment, not for a normal production deployment.
-
-### Installer structure
-
-There are currently four installer-related files. They are intentionally not interchangeable:
+There are exactly **four installer files** in the final layout:
 
 | File | Role |
 |---|---|
-| `install.sh` | **User-facing production entry point**. Downloads and executes the current production setup wizard, then runs production repair/update/TLS integration steps. |
-| `install-v2.sh` | Production setup implementation used by `install.sh`. Installs prerequisites, initializes the application, validates Telegram/RouteBox, installs systemd services and the Admin Panel, and performs health checks. |
-| `install-dev.sh` | **User-facing development entry point** for `feature/modular-services-ibsng`; delegates to `install-dev-full.sh`. |
-| `install-dev-full.sh` | Full isolated DEV/IBSng installer implementation for `routebox-telegram-bot-dev`. |
+| `install.sh` | ⭐ **User-facing production installer / public entrypoint** |
+| `installer-core.sh` | 🔧 **Internal production installer core**, called by `install.sh` |
+| `install-dev.sh` | 🛠 **Developer entrypoint** for `feature/modular-services-ibsng` |
+| `install-dev-full.sh` | 🧪 **Full development / IBSng developer setup** |
 
-Do **not** delete, rename or merge these installer files without first checking their deployment roles.
+`install-v2.sh` has been retired and is no longer part of the repository. Do not use or reference it.
+
+The production entrypoint remains `install.sh`; users should not need to call the internal core directly.
 
 ## 🛠️ Update and recovery tooling
 
@@ -256,6 +243,16 @@ Telegram Bot Admin is a **new, independent permission layer**. It is not the sam
 - [ ] Ensure the control targets the correct existing Worker systemd service
 - [ ] Worker health monitoring
 - [ ] Recent operational logs / diagnostics
+
+### 📦 Completed: Installer refactor
+
+- [x] `install.sh` remains the user-facing production entrypoint
+- [x] `install-v2.sh` renamed to `installer-core.sh`
+- [x] Production entrypoint updated to use `installer-core.sh`
+- [x] Production installer UX improved with clear sections, status messages and final summary
+- [x] Installer core UX improved without changing the production architecture
+- [x] Development installers retained as `install-dev.sh` and `install-dev-full.sh`
+- [x] Installer documentation updated to the final four-file structure
 
 ## 📚 Documentation
 
