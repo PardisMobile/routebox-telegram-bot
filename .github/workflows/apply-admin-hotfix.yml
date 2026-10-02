@@ -2,7 +2,7 @@ name: Apply admin panel hotfix
 
 on:
   push:
-    branches: [main]
+    branches: [feature/telegram-bot-admin-mikrotik]
 
 permissions:
   contents: write
@@ -13,28 +13,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch RouteBox Admin panel
+      - name: Patch MikroTik Telegram worker
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('public/index.php')
-          s = p.read_text()
-
-          old = '<a class="mini-link" href="<?=h(SUPPORT_URL)?>" target="_blank" rel="noopener"><?=navIcon(\'bot\')?> <?=$T[\'support\']?></a>'
-          new = '<a class="mini-link" href="https://github.com/PardisMobile/routebox-telegram-bot" target="_blank" rel="noopener noreferrer">GitHub</a>'
-          if old in s:
-              s = s.replace(old, new, 1)
-
-          p.write_text(s)
-          PY
-
-          php -l public/index.php
+          set -euo pipefail
+          python3 tools/patch-mikrotik-telegram-worker.py
+          php -l worker.php
           git diff --check
-
-      - name: Commit hotfix
+      - name: Commit patch
         run: |
+          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add public/index.php
-          git commit -m 'fix(admin): replace sidebar support with GitHub link' || exit 0
-          git push
+          git add worker.php tools/patch-mikrotik-telegram-worker.py
+          git commit -m 'feat: complete MikroTik Telegram service flow'
+          git push origin HEAD:feature/telegram-bot-admin-mikrotik
