@@ -8,6 +8,8 @@ use PDO;
 use RouteBox\Integrations\ServiceProviderInterface;
 use RuntimeException;
 
+require_once __DIR__ . '/../ServiceProviderInterface.php';
+
 /** MikroTik + WireGuard are intentionally one provider: mikrotik_wireguard. */
 final class MikroTikWireGuardProvider implements ServiceProviderInterface
 {
