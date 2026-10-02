@@ -90,11 +90,22 @@ final class IBSngClient
 
         curl_setopt_array($ch, $options);
 
-        $responseBody = curl_exec($ch);
+        curl_setopt($ch, CURLOPT_HEADER, true);
+
+        $rawResponse = curl_exec($ch);
         $error = curl_error($ch);
         $errno = curl_errno($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $effectiveUrl = (string)curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+        $headerSize = (int)curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+
+        $responseHeaders = '';
+        $responseBody = $rawResponse;
+
+        if ($rawResponse !== false && $headerSize > 0) {
+            $responseHeaders = substr($rawResponse, 0, $headerSize);
+            $responseBody = substr($rawResponse, $headerSize);
+        }
 
         curl_close($ch);
 
@@ -126,6 +137,7 @@ final class IBSngClient
 
         return [
             'body' => (string)$responseBody,
+            'headers' => (string)$responseHeaders,
             'url' => $effectiveUrl,
             'code' => $code,
         ];
@@ -271,55 +283,136 @@ final class IBSngClient
     public function createUser(string $ispName, string $groupName, int $credit = 0): array
     {
         $this->ensureLogin();
-        $body = $this->request('/admin/user/add_new_users.php', [
-            'count' => 1,
-            'credit' => $credit,
-            'owner_name' => $this->username,
-            'group_name' => $groupName,
-            'credit_comment' => '',
-        ])['body'];
+
+        /*
+         * IBSng A1.24 creates the user and responds with HTTP 302.
+         * The new user ID is placed in the Location header, for example:
+         *
+         * /IBSng/admin/plugins/edit.php?edit_user=1&user_id=31375&count=1...
+         *
+         * We deliberately do NOT follow the redirect here because the
+         * redirected edit page may keep the legacy Apache connection open.
+         */
+        $response = $this->request(
+            '/admin/user/add_new_users.php',
+            [
+                'count' => 1,
+                'credit' => $credit,
+                'owner_name' => $this->username,
+                'group_name' => $groupName,
+                'credit_comment' => '',
+            ],
+            false
+        );
 
         $userId = $this->firstMatch(
-            "/(?:name=[\"']user_id[\"']|[?&]user_id=)[^>]*?(?:value=[\"']|[=])([^\"'&<]+)/i",
-            $body
+            '/[?&]user_id=([0-9]+)/i',
+            $response['headers'] ?? ''
         );
+
         if ($userId === null) {
-            $userId = $this->firstMatch('/[?&]user_id=([0-9]+)/i', $body);
-        }
-        if ($userId === null) {
-            throw new RuntimeException('IBSng user creation did not return a user id. The group may be invalid or the Admin lacks permission.');
+            $userId = $this->firstMatch(
+                '/[?&]user_id=([0-9]+)/i',
+                $response['url']
+            );
         }
 
-        return ['user_ids' => [$userId], 'user_id' => $userId];
+        /*
+         * Some IBSng installations may return the redirect URL in the body
+         * instead of the effective URL. Keep a fallback for that case.
+         */
+        if ($userId === null) {
+            $userId = $this->firstMatch(
+                '/[?&]user_id=([0-9]+)/i',
+                $response['body']
+            );
+        }
+
+        if ($userId === null) {
+            throw new RuntimeException(
+                'IBSng user creation succeeded but no user_id was found. '
+                . 'HTTP code=' . (string)$response['code']
+                . ' URL=' . $response['url']
+            );
+        }
+
+        return [
+            'user_ids' => [$userId],
+            'user_id' => $userId,
+        ];
     }
 
     public function setUserCredentials(string|int $userId, string $username, string $password): array
     {
         $this->ensureLogin();
+
         if ($username === '' || $password === '') {
-            throw new RuntimeException('IBSng username and password cannot be empty.');
+            throw new RuntimeException(
+                'IBSng username and password cannot be empty.'
+            );
         }
 
-        $body = $this->request('/admin/plugins/edit.php', [
-            'update' => '1',
-            'edit_tpl_cs' => 'normal_username',
-            'target' => 'user',
-            'target_id' => (string)$userId,
-            'user_id' => (string)$userId,
-            'has_normal_username' => 't',
-            'current_normal_username' => '',
-            'normal_username' => $username,
-            'password' => $password,
-            'normal_save_user_add' => 't',
-            'attr_update_method_0' => 'normalAttrs',
-        ])['body'];
+        /*
+         * IBSng A1.24 requires the user's edit page to be opened first.
+         * This is the same flow used by the working manual test:
+         *
+         * GET:
+         * /admin/plugins/edit.php?edit_user=1&user_id=...
+         *
+         * POST:
+         * edit_tpl_cs=normal_username
+         * attr_update_method_0=normalAttrs
+         */
+        $this->request(
+            '/admin/plugins/edit.php?edit_user=1&user_id='
+            . rawurlencode((string)$userId),
+            [],
+            false
+        );
 
+        $response = $this->request(
+            '/admin/plugins/edit.php',
+            [
+                'update' => '1',
+                'edit_tpl_cs' => 'normal_username',
+                'target' => 'user',
+                'target_id' => (string)$userId,
+                'user_id' => (string)$userId,
+                'has_normal_username' => 't',
+                'current_normal_username' => '',
+                'normal_username' => $username,
+                'password' => $password,
+                'normal_save_user_add' => 't',
+                'attr_update_method_0' => 'normalAttrs',
+            ],
+            false
+        );
+
+        $body = $response['body'];
         $text = $this->textFromHtml($body);
-        if (stripos($text, 'error') !== false && stripos($text, 'normal username') !== false) {
-            throw new RuntimeException('IBSng rejected the username/password update.');
+
+        /*
+         * Do not treat every occurrence of "error" as failure.
+         * IBSng pages can contain that word in JavaScript or unrelated text.
+         */
+        if (
+            stripos($text, 'normal username') !== false
+            && stripos($text, 'error') !== false
+        ) {
+            throw new RuntimeException(
+                'IBSng rejected the Internet Username/password update.'
+            );
         }
 
-        return ['updated' => true, 'html' => $body];
+        return [
+            'updated' => true,
+            'user_id' => (string)$userId,
+            'username' => $username,
+            'html' => $body,
+            'text' => $text,
+            'url' => $response['url'],
+            'code' => $response['code'],
+        ];
     }
 
     public function renewUser(string|int $userId, string $comment = ''): mixed
