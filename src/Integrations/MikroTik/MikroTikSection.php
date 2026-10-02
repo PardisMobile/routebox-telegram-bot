@@ -42,6 +42,7 @@ final class MikroTikSection
             $pools=is_array($s['pools']??null)?$s['pools']:[];
             $router=is_array($s['router']??null)?$s['router']:[];
             $serverName=(string)($s['name'] ?? 'MikroTik');
+            $identity=(string)($router['identity'] ?? '—');
             $version=(string)($router['version'] ?? '—');
             $uptime=(string)($router['uptime'] ?? '—');
             $cpu=(string)($router['cpu-load'] ?? '—');
@@ -51,10 +52,10 @@ final class MikroTikSection
             $memoryText=$totalMemory>0 ? $formatBytes($usedMemory).' / '.$formatBytes($totalMemory) : '—';
             $latency=$s['latency_ms'] !== null ? number_format((float)$s['latency_ms'],1).' ms' : '—';
             $status=!empty($s['discovery_error'])?'Connection issue':'Connected';
-            $statusClass=!empty($s['discovery_error'])?'err':'';
             $statusDot=!empty($s['discovery_error'])?'var(--red)':'var(--green)';
             $serverCards .= '<article class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>' . $h($serverName) . '</h2><p dir="ltr">' . $h((string)$s['host']) . ':' . $h((string)$s['api_port']) . ' · ' . (!empty($s['tls_mode'])?'HTTPS REST':'HTTP REST') . '</p></div></div><span class="status"><span class="dot" style="background:'.$statusDot.'"></span>'.$h($status).'</span></div>'
                 . '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0">'
+                . '<div style="padding:12px;border:1px solid var(--line);border-radius:12px"><div class="help">Identity</div><strong>'.$h($identity).'</strong></div>'
                 . '<div style="padding:12px;border:1px solid var(--line);border-radius:12px"><div class="help">Server / RouterOS</div><strong>'.$h($version).'</strong></div>'
                 . '<div style="padding:12px;border:1px solid var(--line);border-radius:12px"><div class="help">Uptime</div><strong dir="ltr">'.$h($uptime).'</strong></div>'
                 . '<div style="padding:12px;border:1px solid var(--line);border-radius:12px"><div class="help">CPU Load</div><strong dir="ltr">'.$h($cpu).'%</strong></div>'
@@ -107,13 +108,13 @@ final class MikroTikSection
             .'<div class="field"><label>IP / Hostname</label><input name="host" required dir="ltr" value="'.$h((string)($s['host']??'')).'"></div>'
             .'<div class="field"><label>REST API Port</label><input type="number" name="api_port" min="1" max="65535" value="'.(int)($s['api_port']??443).'"></div>'
             .'<div class="field"><label>API Username</label><input name="username" required value="'.$h((string)($s['username']??'')).'"></div>'
-            .'<div class="field"><label>API Password</label><input type="password" name="password" autocomplete="new-password" placeholder="'.($edit?'unchanged if empty':'required').'"></div>'
-            .'<div class="field"><label>VPN Endpoint</label><input name="vpn_endpoint" dir="ltr" placeholder="vpn.example.com" value="'.$h((string)($s['vpn_endpoint']??'')).'"></div>'
-            .'<div class="field"><label>WireGuard Port</label><input type="number" name="vpn_port" value="'.(int)($s['vpn_port']??51820).'"></div>'
-            .'<div class="field"><label>WireGuard Interface</label><input name="interface_name" dir="ltr" placeholder="wg1" value="'.$h((string)($s['interface_name']??'')).'"></div>'
-            .'<div class="field"><label>IP Pool</label><input name="pool_name" dir="ltr" placeholder="wg-pool" value="'.$h((string)($s['pool_name']??'')).'"></div>'
-            .'<div class="field"><label>DNS Servers</label><input name="dns_servers" dir="ltr" placeholder="1.1.1.1,8.8.8.8" value="'.$h((string)($s['dns_servers']??'')).'"></div>'
-            .'</div><label class="switch"><input type="checkbox" name="tls_mode" value="1" '.(!isset($s['tls_mode'])||!empty($s['tls_mode'])?'checked':'').'><span>Use HTTPS / TLS for RouterOS REST API</span></label>'
-            .'<p class="help">The API connection is separate from the WireGuard endpoint. Passwords are encrypted with the existing RouteBox application key.</p><div class="form-actions"><button class="btn btn-primary" type="submit">✓ '.($edit?'Save & Test':'Test Connection & Save').'</button></div></form>';
+            .'<div class="field"><label>API Password</label><input type="password" name="password" '.($edit?'placeholder="Leave blank to keep current password"':'required').' value=""></div>'
+            .'<div class="field"><label><input type="checkbox" name="tls_mode" value="1" '.(!empty($s['tls_mode'])||(!$edit && (int)($s['api_port']??443)===443)?'checked':'').'> Use HTTPS / TLS</label></div>'
+            .'<div class="field"><label>VPN Endpoint</label><input name="vpn_endpoint" dir="ltr" value="'.$h((string)($s['vpn_endpoint']??'')).'"></div>'
+            .'<div class="field"><label>WireGuard Port</label><input type="number" name="vpn_port" min="1" max="65535" value="'.(int)($s['vpn_port']??51820).'"></div>'
+            .'<div class="field"><label>WireGuard Interface</label><input name="interface_name" value="'.$h((string)($s['interface_name']??'')).'"></div>'
+            .'<div class="field"><label>IP Pool</label><input name="pool_name" value="'.$h((string)($s['pool_name']??'')).'"></div>'
+            .'<div class="field"><label>DNS Servers</label><input name="dns_servers" dir="ltr" value="'.$h((string)($s['dns_servers']??'')).'" placeholder="9.9.9.9,1.1.1.1"></div>'
+            .'</div><div class="form-actions"><button class="btn btn-primary" type="submit">'.($edit?'Save & Test':'Connect & Save').'</button></div></form>';
     }
 }
