@@ -164,7 +164,6 @@ function sendCategoryPlans(string $token, $chat, int $uid, int $categoryId): voi
     $category = $catalog->category($categoryId);
     $plans = $catalog->plans($categoryId);
 
-    // RouteBox may have no paid plans and still expose its free trial.
     if (!$plans && (string)$category['service_key'] !== 'routebox') {
         throw new RuntimeException('برای این سرویس هنوز پلنی تعریف نشده است.');
     }
@@ -324,7 +323,7 @@ function sendMikroTikConfig(string $token, $chat, int $uid, int $id): void
     $tmp = tempnam(sys_get_temp_dir(), 'mkconf');
     file_put_contents($tmp, $conf);
     try {
-        tg($token, 'sendDocument', ['chat_id' => $chat, 'document' => new CURLFile($tmp, 'text/plain', 'MikroTik-WireGuard-' . $r['server_name'] . '.conf'), 'caption' => '📄 ' . $r['server_name'] . ' — WireGuard']);
+        tg($token, 'sendDocument', ['chat_id' => $chat, 'document' => new CURLFile($tmp, 'text/plain', 'MikroTik-WireGuard-' . $r['server_name'] . '.conf'), 'caption' => '📄 ' . $r['server_name'] . ' — WireGuard', 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => langFor($uid) === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
     } finally { @unlink($tmp); }
 }
 
@@ -348,7 +347,7 @@ function sendMikroTikQr(string $token, $chat, int $uid, int $id): void
     $code = proc_close($proc);
     if ($code !== 0 || !is_file($tmp)) throw new RuntimeException('QR generation failed.');
     try {
-        tg($token, 'sendPhoto', ['chat_id' => $chat, 'photo' => new CURLFile($tmp, 'image/png', 'MikroTik-WireGuard-QR.png'), 'caption' => '📷 ' . $r['server_name'] . ' — WireGuard']);
+        tg($token, 'sendPhoto', ['chat_id' => $chat, 'photo' => new CURLFile($tmp, 'image/png', 'MikroTik-WireGuard-QR.png'), 'caption' => '📷 ' . $r['server_name'] . ' — WireGuard', 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => langFor($uid) === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
     } finally { @unlink($tmp); }
 }
 
@@ -401,8 +400,6 @@ if (!$stored) exit("Telegram token is not configured\n");
 $token = dec($stored);
 @mkdir(__DIR__ . '/storage', 0700, true);
 
-// Telegram getUpdates must have exactly one active consumer. This process lock
-// prevents accidental duplicate workers from processing the same callback.
 $workerLock = fopen(__DIR__ . '/storage/worker.lock', 'c');
 if ($workerLock === false || !flock($workerLock, LOCK_EX | LOCK_NB)) {
     fwrite(STDERR, "Another worker is already running.\n");
