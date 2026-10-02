@@ -7,44 +7,180 @@ namespace RouteBox\Integrations\MikroTik;
 use RuntimeException;
 
 /**
- * RouterOS API foundation client.
+ * RouterOS REST API client used by the MikroTik WireGuard provider.
  *
- * This layer intentionally keeps MikroTik communication isolated from the
- * Telegram worker and provisioning layer.
- *
- * Future implementations can add RouterOS API/REST transport without changing
- * the service provider contract.
+ * MTWireGuard's reference implementation uses RouterOS REST resources such as
+ * interface/wireguard, interface/wireguard/peers, ip/pool, ip/address,
+ * ip/dns and queue/simple. RouteBox keeps the transport isolated here and does
+ * not require a container or a second MikroTik-side application.
  */
 final class MikroTikClient
 {
+    private string $baseUrl;
+
     public function __construct(
         private readonly string $host,
         private readonly string $username,
         private readonly string $password,
-        private readonly int $port = 8728,
-        private readonly bool $tls = false,
+        private readonly int $port = 443,
+        private readonly bool $tls = true,
         private readonly int $timeout = 10,
     ) {
-        if ($this->host === '' || $this->username === '') {
+        if ($this->host === '' || $this->username === '' || $this->password === '') {
             throw new RuntimeException('MikroTik connection settings are incomplete.');
         }
+        if ($this->port < 1 || $this->port > 65535) {
+            throw new RuntimeException('MikroTik API port is invalid.');
+        }
+        $scheme = $this->tls ? 'https' : 'http';
+        $this->baseUrl = $scheme . '://' . $this->host . ':' . $this->port . '/rest';
     }
 
+    /** @return array<string,mixed> */
+    private function request(string $method, string $path, ?array $payload = null): array
+    {
+        $url = $this->baseUrl . '/' . ltrim($path, '/');
+        $ch = curl_init($url);
+        if ($ch === false) {
+            throw new RuntimeException('Could not initialize MikroTik HTTP client.');
+        }
+
+        $headers = [
+            'Accept: application/json',
+            'Content-Type: application/json',
+            'Connection: close',
+        ];
+        $options = [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => strtoupper($method),
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_USERPWD => $this->username . ':' . $this->password,
+            CURLOPT_HTTPAUTH => CURLAUTH_BASIC,
+            CURLOPT_CONNECTTIMEOUT => min(5, $this->timeout),
+            CURLOPT_TIMEOUT => $this->timeout,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_USERAGENT => 'RouteBox-MikroTik-WireGuard/1.0',
+        ];
+        if ($payload !== null) {
+            $options[CURLOPT_POSTFIELDS] = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        }
+
+        curl_setopt_array($ch, $options);
+        $body = curl_exec($ch);
+        $error = curl_error($ch);
+        $errno = curl_errno($ch);
+        $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+
+        if ($body === false) {
+            throw new RuntimeException('MikroTik REST connection failed: ' . ($error !== '' ? $error : 'cURL error ' . $errno));
+        }
+        $decoded = json_decode((string)$body, true);
+        if ($status < 200 || $status >= 300) {
+            $detail = is_array($decoded) ? (string)($decoded['detail'] ?? $decoded['message'] ?? '') : trim((string)$body);
+            throw new RuntimeException('MikroTik REST HTTP ' . $status . ($detail !== '' ? ': ' . $detail : '.'));
+        }
+        if ($body === '' || $decoded === null) {
+            return [];
+        }
+        if (!is_array($decoded)) {
+            throw new RuntimeException('MikroTik REST returned an invalid JSON response.');
+        }
+        return $decoded;
+    }
+
+    /** @return array<string,mixed> */
     public function testConnection(): array
     {
+        $info = $this->routerInfo();
+        $interfaces = $this->wireguardInterfaces();
         return [
-            'status' => 'pending',
-            'message' => 'RouterOS API transport foundation created. Connection adapter will be added without changing provider architecture.',
+            'status' => 'ok',
+            'message' => 'RouterOS REST API connection successful.',
+            'router' => $info,
+            'wireguard_available' => count($interfaces) > 0,
+            'wireguard_interfaces' => $interfaces,
+            'pools' => $this->ipPools(),
+            'dns' => $this->dnsSettings(),
         ];
     }
 
+    /** @return array<string,mixed> */
     public function routerInfo(): array
     {
-        return [];
+        $rows = $this->request('GET', 'system/resource');
+        return $rows[0] ?? [];
     }
 
+    /** @return array<int,array<string,mixed>> */
     public function wireguardInterfaces(): array
     {
-        return [];
+        return $this->request('GET', 'interface/wireguard');
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function wireguardPeers(?string $interface = null): array
+    {
+        $rows = $this->request('GET', 'interface/wireguard/peers');
+        if ($interface === null || $interface === '') {
+            return $rows;
+        }
+        return array_values(array_filter($rows, static fn(array $row): bool => (string)($row['interface'] ?? '') === $interface));
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function ipPools(): array
+    {
+        return $this->request('GET', 'ip/pool');
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function ipAddresses(): array
+    {
+        return $this->request('GET', 'ip/address');
+    }
+
+    /** @return array<string,mixed> */
+    public function dnsSettings(): array
+    {
+        $rows = $this->request('GET', 'ip/dns');
+        return $rows[0] ?? [];
+    }
+
+    /** @return array<string,mixed> */
+    public function createPeer(array $peer): array
+    {
+        $result = $this->request('PUT', 'interface/wireguard/peers', $peer);
+        return $result;
+    }
+
+    /** @return array<string,mixed> */
+    public function updatePeer(string $id, array $peer): array
+    {
+        return $this->request('PATCH', 'interface/wireguard/peers/' . rawurlencode($id), $peer);
+    }
+
+    public function deletePeer(string $id): void
+    {
+        $this->request('DELETE', 'interface/wireguard/peers/' . rawurlencode($id));
+    }
+
+    /** @return array<string,mixed> */
+    public function createQueue(array $queue): array
+    {
+        return $this->request('PUT', 'queue/simple', $queue);
+    }
+
+    public function deleteQueue(string $id): void
+    {
+        $this->request('DELETE', 'queue/simple/' . rawurlencode($id));
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    public function simpleQueues(): array
+    {
+        return $this->request('GET', 'queue/simple');
     }
 }
