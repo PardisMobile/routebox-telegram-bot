@@ -6,11 +6,30 @@ namespace RouteBox\Integrations\MikroTik;
 
 final class MikroTikSection
 {
-    public static function render(array $data, string $csrf): string
+    public static function navIcon(): string
     {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2"></rect><path d="M7 17v2"></path><path d="M17 17v2"></path><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle></svg>';
+    }
+
+    public static function navLabel(string $lang): string
+    {
+        return 'MikroTik WireGuard';
+    }
+
+    public static function handlePost(MikroTikAdmin $admin): void
+    {
+        $admin->handle($_POST, 'POST');
+        header('Location: /?section=mikrotik');
+        exit;
+    }
+
+    public static function render(MikroTikAdmin $admin, string $lang, string $csrf): string
+    {
+        $data = $admin->viewData();
         $h=static fn(string $v):string=>htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
         $flash=(string)($data['flash']??'');
         $error=(bool)($data['error']??false);
+        $flashHtml = $flash !== '' ? '<div class="flash '.($error?'err':'').'">'.$h($flash).'</div>' : '';
         $serversHtml='';
         foreach(($data['servers']??[]) as $s){
             $router=$s['router']??[];
@@ -22,8 +41,8 @@ final class MikroTikSection
             $cpu=(string)($router['cpu_load']??'—');
             $memory=(string)($router['memory']??'—');
             $latency=$s['latency_ms']===null?'—':((string)$s['latency_ms'].' ms');
-            $interfaces=$s['interfaces']??[];
-            $pools=$s['pools']??[];
+            $interfaces=is_array($s['interfaces']??null)?$s['interfaces']:[];
+            $pools=is_array($s['pools']??null)?$s['pools']:[];
             $serverId=(int)$s['id'];
             $serversHtml.='<article class="server-card">'
                 .'<div class="server-card-head"><div><div class="server-title">'.$h($identity).'</div><div class="server-sub">'.$h((string)$s['host']).':'.$h((string)$s['api_port']).'</div></div><span class="status '.$statusClass.'">'.$h($status).'</span></div>'
@@ -56,7 +75,7 @@ final class MikroTikSection
 
         $guide='<section class="card"><details><summary style="cursor:pointer;font-weight:800">⚙ MikroTik Setup Guide</summary><div style="margin-top:14px"><p class="help">Configure RouterOS REST access, create the RouteBox user and verify the connection before adding the server.</p><ol style="line-height:1.9;padding-inline-start:22px"><li>Enable <code>www</code> for temporary HTTP testing, or preferably <code>www-ssl</code> with a valid certificate for production.</li><li>Create a dedicated RouterOS user with <code>rest-api</code> plus only the permissions RouteBox needs.</li><li>Allow the REST port from the RouteBox server IP in the firewall.</li><li>In RouteBox enter the router IP/hostname, REST port, username and password. For temporary HTTP testing disable the TLS checkbox and use port 80.</li><li>VPN Endpoint is the public hostname/IP used by WireGuard clients. Leave <strong>WireGuard Port</strong> blank and RouteBox will automatically read the WireGuard interface <code>listen-port</code> from RouterOS.</li><li>Use <strong>Test Connection</strong>. The panel will display RouterOS version, uptime, CPU, memory and REST latency.</li></ol><p class="help">HTTP REST sends credentials without transport encryption. Use it only for controlled testing; production should use HTTPS/TLS.</p></div></details></section>';
 
-        return $flash.$addServer.$guide.'<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>MikroTik Servers</h2><p>RouterOS version, uptime, CPU, memory, REST latency, WireGuard interfaces, IP pools and DNS are discovered from the router.</p></div></div></div>'.$serversHtml.'</section>'.$planForm.$peerTable;
+        return $flashHtml.$addServer.$guide.'<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>MikroTik Servers</h2><p>RouterOS version, uptime, CPU, memory, REST latency, WireGuard interfaces, IP pools and DNS are discovered from the router.</p></div></div></div>'.$serversHtml.'</section>'.$planForm.$peerTable;
     }
 
     private static function serverForm(array $s,string $csrf,bool $edit): string
