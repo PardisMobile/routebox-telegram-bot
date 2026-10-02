@@ -282,7 +282,7 @@ function sendConfig(string $token, $chat, int $uid, int $id): void
     $conf = $c->config($r['public_key']);
     $tmp = tempnam(sys_get_temp_dir(), 'rbt');
     file_put_contents($tmp, $conf);
-    try { tg($token, 'sendDocument', ['chat_id' => $chat, 'document' => new CURLFile($tmp, 'text/plain', 'RouteBox-' . $r['server_name'] . '.conf'), 'caption' => '📄 ' . $r['server_name']]); }
+    try { tg($token, 'sendDocument', ['chat_id' => $chat, 'document' => new CURLFile($tmp, 'text/plain', 'RouteBox-' . $r['server_name'] . '.conf'), 'caption' => '📄 ' . $r['server_name'], 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => langFor($uid) === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]); }
     finally { @unlink($tmp); }
 }
 
@@ -302,7 +302,7 @@ function sendQr(string $token, $chat, int $uid, int $id): void
     fwrite($pipes[0], $conf); fclose($pipes[0]); fclose($pipes[1]); fclose($pipes[2]);
     $code = proc_close($p);
     if ($code !== 0 || !is_file($tmp)) throw new RuntimeException('QR generation failed.');
-    try { tg($token, 'sendPhoto', ['chat_id' => $chat, 'photo' => new CURLFile($tmp, 'image/png', 'RouteBox-QR.png'), 'caption' => '📷 ' . $r['server_name'] . ' — AmneziaWG']); }
+    try { tg($token, 'sendPhoto', ['chat_id' => $chat, 'photo' => new CURLFile($tmp, 'image/png', 'RouteBox-QR.png'), 'caption' => '📷 ' . $r['server_name'] . ' — AmneziaWG', 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => langFor($uid) === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]); }
     finally { @unlink($tmp); }
 }
 
