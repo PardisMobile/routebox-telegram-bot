@@ -32,13 +32,14 @@ final class MikroTikAdmin
                     if (!$interfaces) {
                         throw new RuntimeException('RouterOS is reachable, but no WireGuard interface was found.');
                     }
+                    $data = $this->resolveWireGuardSettings($data, $interfaces);
                     $now = time();
                     $this->db->prepare(
                         'INSERT INTO mikrotik_servers(name,host,api_port,username,password_enc,tls_mode,vpn_endpoint,vpn_port,interface_name,pool_name,dns_servers,enabled,created_at,updated_at,last_test_at,last_error)
                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)'
                     )->execute([
                         $data['name'], $data['host'], $data['api_port'], $data['username'], enc($data['password']), $data['tls_mode'],
-                        $data['vpn_endpoint'], $data['vpn_port'], $data['interface_name'] ?: (string)($interfaces[0]['name'] ?? ''),
+                        $data['vpn_endpoint'], $data['vpn_port'], $data['interface_name'],
                         $data['pool_name'], $data['dns_servers'] ?: (string)($result['dns']['servers'] ?? ''), 1, $now, $now, $now,
                     ]);
                     $_SESSION['mikrotik_flash'] = '✓ MikroTik connection succeeded and the server was saved.';
@@ -54,6 +55,7 @@ final class MikroTikAdmin
                     $result = $client->testConnection();
                     $interfaces = $result['wireguard_interfaces'] ?? [];
                     if (!$interfaces) throw new RuntimeException('No WireGuard interface was found on this RouterOS device.');
+                    $data = $this->resolveWireGuardSettings($data, $interfaces);
                     $this->db->prepare(
                         'UPDATE mikrotik_servers SET name=?,host=?,api_port=?,username=?,password_enc=?,tls_mode=?,vpn_endpoint=?,vpn_port=?,interface_name=?,pool_name=?,dns_servers=?,last_test_at=?,last_error=NULL,updated_at=? WHERE id=?'
                     )->execute([
@@ -168,8 +170,9 @@ final class MikroTikAdmin
         if ($password === '' && $old) $password = dec((string)$old['password_enc']);
         $tls = !empty($post['tls_mode']) ? 1 : 0;
         $apiPort = (int)($post['api_port'] ?? ($tls ? 443 : 80));
-        $vpnPort = (int)($post['vpn_port'] ?? 51820);
-        if ($apiPort < 1 || $apiPort > 65535 || $vpnPort < 1 || $vpnPort > 65535) throw new RuntimeException('API/VPN port is invalid.');
+        $vpnPortRaw = trim((string)($post['vpn_port'] ?? ''));
+        $vpnPort = $vpnPortRaw === '' ? 0 : (int)$vpnPortRaw;
+        if ($apiPort < 1 || $apiPort > 65535 || ($vpnPort !== 0 && ($vpnPort < 1 || $vpnPort > 65535))) throw new RuntimeException('API/VPN port is invalid.');
         return [
             'name' => trim((string)($post['name'] ?? '')),
             'host' => trim((string)($post['host'] ?? '')),
@@ -183,6 +186,40 @@ final class MikroTikAdmin
             'pool_name' => trim((string)($post['pool_name'] ?? '')),
             'dns_servers' => trim((string)($post['dns_servers'] ?? '')),
         ];
+    }
+
+    /**
+     * WireGuard is a UDP service and its listen-port belongs to the RouterOS
+     * WireGuard interface, not to the REST API port. When the admin leaves the
+     * VPN port blank, discover it directly from RouterOS so the generated client
+     * config cannot accidentally inherit the REST port (for example :80).
+     */
+    private function resolveWireGuardSettings(array $data, array $interfaces): array
+    {
+        $selected = null;
+        foreach ($interfaces as $interface) {
+            if ((string)($data['interface_name'] ?? '') !== '' && (string)($interface['name'] ?? '') === (string)$data['interface_name']) {
+                $selected = $interface;
+                break;
+            }
+        }
+        if ($selected === null) {
+            $selected = $interfaces[0] ?? null;
+        }
+        if (!$selected) {
+            throw new RuntimeException('No WireGuard interface was found on this RouterOS device.');
+        }
+        if (trim((string)($data['interface_name'] ?? '')) === '') {
+            $data['interface_name'] = (string)($selected['name'] ?? '');
+        }
+        if ((int)($data['vpn_port'] ?? 0) === 0) {
+            $listenPort = (int)($selected['listen-port'] ?? 0);
+            if ($listenPort < 1 || $listenPort > 65535) {
+                throw new RuntimeException('WireGuard interface listen-port could not be detected.');
+            }
+            $data['vpn_port'] = $listenPort;
+        }
+        return $data;
     }
 
     private function clientFromData(array $data): MikroTikClient
