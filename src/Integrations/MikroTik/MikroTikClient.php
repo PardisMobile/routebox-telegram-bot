@@ -122,7 +122,25 @@ final class MikroTikClient
         // compatible so fields such as version/uptime/cpu-load are preserved.
         if (array_is_list($rows)) {
             $first = $rows[0] ?? [];
-            return is_array($first) ? $first : [];
+            $rows = is_array($first) ? $first : [];
+        }
+
+        // /system/identity returns the RouterOS System Identity shown in the
+        // MikroTik console prompt (for example: "MikroTik USA"). Keep it
+        // alongside the resource fields so the admin UI can display both the
+        // RouteBox server label and the actual router identity.
+        try {
+            $identity = $this->request('GET', 'system/identity');
+            if (array_is_list($identity)) {
+                $identity = $identity[0] ?? [];
+            }
+            if (is_array($identity)) {
+                $rows['identity'] = (string)($identity['name'] ?? '');
+            }
+        } catch (\Throwable) {
+            // Identity discovery is supplemental; an older/restricted RouterOS
+            // endpoint must not make an otherwise healthy resource check fail.
+            $rows['identity'] = '';
         }
 
         return $rows;
