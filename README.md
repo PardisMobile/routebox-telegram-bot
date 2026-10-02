@@ -13,7 +13,7 @@ Telegram Bot + independent Web Admin Panel for **RouteBox / AmneziaWG**, with a 
 - RouteBox API validation and AWG smoke testing
 - Encrypted credentials, admin password recovery and updater/repair tooling
 - Light/Dark Admin Panel and HTTPS/TLS support without taking over existing RouteBox `80/443`
-- Single-worker protection for Telegram updates
+- Single-worker protection and operational Telegram worker
 
 ## 🧩 Modular services
 
@@ -29,23 +29,24 @@ src/Integrations/
 
 Additive service/order/subscription/payment/coupon schemas are in place so new providers and gateways can be added without rewriting the existing RouteBox implementation.
 
-### 🔵 IBSng — current integration
+### 🔵 IBSng — operational integration
 
 The current branch targets **IBSng A1.24 Free Edition** through its existing Apache Web Panel.
 
-Implemented:
+Implemented and tested:
 
-- Admin authentication and connection test through `/IBSng/admin/`
-- Group discovery/synchronization
-- User lookup by username / Internet Username
-- User creation in an existing IBSng Group
+- Admin authentication and connection test
+- IBSng server configuration and group discovery/synchronization
+- IBSng products/plans with real Group association and enabled state
+- Any number of configured IBSng plans/groups exposed automatically to Telegram
+- User lookup and real user creation
 - Automatic Internet Username + password assignment
 - One IBSng account for **L2TP + OpenVPN + Cisco** access methods
-- IBSng subscription persistence and provider/server/group-aware provisioning
+- Subscription persistence and provider/server/group-aware provisioning
 - Telegram purchase/provisioning flow
-- Isolated provider code under `src/Integrations/IBSng/`
-- CLI smoke tests for connection, user lookup and test-user creation
+- Operational worker loading of the isolated IBSng provider
 - Real end-to-end IBSng provisioning verification
+- Isolated provider code under `src/Integrations/IBSng/`
 
 The integration does **not** access the IBSng database and does not require exposing the local Core XML-RPC listener or opening JSON-RPC `1237`.
 
@@ -63,11 +64,11 @@ Product → Order → Coupon → Payment Gateway
                     └── IBSng
 ```
 
-The payment abstraction is ready for future gateways, including an Iranian gateway such as ZarinPal. Full order/payment/coupon UI and verified-payment provisioning remain on the roadmap.
+The payment abstraction is ready for future gateways, including an Iranian gateway such as ZarinPal. Full order/payment/coupon flow remains on the roadmap.
 
 ## 📣 Telegram administration
 
-The architecture supports separate RouteBox/IBSng categories, independent trials, configurable labels/icons/order and future broadcast/rate-limited messaging. A Telegram WebApp can later provide custom UI/colors where native inline keyboards cannot.
+RouteBox and IBSng are separate service categories and the worker is shared; adding a new provider does not require rewriting the worker. Broadcast/rate-limited messaging and further category controls remain on the roadmap.
 
 ## 📦 Installation
 
@@ -97,18 +98,6 @@ cd /opt/routebox-telegram-bot-dev
 php tools/ibsng-smoke-test.php YOUR_IBSNG_IP YOUR_ADMIN_USER YOUR_ADMIN_PASSWORD
 ```
 
-Read a user:
-
-```bash
-php tools/ibsng-smoke-test.php YOUR_IBSNG_IP YOUR_ADMIN_USER YOUR_ADMIN_PASSWORD get USERNAME
-```
-
-Create a controlled test user:
-
-```bash
-php tools/ibsng-smoke-test.php YOUR_IBSNG_IP YOUR_ADMIN_USER YOUR_ADMIN_PASSWORD create P1 Main 0
-```
-
 ## 🗂️ Important paths
 
 | Path | Purpose |
@@ -125,28 +114,44 @@ php tools/ibsng-smoke-test.php YOUR_IBSNG_IP YOUR_ADMIN_USER YOUR_ADMIN_PASSWORD
 
 ## 🗺️ Roadmap
 
-### Next
+### ✅ Completed
 
-- [ ] IBSng Admin Panel: server/group/product management UI
-- [ ] Manual product → IBSng Group mapping UI
-- [ ] Remaining time/traffic display
-- [ ] IBSng renewal/edit/delete/account management
+- [x] RouteBox/WireGuard and IBSng as independent services
+- [x] Modular provider architecture and shared worker
+- [x] Operational IBSng A1.24 integration
+- [x] IBSng Admin connection/server configuration
+- [x] IBSng Group sync/discovery
+- [x] IBSng product/plan → real Group association
+- [x] Any number of IBSng plans/groups automatically available in Telegram
+- [x] IBSng real user provisioning with automatic username/password
+- [x] One IBSng account for L2TP / OpenVPN / Cisco
+- [x] IBSng subscription persistence and service provisioning
+- [x] End-to-end IBSng provisioning test
+- [x] RouteBox free trial and service visibility
+- [x] Telegram worker operational with single-instance protection
+- [x] Additive Order/Coupon/Payment schema foundation
+
+### 🔜 Next
+
+- [ ] IBSng remaining time/traffic display
+- [ ] IBSng renewal / edit / delete / account management
 - [ ] Separate IBSng free-trial controls
 - [ ] Complete Order lifecycle
-- [ ] Coupon creation/validation/usage limits
-- [ ] Payment provider management + callback verification
-- [ ] ZarinPal adapter
+- [ ] Coupon creation, validation, expiry and usage limits
+- [ ] Payment provider management and callback verification
 - [ ] Provision only after verified payment
+- [ ] ZarinPal adapter
+- [ ] Payment/Order history
 
-### Later
+### 📣 After payment
 
 - [ ] Telegram broadcast with queue/rate limiting
 - [ ] Service-category management UI
-- [ ] Server/region selection
 - [ ] Expiration notifications
 - [ ] Usage dashboard
+- [ ] Server/region selection
 - [ ] MikroTik provider
-- [ ] More isolated service providers
+- [ ] Additional isolated service providers
 - [ ] Optional Telegram WebApp
 
 ## 🔐 Security
