@@ -1,45 +1,87 @@
 # Changelog
 
-All notable changes to RouteBox Telegram Bot are documented here.
+Important user-visible and operational changes for RouteBox Telegram Bot.
 
-The repository version is defined by [`VERSION`](./VERSION). Release notes below describe the important user-visible and operational changes for each beta.
+Version source of truth: [`VERSION`](./VERSION).
 
-## Unreleased — IBSng A1.24 Web Panel Integration
+## Unreleased — Modular Services / IBSng
 
-### IBSng
+### 🧩 Modular architecture
 
-- Switched the development IBSng transport from the unavailable external JSON-RPC `:1237` assumption to the **IBSng A1.24 Free Edition Apache Web Panel**.
-- The adapter authenticates with the existing IBSng Admin username/password at `/IBSng/admin/` and keeps the session in a temporary cookie jar.
-- Added read-only connection testing and Group discovery through the existing Admin Web Panel.
-- Added **Sync Groups** in the IBSng admin section to read all available Group Names from IBSng and store them locally for product/plan selection.
-- Group synchronization is non-destructive: it only reads Group information and does not create, delete or modify IBSng Groups.
-- Added user lookup by normal/Internet username through the existing A1.24 user-information page.
-- Added test-user creation through the existing A1.24 `add_new_users.php` flow, preserving IBSng Core validation and permissions.
-- Added an admin UI for testing connection, syncing Groups, reading an existing User, and creating a controlled test User.
-- The Web Panel port now defaults to `80`; the previous `1237` default has been removed from the IBSng setup UI.
-- Restored the **IBSng** entry in the main Admin Panel sidebar as a separate module entry point, without rewriting the existing RouteBox Admin UI.
-- No IBSng database access is used.
-- No requirement to expose the A1.24 Core XML-RPC listener on `127.0.0.1:1235` or to open JSON-RPC `:1237`.
-- Product-to-IBSng Group mapping is intentionally designed to be manual (for example `یک ماهه` → `P1`); Group synchronization is used for discovery/verification and convenient selection, not as a requirement for product creation.
-- Username/password assignment, renewal, usage display and full account management remain follow-up tasks after the connection/create/read smoke test.
+- Added provider-isolation architecture with `ServiceProviderInterface`.
+- Added isolated `src/Integrations/IBSng/` provider for OpenVPN / Cisco / L2TP.
+- Added isolated `src/Integrations/Payment/` abstraction for future gateways.
+- Added additive service categories, provider plans, subscriptions, orders, payment providers and coupons schema.
+- Existing RouteBox/WireGuard functionality remains separate and operational.
 
-### Smoke test
+### 🔵 IBSng A1.24
 
-- `tools/ibsng-smoke-test.php` defaults to HTTP port `80` for A1.24.
-- `get USERNAME` mode reads an existing account.
-- `create GROUP [ISP] [CREDIT]` mode creates a controlled test account.
-- The smoke test remains isolated from the production RouteBox installation.
+- Switched the development integration to the IBSng A1.24 Apache Web Panel instead of relying on an external `:1237` JSON-RPC endpoint.
+- Added Admin authentication and connection testing through `/IBSng/admin/`.
+- Added non-destructive Group discovery/synchronization.
+- Added existing-user lookup by username / Internet Username.
+- Added controlled user creation in an existing IBSng Group.
+- Added automatic Internet Username + password assignment.
+- Added one subscription/account for L2TP + OpenVPN + Cisco access methods.
+- Added IBSng subscription persistence and provider/server/group-aware provisioning.
+- Connected the IBSng provisioning flow to Telegram.
+- Verified real end-to-end IBSng provisioning.
+- Added CLI smoke tests for connection, lookup and test-user creation.
+- No direct IBSng database access is used.
+- No requirement to expose local Core XML-RPC or open JSON-RPC `1237`.
 
-### Architecture
+### 🛠️ Admin / reliability
 
-- Existing RouteBox/WireGuard functionality remains unchanged.
-- IBSng remains an isolated provider under `src/Integrations/IBSng/`.
-- Payment, coupons, Telegram service categories and future MikroTik integration remain separate modules.
+- Expanded Admin Tools, backup/guide/RouteBox management and recovery tooling.
+- Hardened RouteBox client loading and prevented duplicate `RouteBoxClient` declarations.
+- Improved updater self-refresh and canonical `update.sh` execution.
+- Added/fixed Admin navigation and GitHub version visibility.
+- Added Telegram usage guide and fixed escaped/newline rendering.
+- Added `qrencode` to installer requirements for QR workflows.
+- Added development installer isolation under `/opt/routebox-telegram-bot-dev`.
 
-### Previous modular foundation
+## 0.1.0-beta.11.x
 
-- Added an isolated provider architecture so new service backends can be added without rewriting the existing RouteBox core.
-- Added a generic `ServiceProviderInterface` for provider-neutral service operations.
-- Added an isolated `src/Integrations/Payment/` abstraction for future payment gateways.
-- Added additive database structures for service categories, provider plans, subscriptions, orders, payment providers and coupons without repurposing existing RouteBox tables.
-- Added architecture documentation in `docs/MODULAR_ARCHITECTURE.md`.
+- Continued Admin Panel stabilization and updater/repair improvements.
+- Introduced the modular-services development line and IBSng integration work.
+- Added the service/order/payment/coupon architecture foundation.
+
+## Earlier releases
+
+- RouteBox Telegram Bot + independent Web Admin Panel.
+- Multi-RouteBox server support and AWG provisioning.
+- Expiration and traffic quota handling.
+- `.conf` delivery and free-trial protection.
+- Persian/English Bot and Admin Panel.
+- Configurable plans, welcome text and Telegram buttons.
+- RouteBox API validation and AWG create/export/delete smoke testing.
+- Encrypted credentials and admin password recovery/change.
+- Software updater, backup, restore and repair tooling.
+- Light/Dark Admin Panel.
+- HTTPS/TLS integration without taking over existing RouteBox ports `80/443`.
+- Telegram worker single-instance protection.
+
+## 🗺️ Roadmap
+
+### Next
+
+- [ ] IBSng Admin Panel: server/group/product management
+- [ ] Product → IBSng Group mapping UI
+- [ ] Remaining time/traffic display
+- [ ] IBSng renewal/edit/delete/account management
+- [ ] Separate IBSng free-trial controls
+- [ ] Complete Order lifecycle
+- [ ] Coupon management and usage limits
+- [ ] Payment provider management and callback verification
+- [ ] ZarinPal adapter
+- [ ] Provision only after verified payment
+
+### Later
+
+- [ ] Telegram broadcast with queue/rate limiting
+- [ ] Service-category management UI
+- [ ] Server/region selection
+- [ ] Expiration notifications and usage dashboard
+- [ ] MikroTik provider
+- [ ] Additional isolated service providers
+- [ ] Optional Telegram WebApp
