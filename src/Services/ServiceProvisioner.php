@@ -9,6 +9,7 @@ use RuntimeException;
 use RouteBox\Integrations\IBSng\IBSngService;
 
 require_once __DIR__ . '/../RouteBoxClient.php';
+require_once __DIR__ . '/../Integrations/IBSng/IBSngClient.php';
 require_once __DIR__ . '/../Integrations/IBSng/IBSngService.php';
 require_once __DIR__ . '/../Integrations/IBSng/IBSngSchema.php';
 
