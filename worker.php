@@ -256,6 +256,7 @@ function sendServices(string $token, $chat, int $uid): void
         $text .= '🟢 MikroTik — ' . $r['server_name'] . ' — ' . $ip . ' — ' . $expiry . "\n";
         $k[] = [['text' => '⚙️ MikroTik · ' . ($i + 1), 'callback_data' => 'mikrotikservice:' . $r['id']]];
     }
+    $k[] = [['text' => $l === 'fa' ? '🔙 منوی اصلی' : '🔙 Main Menu', 'callback_data' => 'menu']];
     tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
 }
 
