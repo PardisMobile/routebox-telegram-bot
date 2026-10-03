@@ -39,11 +39,11 @@ final class ATDStats
 
     private static function providerStats(PDO $db, string $provider): array
     {
-        $serverTable = self::providerTable($provider);
-        $servers = $serverTable ? self::countRows($db, $serverTable) : 0;
+        $table = self::providerTable($provider);
+        $servers = $table ? self::countRows($db, $table) : 0;
         $users = self::tableExists($db, 'service_subscriptions') ? self::scalar($db, "SELECT COUNT(DISTINCT telegram_user_id) FROM service_subscriptions WHERE provider_key=? AND status != 'deleted'", [$provider]) : 0;
         $plans = self::tableExists($db, 'service_plans') ? self::scalar($db, 'SELECT COUNT(*) FROM service_plans WHERE provider_key=?', [$provider]) : 0;
-        $online = $serverTable && self::tableExists($db, $serverTable) ? self::scalar($db, 'SELECT COUNT(*) FROM ' . $serverTable . ' WHERE enabled = 1') : 0;
+        $online = $table && self::tableExists($db, $table) ? self::scalar($db, 'SELECT COUNT(*) FROM ' . $table . ' WHERE enabled = 1') : 0;
         return [$servers, $users, $plans, $online];
     }
 
@@ -98,7 +98,7 @@ final class ATDStats
         } catch (\Throwable $e) { return []; }
     }
 
-    private static function statusCard(PDO $db, string $provider, callable $esc): string
+    public static function statusCard(PDO $db, string $provider, callable $esc): string
     {
         $s = self::snapshot($db, $provider);
         $csrf = function_exists('csrf_token') ? csrf_token() : '';
@@ -111,7 +111,7 @@ final class ATDStats
         $name = (string)($s['name'] ?? '—');
         $color = $connected ? 'var(--green)' : 'var(--red)';
         $section = $provider === 'routebox' ? 'servers' : ($provider === 'ibsng' ? 'ibsng' : 'mikrotik');
-        $action = '<form method="post" action="/" style="margin:0"><input type="hidden" name="csrf_token" value="'.$esc($csrf).'">'<br>
+        $action = '<form method="post" action="/" style="margin:0"><input type="hidden" name="csrf_token" value="'.$esc($csrf).'">'
             . '<input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="'.$esc($section).'">'
             . '<input type="hidden" name="id" value="'.$id.'"><button class="atd-status-refresh" type="submit" title="Refresh">↻</button></form>';
         return '<div class="atd-provider-status"><div class="atd-status-head"><span>Server Status</span>'.$action.'</div>'
@@ -132,13 +132,11 @@ final class ATDStats
         $cards='<div class="stat"><div class="stat-top"><span>Servers</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$serverIcon.'</svg></span></div><b>'.number_format($servers).'</b></div>'
             .'<div class="stat"><div class="stat-top"><span>Users</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$userIcon.'</svg></span></div><b>'.number_format($users).'</b></div>'
             .'<div class="stat"><div class="stat-top"><span>Plans</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$planIcon.'</svg></span></div><b>'.number_format($plans).'</b></div>';
-        if ($provider === null) $cards.='<div class="stat"><div class="stat-top"><span>Version</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$refreshIcon.'</svg></span></div><b style="font-size:18px">v'.$esc($version).'</b></div>';
-        else $cards.='<div class="stat atd-status-stat">'.$thisStatus($db,$provider,$esc).'</div>';
+        if ($provider === null) {
+            $cards.='<div class="stat"><div class="stat-top"><span>Version</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$refreshIcon.'</svg></span></div><b style="font-size:18px">v'.$esc($version).'</b></div>';
+        } else {
+            $cards.='<div class="stat atd-status-stat">'.self::statusCard($db,$provider,$esc).'</div>';
+        }
         return '<div class="stats atd-stats">'.$cards.'</div><style>.atd-status-stat{min-width:0}.atd-provider-status{margin-top:4px}.atd-status-head{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px;font-weight:700}.atd-status-refresh{width:30px;height:30px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);cursor:pointer;font-size:18px}.atd-status-main{display:flex;align-items:center;gap:10px;margin-top:8px}.atd-flag{font-size:29px;min-width:38px;text-align:center}.atd-status-main strong{display:block;font-size:13px;max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-status-state{font-size:11px;color:var(--muted);margin-top:4px}.atd-status-state i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-inline-end:5px}.atd-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.atd-status-grid span{display:block;color:var(--muted);font-size:10px}.atd-status-grid b{display:block;margin-top:3px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}</style>\n';
     }
-}
-
-function thisStatus(PDO $db, string $provider, callable $esc): string
-{
-    return ATDStats::statusCard($db, $provider, $esc);
 }
