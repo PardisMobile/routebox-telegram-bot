@@ -41,9 +41,12 @@ final class ATDStats
     {
         $table = self::providerTable($provider);
         $servers = $table ? self::countRows($db, $table) : 0;
-        $users = self::tableExists($db, 'service_subscriptions') ? self::scalar($db, "SELECT COUNT(DISTINCT telegram_user_id) FROM service_subscriptions WHERE provider_key=? AND status != 'deleted'", [$provider]) : 0;
-        $plans = self::tableExists($db, 'service_plans') ? self::scalar($db, 'SELECT COUNT(*) FROM service_plans WHERE provider_key=?', [$provider]) : 0;
-        $online = $table && self::tableExists($db, $table) ? self::scalar($db, 'SELECT COUNT(*) FROM ' . $table . ' WHERE enabled = 1') : 0;
+        $users = self::tableExists($db, 'service_subscriptions')
+            ? self::scalar($db, "SELECT COUNT(DISTINCT telegram_user_id) FROM service_subscriptions WHERE provider_key=? AND status != 'deleted'", [$provider]) : 0;
+        $plans = self::tableExists($db, 'service_plans')
+            ? self::scalar($db, 'SELECT COUNT(*) FROM service_plans WHERE provider_key=?', [$provider]) : 0;
+        $online = $table && self::tableExists($db, $table)
+            ? self::scalar($db, 'SELECT COUNT(*) FROM ' . $table . ' WHERE enabled = 1') : 0;
         return [$servers, $users, $plans, $online];
     }
 
@@ -67,8 +70,9 @@ final class ATDStats
             'United Kingdom'=>'GB','UK'=>'GB','Germany'=>'DE','Turkey'=>'TR','Netherlands'=>'NL',
             'France'=>'FR','Canada'=>'CA','Poland'=>'PL','Finland'=>'FI','Sweden'=>'SE',
             'Singapore'=>'SG','Japan'=>'JP','India'=>'IN','Iran'=>'IR','UAE'=>'AE','United Arab Emirates'=>'AE',
+            'South Korea'=>'KR','Korea'=>'KR','KR'=>'KR',
         ];
-        foreach (['country','country_name','location','name','title'] as $key) {
+        foreach (['country','country_name','location','name','title','isp_name'] as $key) {
             $value = trim((string)($row[$key] ?? ''));
             if (preg_match('/^[A-Za-z]{2}$/', $value)) return strtoupper($value);
             foreach ($map as $name => $code) {
@@ -76,6 +80,27 @@ final class ATDStats
             }
         }
         return '';
+    }
+
+    private static function countryFromHost(string $host, int $port): string
+    {
+        try {
+            $scheme = $port === 443 ? 'https' : 'http';
+            $url = $scheme . '://' . trim($host, '/') . ':' . $port;
+            if (function_exists('detectCountryCode')) {
+                $code = strtoupper(trim((string)\detectCountryCode($url)));
+                if (preg_match('/^[A-Z]{2}$/', $code)) return $code;
+            }
+            $ip = filter_var($host, FILTER_VALIDATE_IP) ? $host : gethostbyname($host);
+            if (!filter_var($ip, FILTER_VALIDATE_IP)) return '';
+            $ch = curl_init('https://ipapi.co/' . rawurlencode($ip) . '/country/');
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>3, CURLOPT_CONNECTTIMEOUT=>2, CURLOPT_USERAGENT=>'RouteBox-Telegram-Bot']);
+            $code = strtoupper(trim((string)curl_exec($ch)));
+            curl_close($ch);
+            return preg_match('/^[A-Z]{2}$/', $code) ? $code : '';
+        } catch (\Throwable $e) {
+            return '';
+        }
     }
 
     private static function flagForCode(string $country): string
@@ -91,6 +116,7 @@ final class ATDStats
         try {
             $row = $db->query('SELECT * FROM ' . $table . ' ORDER BY id LIMIT 1')->fetch(PDO::FETCH_ASSOC);
             if (!is_array($row)) return [];
+
             $host = trim((string)($row['host'] ?? $row['ip'] ?? $row['address'] ?? ''));
             $port = (int)($row['api_port'] ?? $row['port'] ?? 0);
             if ($provider === 'routebox') {
@@ -101,6 +127,7 @@ final class ATDStats
             } elseif ($port <= 0) {
                 $port = $provider === 'mikrotik_wireguard' ? 443 : 80;
             }
+
             $ip = filter_var($host, FILTER_VALIDATE_IP) ? $host : gethostbyname($host);
             $ping = null;
             $connected = false;
@@ -112,6 +139,7 @@ final class ATDStats
                 $connected = is_resource($socket);
                 if ($connected) fclose($socket);
             }
+
             $country = self::countryCodeFromRow($row);
             if ($provider === 'routebox' && self::tableExists($db, 'server_meta')) {
                 $st = $db->prepare('SELECT country_code,ping_ms FROM server_meta WHERE server_id=? LIMIT 1');
@@ -120,10 +148,23 @@ final class ATDStats
                 $country = $country ?: strtoupper(trim((string)($meta['country_code'] ?? '')));
                 if ($ping === null && isset($meta['ping_ms']) && $meta['ping_ms'] !== null) $ping = (float)$meta['ping_ms'];
             }
+            if ($country === '' && $provider !== 'routebox' && $host !== '') {
+                $country = self::countryFromHost($host, $port);
+            }
+
             $name = trim((string)($row['name'] ?? ''));
             if ($name === '') $name = $host !== '' ? $host : 'Server';
-            return ['id'=>(int)($row['id'] ?? 0),'name'=>$name,'ip'=>(string)$ip,'flag'=>self::flagForCode($country),'ping'=>$ping,'connected'=>$connected || (!empty($row['last_test_at']) && empty($row['last_error']))];
-        } catch (\Throwable $e) { return []; }
+            return [
+                'id'=>(int)($row['id'] ?? 0),
+                'name'=>$name,
+                'ip'=>(string)$ip,
+                'flag'=>self::flagForCode($country),
+                'ping'=>$ping,
+                'connected'=>$connected || (!empty($row['last_test_at']) && empty($row['last_error'])),
+            ];
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     public static function statusCard(PDO $db, string $provider, callable $esc): string
@@ -139,9 +180,13 @@ final class ATDStats
         $name = (string)($s['name'] ?? '—');
         $color = $connected ? 'var(--green)' : 'var(--red)';
         $section = $provider === 'routebox' ? 'servers' : ($provider === 'ibsng' ? 'ibsng' : 'mikrotik');
-        $action = '<form method="post" action="/" style="margin:0"><input type="hidden" name="csrf_token" value="'.$esc($csrf).'">'
-            . '<input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="'.$esc($section).'">'
-            . '<input type="hidden" name="id" value="'.$id.'"><button class="atd-status-refresh" type="submit" title="Refresh">↻</button></form>';
+        $actionUrl = '/?section=' . rawurlencode($section);
+        $action = '<form method="post" action="'.$esc($actionUrl).'" style="margin:0">'
+            . '<input type="hidden" name="csrf_token" value="'.$esc($csrf).'">'
+            . '<input type="hidden" name="action" value="test_server">'
+            . '<input type="hidden" name="section" value="'.$esc($section).'">'
+            . '<input type="hidden" name="id" value="'.$id.'">'
+            . '<button class="atd-status-refresh" type="submit" title="Refresh">↻</button></form>';
         return '<div class="atd-provider-status"><div class="atd-status-head"><span>Server Status</span>'.$action.'</div>'
             . '<div class="atd-status-main"><span class="atd-flag">'.$esc($flag).'</span><div><strong>'.$esc($name).'</strong><div class="atd-status-state"><i style="background:'.$color.'"></i>'.$esc($status).'</div></div></div>'
             . '<div class="atd-status-grid"><div><span>Server IP</span><b dir="ltr">'.$esc($ip).'</b></div><div><span>Ping</span><b dir="ltr">'.$esc($ping).'</b></div></div></div>';
@@ -151,7 +196,9 @@ final class ATDStats
     {
         $context = $context === 'servers' ? 'routebox' : $context;
         $provider = in_array($context, ['routebox','ibsng','mikrotik_wireguard'], true) ? $context : null;
-        if ($provider !== null) [$servers,$users,$plans] = array_slice(self::providerStats($db,$provider),0,3); else [$servers,$users,$plans] = self::globalStats($db);
+        if ($provider !== null) [$servers,$users,$plans] = array_slice(self::providerStats($db,$provider),0,3);
+        else [$servers,$users,$plans] = self::globalStats($db);
+
         $esc = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $serverIcon='<path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/>';
         $userIcon='<path d="M16 20c0-3-1.8-5-5-5s-5 2-5 5"/><circle cx="11" cy="8" r="3"/><path d="M17 11a3 3 0 0 0 0-6M18 20c-.3-2.2-1.2-3.8-2.7-4.7"/>';
