@@ -45,26 +45,10 @@ jobs:
           insert = '\n'.join(line[10:] if line.startswith('          ') else line for line in insert.splitlines())
           if anchor not in s:
               raise SystemExit('Bot card data anchor not found')
-          s = s.replace(anchor, insert, 1)
+          if '$botWorkerStatus' not in s:
+              s = s.replace(anchor, insert, 1)
 
-          old = '''  <?php if ($statsServerStatus): ?>
-          <div class="stat">
-            <div class="stat-top"><span><?=$lang==='fa'?'وضعیت سرور':'Server Status'?></span><span class="stat-icon"><?=navIcon('servers')?></span></div>
-            <?php if ($routeboxStatusServer): ?>
-              <b style="font-size:16px" class="state-ok">● <?=$routeboxConnectedCount?> <?=$lang==='fa'?'متصل':'Connected'?></b>
-              <div style="margin-top:7px;font-size:11px;color:var(--muted);direction:ltr;text-align:left"><?=h((string)($routeboxStatusServer['base_url'] ?? ''))?></div>
-              <div style="margin-top:4px;font-size:11px;color:var(--muted)">⚡ <?= $routeboxStatusServer['ping_ms'] !== null ? h((string)$routeboxStatusServer['ping_ms']).' ms' : '—' ?> · <?=h(countryFlag((string)$routeboxStatusServer['country_code']))?></div>
-              <div class="form-actions" style="margin-top:9px">
-                <form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="servers"><input type="hidden" name="id" value="<?=h((string)$routeboxStatusServer['id'])?>"><button class="btn btn-secondary" type="submit">↻ <?=$lang==='fa'?'رفرش / تست':'Refresh / Check'?></button></form>
-              </div>
-            <?php else: ?>
-              <b style="font-size:15px;color:var(--muted)"><?=$lang==='fa'?'سروری ثبت نشده':'No server configured'?></b>
-            <?php endif; ?>
-          </div>
-          <?php else: ?>
-          <div class="stat"><div class="stat-top"><span><?=$T['version']?></span><span class="stat-icon"><?=navIcon('updates')?></span></div><b style="font-size:18px">v<?=h($version)?></b></div>
-          <?php endif; ?>'''
-          new = '''  <?php if ($statsServerStatus): ?>
+          new = '''<?php if ($statsServerStatus): ?>
           <div class="stat">
             <div class="stat-top"><span><?=$lang==='fa'?'وضعیت سرور':'Server Status'?></span><span class="stat-icon"><?=navIcon('servers')?></span></div>
             <?php if ($routeboxStatusServer): ?>
@@ -90,9 +74,10 @@ jobs:
           <?php else: ?>
           <div class="stat"><div class="stat-top"><span><?=$T['version']?></span><span class="stat-icon"><?=navIcon('updates')?></span></div><b style="font-size:18px">v<?=h($version)?></b></div>
           <?php endif; ?>'''
-          if old not in s:
+          pattern = re.compile(r'<\?php if \(\$statsServerStatus\): \?>.*?<\?php endif; \?>', re.S)
+          s, n = pattern.subn(new, s, count=1)
+          if n != 1:
               raise SystemExit('Bot stats HTML anchor not found')
-          s = s.replace(old, new, 1)
           p.write_text(s)
           PY
           php -l public/index.core.php
