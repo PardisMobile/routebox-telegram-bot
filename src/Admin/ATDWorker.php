@@ -65,7 +65,7 @@ final class ATDWorker
             && in_array($info['sub'], ['running', 'auto-restart'], true)
             && $pid > 0
             && self::processLooksLikeWorker($pid);
-        return ['service'=>$service,'running'=>$running,'active'=>$info['active'],'sub'=>$info['sub'],'pid'=>$pid];
+        return ['service'=>'','running'=>$running,'active'=>$info['active'],'sub'=>$info['sub'],'pid'=>$pid];
     }
 
     public static function reload(): array
