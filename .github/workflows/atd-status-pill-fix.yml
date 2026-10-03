@@ -20,10 +20,10 @@ jobs:
           p = Path('src/Admin/ATDStats.php')
           s = p.read_text(encoding='utf-8')
 
-          old_provider = '<div class="atd-status-state"><i style="background:'.$color.'"></i>'.$esc($status).'</div>'
-          new_provider = '<span class="status"><span class="dot" style="background:'.$color.'"></span>'.$esc($status).'</span>'
-          old_worker = '<div class="atd-status-state"><i style="background:'.$color.'"></i>'.$esc($state).'</div>'
-          new_worker = '<span class="status"><span class="dot" style="background:'.$color.'"></span>'.$esc($state).'</span>'
+          old_provider = "<div class=\"atd-status-state\"><i style=\"background:'.$color.'\"></i>'.$esc($status).'</div>"
+          new_provider = "<span class=\"status\"><span class=\"dot\" style=\"background:'.$color.'\"></span>'.$esc($status).'</span>"
+          old_worker = "<div class=\"atd-status-state\"><i style=\"background:'.$color.'\"></i>'.$esc($state).'</div>"
+          new_worker = "<span class=\"status\"><span class=\"dot\" style=\"background:'.$color.'\"></span>'.$esc($state).'</span>"
 
           if old_provider not in s:
               raise SystemExit('Provider status markup not found')
