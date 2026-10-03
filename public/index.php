@@ -89,6 +89,111 @@ use RouteBox\Integrations\MikroTik\MikroTikSection;
 
 $lang = (string)($_SESSION['panel_lang'] ?? 'fa') === 'en' ? 'en' : 'fa';
 
+/* Presentation helpers only. Provider integrations and provisioning are not touched. */
+function atdTableExists(PDO $db, string $table): bool
+{
+    $q = $db->prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1");
+    $q->execute([$table]);
+    return $q->fetchColumn() !== false;
+}
+
+function atdProviderStats(PDO $db, string $provider): array
+{
+    $serverTable = ['routebox'=>'routebox_servers','ibsng'=>'ibsng_servers','mikrotik_wireguard'=>'mikrotik_servers'][$provider] ?? null;
+    $servers = $serverTable && atdTableExists($db, $serverTable) ? (int)$db->query('SELECT COUNT(*) FROM '.$serverTable)->fetchColumn() : 0;
+    $users = 0;
+    if (atdTableExists($db, 'service_subscriptions')) {
+        $q = $db->prepare('SELECT COUNT(DISTINCT telegram_user_id) FROM service_subscriptions WHERE provider_key=? AND status != ?');
+        $q->execute([$provider, 'deleted']);
+        $users = (int)$q->fetchColumn();
+    }
+    $plans = 0;
+    if (atdTableExists($db, 'service_plans')) {
+        $q = $db->prepare('SELECT COUNT(*) FROM service_plans WHERE provider_key=?');
+        $q->execute([$provider]);
+        $plans = (int)$q->fetchColumn();
+    }
+    return ['servers'=>$servers,'users'=>$users,'plans'=>$plans];
+}
+
+function atdPublicIp(): string
+{
+    try {
+        $ch = curl_init('https://api.ipify.org');
+        if ($ch === false) return '';
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>3,CURLOPT_CONNECTTIMEOUT=>2,CURLOPT_USERAGENT=>'ATD-Panel']);
+        $ip = trim((string)curl_exec($ch));
+        curl_close($ch);
+        return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : '';
+    } catch (Throwable) { return ''; }
+}
+
+function atdCountryFlag(string $code): string
+{
+    $code = strtoupper(trim($code));
+    if (!preg_match('/^[A-Z]{2}$/', $code) || !function_exists('mb_chr')) return '🌐';
+    return mb_chr(127397 + ord($code[0])) . mb_chr(127397 + ord($code[1]));
+}
+
+function atdCountryForIp(string $ip): string
+{
+    if (!filter_var($ip, FILTER_VALIDATE_IP)) return '';
+    try {
+        $ch = curl_init('https://ipapi.co/'.rawurlencode($ip).'/country/');
+        if ($ch === false) return '';
+        curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>2,CURLOPT_CONNECTTIMEOUT=>1,CURLOPT_USERAGENT=>'ATD-Panel']);
+        $country = strtoupper(trim((string)curl_exec($ch)));
+        curl_close($ch);
+        return preg_match('/^[A-Z]{2}$/',$country) ? $country : '';
+    } catch (Throwable) { return ''; }
+}
+
+function atdWorkerActive(): bool
+{
+    foreach (glob('/proc/[0-9]*') ?: [] as $dir) {
+        $cmd = @file_get_contents($dir.'/cmdline');
+        if ($cmd !== false && str_contains($cmd, 'worker.php')) return true;
+    }
+    return false;
+}
+
+function atdCoreStatsReplace(string $html, array $values): string
+{
+    $start = strpos($html, '<div class="stats">');
+    if ($start === false) return $html;
+    $pos=$start;$depth=0;$len=strlen($html);$end=null;
+    while($pos<$len){$o=strpos($html,'<div',$pos);$c=strpos($html,'</div>',$pos);if($c===false)break;if($o!==false&&$o<$c){$depth++;$pos=$o+4;}else{$depth--; $pos=$c+6;if($depth===0){$end=$pos;break;}}}
+    if($end===null)return $html;
+    $block=substr($html,$start,$end-$start);$i=0;
+    $block=preg_replace_callback('~<b([^>]*)>.*?</b>~s',static function(array $m)use(&$i,$values):string{$v=$values[$i]??'';$i++;return '<b'.$m[1].'>'.h((string)$v).'</b>';},$block,4)??$block;
+    return substr($html,0,$start).$block.substr($html,$end);
+}
+
+function atdProviderStatusHtml(PDO $db,string $provider,string $section,string $lang,string $csrf):string
+{
+    $fa=$lang==='fa';
+    $table=['routebox'=>'routebox_servers','ibsng'=>'ibsng_servers','mikrotik_wireguard'=>'mikrotik_servers'][$provider]??'';
+    $rows=$table!==''&&atdTableExists($db,$table)?$db->query('SELECT * FROM '.$table.' ORDER BY id')->fetchAll(PDO::FETCH_ASSOC):[];
+    $label=['routebox'=>'RouteBox','ibsng'=>'IBSng','mikrotik_wireguard'=>'MikroTik WireGuard'][$provider]??$provider;
+    $title=$fa?'وضعیت سرور':'Server Status';
+    if(!$rows)return '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">↔</div><div><h2>'.$title.'</h2><p>'.h($label).'</p></div></div></div><div class="empty">'.($fa?'سروری ثبت نشده است.':'No server configured.').'</div></section>';
+    $server=$rows[0];$host=(string)($server['host']??'');
+    $port=$provider==='routebox'?(int)(parse_url((string)($server['base_url']??''),PHP_URL_PORT)?:443):($provider==='ibsng'?(int)($server['port']??80):(int)($server['api_port']??443));
+    $target=$provider==='routebox'?(string)(parse_url((string)($server['base_url']??''),PHP_URL_HOST)?:$host):$host;
+    $ip=filter_var($target,FILTER_VALIDATE_IP)?$target:gethostbyname($target);
+    $start=microtime(true);$errno=0;$errstr='';$sock=$target!==''?@fsockopen($ip,$port,$errno,$errstr,2):false;$ping=null;
+    if($sock!==false){$ping=round((microtime(true)-$start)*1000,1);fclose($sock);}
+    $connected=(int)($server['enabled']??1)===1&&trim((string)($server['last_error']??''))===''&&$ping!==null;
+    $flag=atdCountryFlag(atdCountryForIp($ip));$status=$connected?($fa?'متصل':'Connected'):($fa?'قطع':'Offline');
+    return '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">↔</div><div><h2>'.$title.'</h2><p>'.h($label).' · '.h((string)($server['name']??'')).'</p></div></div></div><div class="grid"><div class="version-box"><div class="version-label">'.($fa?'اتصال':'Connection').'</div><div class="version-value '.($connected?'state-ok':'state-bad').'" style="font-size:17px">● '.h($status).'</div></div><div class="version-box"><div class="version-label">Server IP</div><div class="version-value" style="font-size:17px;direction:ltr;text-align:left">'.h($ip).'</div></div><div class="version-box"><div class="version-label">Ping</div><div class="version-value" style="font-size:17px">'.($ping!==null?h((string)$ping).' ms':'—').'</div></div><div class="version-box"><div class="version-label">Country</div><div class="version-value" style="font-size:26px">'.$flag.'</div></div></div><div class="form-actions"><form method="post"><input type="hidden" name="csrf_token" value="'.h($csrf).'"><input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="'.h($section).'"><input type="hidden" name="id" value="'.(int)$server['id'].'"><button class="btn btn-secondary" type="submit">↻ '.($fa?'رفرش / تست اتصال':'Refresh / Connection Test').'</button></form></div></section>';
+}
+
+function atdBotServerHtml(string $lang):string
+{
+    $fa=$lang==='fa';$ip=atdPublicIp();$flag=atdCountryFlag(atdCountryForIp($ip));$active=atdWorkerActive();$status=$active?($fa?'فعال':'Active'):($fa?'غیرفعال':'Offline');
+    return '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">●</div><div><h2>Bot Server</h2><p>'.($fa?'وضعیت Worker و سرور خود ATD Panel':'ATD Panel server and Telegram worker status').'</p></div></div></div><div class="grid"><div class="version-box"><div class="version-label">Worker Status</div><div class="version-value '.($active?'state-ok':'state-bad').'" style="font-size:17px">● '.h($status).'</div></div><div class="version-box"><div class="version-label">Server IP</div><div class="version-value" style="font-size:17px;direction:ltr;text-align:left">'.h($ip?:'—').'</div></div><div class="version-box"><div class="version-label">Country Flag</div><div class="version-value" style="font-size:26px">'.$flag.'</div></div></div><div class="form-actions"><form method="post" action="/reload-worker.php"><input type="hidden" name="csrf_token" value="'.h(csrf_token()).'"><button class="btn btn-secondary" type="submit">↻ Reload Worker</button></form></div></section>';
+}
+
 /* Preserve the original SVG sidebar icon set from the RouteBox shell. */
 $navIcon = static function (string $key): string {
     $icons = [
@@ -104,139 +209,80 @@ $navIcon = static function (string $key): string {
     ];
     return $icons[$key] ?? $icons['dashboard'];
 };
-$label = static function (string $fa, string $en) use ($lang): string {
-    return htmlspecialchars($lang === 'fa' ? $fa : $en, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-};
-$active = static function (string $key) use ($section): string {
-    return $section === $key ? ' active' : '';
-};
-$planActive = static function (string $provider) use ($section): string {
-    if ($section !== 'provider-plans') return '';
-    return trim((string)($_GET['provider'] ?? 'routebox')) === $provider ? ' active' : '';
-};
-$guideActive = static function (string $provider) use ($section): string {
-    if ($section !== 'provider-guide') return '';
-    return trim((string)($_GET['provider'] ?? 'routebox')) === $provider ? ' active' : '';
-};
+$label = static function (string $fa, string $en) use ($lang): string { return htmlspecialchars($lang === 'fa' ? $fa : $en, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); };
+$active = static function (string $key) use ($section): string { return $section === $key ? ' active' : ''; };
+$planActive = static function (string $provider) use ($section): string { if ($section !== 'provider-plans') return ''; return trim((string)($_GET['provider'] ?? 'routebox')) === $provider ? ' active' : ''; };
+$guideActive = static function (string $provider) use ($section): string { if ($section !== 'provider-guide') return ''; return trim((string)($_GET['provider'] ?? 'routebox')) === $provider ? ' active' : ''; };
 
 $nav = '<nav class="nav atd-nav" aria-label="' . $label('ناوبری پنل', 'Panel navigation') . '">';
 $nav .= '<a class="atd-nav-item' . $active('dashboard') . '" href="/?section=dashboard"><span class="nav-icon">' . $navIcon('dashboard') . '</span><span>' . $label('داشبورد', 'Dashboard') . '</span></a>';
 $nav .= '<div class="atd-nav-group' . ($section === 'bot' || $section === 'bot-guides' ? ' expanded' : '') . '">';
 $nav .= '<a class="atd-nav-item provider-item' . ($section === 'bot' ? ' active' : '') . '" href="/?section=bot"><span class="nav-icon">' . $navIcon('bot') . '</span><span>' . $label('ربات تلگرام', 'Telegram Bot') . '</span><span class="nav-chevron">›</span></a>';
 $nav .= '<div class="atd-nav-sub"><a class="atd-nav-subitem' . ($section === 'bot-guides' ? ' active' : '') . '" href="/?section=bot-guides"><span class="sub-dot">•</span><span>' . $label('راهنمای استفاده', 'Usage Guides') . '</span></a></div></div>';
-
-$providers = [
-    'routebox' => ['section'=>'servers','fa'=>'Routebox Servers','en'=>'Routebox Servers','icon'=>'servers'],
-    'ibsng' => ['section'=>'ibsng','fa'=>'IBSng Servers','en'=>'IBSng Servers','icon'=>'ibsng'],
-    'mikrotik_wireguard' => ['section'=>'mikrotik','fa'=>'MikroTik WireGuard','en'=>'MikroTik WireGuard','icon'=>'mikrotik'],
-];
+$providers = ['routebox'=>['section'=>'servers','fa'=>'Routebox Servers','en'=>'Routebox Servers','icon'=>'servers'],'ibsng'=>['section'=>'ibsng','fa'=>'IBSng Servers','en'=>'IBSng Servers','icon'=>'ibsng'],'mikrotik_wireguard'=>['section'=>'mikrotik','fa'=>'MikroTik WireGuard','en'=>'MikroTik WireGuard','icon'=>'mikrotik']];
 foreach ($providers as $providerKey => $provider) {
-    $providerUrl = '/?section=' . rawurlencode($provider['section']);
-    $planUrl = '/?section=provider-plans&provider=' . rawurlencode($providerKey);
-    $guideUrl = '/?section=provider-guide&provider=' . rawurlencode($providerKey);
-    $providerIsActive = $section === $provider['section'] || ($section === 'provider-plans' && trim((string)($_GET['provider'] ?? 'routebox')) === $providerKey) || ($section === 'provider-guide' && trim((string)($_GET['provider'] ?? 'routebox')) === $providerKey);
-    $nav .= '<div class="atd-nav-group' . ($providerIsActive ? ' expanded' : '') . '">';
-    $nav .= '<a class="atd-nav-item provider-item' . ($section === $provider['section'] ? ' active' : '') . '" href="' . $providerUrl . '"><span class="nav-icon">' . $navIcon($provider['icon']) . '</span><span>' . $label($provider['fa'], $provider['en']) . '</span><span class="nav-chevron">›</span></a>';
-    $nav .= '<div class="atd-nav-sub"><a class="atd-nav-subitem' . $planActive($providerKey) . '" href="' . $planUrl . '"><span class="sub-dot">•</span><span>' . $label('Plans','Plans') . '</span></a><a class="atd-nav-subitem' . $guideActive($providerKey) . '" href="' . $guideUrl . '"><span class="sub-dot">•</span><span>' . $label('راهنمای Provider','Provider Guide') . '</span></a></div></div>';
+    $providerUrl='/?section='.rawurlencode($provider['section']);$planUrl='/?section=provider-plans&provider='.rawurlencode($providerKey);$guideUrl='/?section=provider-guide&provider='.rawurlencode($providerKey);$providerIsActive=$section===$provider['section']||($section==='provider-plans'&&trim((string)($_GET['provider']??'routebox'))===$providerKey)||($section==='provider-guide'&&trim((string)($_GET['provider']??'routebox'))===$providerKey);
+    $nav.='<div class="atd-nav-group'.($providerIsActive?' expanded':'').'">';
+    $nav.='<a class="atd-nav-item provider-item'.($section===$provider['section']?' active':'').'" href="'.$providerUrl.'"><span class="nav-icon">'.$navIcon($provider['icon']).'</span><span>'.$label($provider['fa'],$provider['en']).'</span><span class="nav-chevron">›</span></a>';
+    $nav.='<div class="atd-nav-sub"><a class="atd-nav-subitem'.$planActive($providerKey).'" href="'.$planUrl.'"><span class="sub-dot">•</span><span>'.$label('Plans','Plans').'</span></a><a class="atd-nav-subitem'.$guideActive($providerKey).'" href="'.$guideUrl.'"><span class="sub-dot">•</span><span>'.$label('راهنمای Provider','Provider Guide').'</span></a></div></div>';
 }
 $nav .= '<a class="atd-nav-item' . ($section === 'users' || $section === 'user-details' ? ' active' : '') . '" href="/?section=users"><span class="nav-icon">' . $navIcon('users') . '</span><span>' . $label('کاربران', 'Users') . '</span></a>';
 $nav .= '<a class="atd-nav-item' . $active('payment-settings') . '" href="/?section=payment-settings"><span class="nav-icon">' . $navIcon('payment') . '</span><span>' . $label('تنظیمات پرداخت', 'Payment Settings') . '</span></a>';
 $nav .= '<a class="atd-nav-item' . $active('security') . '" href="/?section=security"><span class="nav-icon">' . $navIcon('security') . '</span><span>' . $label('امنیت', 'Security') . '</span></a>';
 $nav .= '<a class="atd-nav-item' . $active('updates') . '" href="/?section=updates"><span class="nav-icon">' . $navIcon('updates') . '</span><span>' . $label('به‌روزرسانی', 'Updates') . '</span></a>';
 $nav .= '</nav>';
-
 $html = preg_replace('~<nav\b[^>]*>.*?</nav>~is', $nav, $html, 1) ?? $html;
-
 $style = <<<'CSS'
 <style id="atd-panel-nav-style">
-/* Keep the original RouteBox sidebar sizing. ATD only adds hierarchy/sub-navigation. */
-.atd-nav-item,.atd-nav-subitem{box-sizing:border-box;text-decoration:none;transition:background .16s ease,transform .16s ease,box-shadow .16s ease}
-.atd-nav-item:hover{background:rgba(127,127,127,.09);transform:translateX(-1px)}
-.atd-nav-item.active{background:rgba(127,127,127,.13);box-shadow:inset 3px 0 0 currentColor}
-.atd-nav-item .nav-icon{display:inline-flex;align-items:center;justify-content:center}
-.atd-nav-item .nav-icon svg{display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.atd-nav-item>span:nth-child(2){flex:1;min-width:0;white-space:nowrap;overflow:visible;text-overflow:clip}
-.provider-item .nav-chevron{margin-inline-start:auto;opacity:.55;line-height:1;transition:transform .16s ease}
-.atd-nav-group.expanded .nav-chevron{transform:rotate(90deg);opacity:.8}
-.atd-nav-sub{display:none;margin:0 0 2px 34px;padding-left:9px;border-left:1px solid rgba(127,127,127,.22)}
-.atd-nav-group.expanded .atd-nav-sub{display:block}
-.atd-nav-subitem{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;color:inherit;font-size:.9em;font-weight:600;opacity:.78}
-.atd-nav-subitem:hover{background:rgba(127,127,127,.08);opacity:1}
-.atd-nav-subitem.active{background:rgba(127,127,127,.11);opacity:1}
-.atd-nav-subitem .sub-dot{opacity:.55;font-size:15px}
+.atd-nav-item,.atd-nav-subitem{box-sizing:border-box;text-decoration:none;transition:background .16s ease,transform .16s ease,box-shadow .16s ease}.atd-nav-item:hover{background:rgba(127,127,127,.09);transform:translateX(-1px)}.atd-nav-item.active{background:rgba(127,127,127,.13);box-shadow:inset 3px 0 0 currentColor}.atd-nav-item .nav-icon{display:inline-flex;align-items:center;justify-content:center}.atd-nav-item .nav-icon svg{display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.atd-nav-item>span:nth-child(2){flex:1;min-width:0;white-space:nowrap;overflow:visible;text-overflow:clip}.provider-item .nav-chevron{margin-inline-start:auto;opacity:.55;line-height:1;transition:transform .16s ease}.atd-nav-group.expanded .nav-chevron{transform:rotate(90deg);opacity:.8}.atd-nav-sub{display:none;margin:0 0 2px 34px;padding-left:9px;border-left:1px solid rgba(127,127,127,.22)}.atd-nav-group.expanded .atd-nav-sub{display:block}.atd-nav-subitem{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;color:inherit;font-size:.9em;font-weight:600;opacity:.78}.atd-nav-subitem:hover{background:rgba(127,127,127,.08);opacity:1}.atd-nav-subitem.active{background:rgba(127,127,127,.11);opacity:1}.atd-nav-subitem .sub-dot{opacity:.55;font-size:15px}
 </style>
 CSS;
-if (stripos($html, '</head>') !== false) {
-    $html = preg_replace('~</head>~i', $style . '</head>', $html, 1) ?? $html;
-}
-
+if (stripos($html, '</head>') !== false) $html = preg_replace('~</head>~i', $style . '</head>', $html, 1) ?? $html;
 $html = str_replace('RouteBox Admin', 'ATD Panel', $html);
 $html = str_replace('Telegram Bot Control Center', 'Multi-Service Control Center', $html);
 
 if ($section !== 'ibsng' && $section !== 'mikrotik' && $section !== 'provider-plans' && !$isAtdExtra && $section !== 'bot-guides') {
-    echo $html;
-    exit;
+    $db=db();
+    if ($section==='dashboard'||$section==='bot'||$section==='security'||$section==='updates') {
+        $globalServers=(int)$db->query('SELECT COUNT(*) FROM routebox_servers')->fetchColumn();$globalUsers=(int)$db->query('SELECT COUNT(*) FROM telegram_users')->fetchColumn();$globalPlans=atdTableExists($db,'plans')?(int)$db->query('SELECT COUNT(*) FROM plans')->fetchColumn():0;
+        $html=atdCoreStatsReplace($html,[$globalServers,$globalUsers,$globalPlans,'']);
+        if($section==='bot'){
+            $statsStart=strpos($html,'<div class="stats">');
+            if($statsStart!==false){$pos=$statsStart;$depth=0;$len=strlen($html);$end=null;while($pos<$len){$o=strpos($html,'<div',$pos);$c=strpos($html,'</div>',$pos);if($c===false)break;if($o!==false&&$o<$c){$depth++;$pos=$o+4;}else{$depth--; $pos=$c+6;if($depth===0){$end=$pos;break;}}}if($end!==null)$html=substr($html,0,$end).atdBotServerHtml($lang).substr($html,$end);}
+        }
+    } elseif($section==='servers') {
+        $s=atdProviderStats($db,'routebox');$html=atdCoreStatsReplace($html,[$s['servers'],$s['users'],$s['plans'],'']);
+        $statsStart=strpos($html,'<div class="stats">');
+        if($statsStart!==false){$pos=$statsStart;$depth=0;$len=strlen($html);$end=null;while($pos<$len){$o=strpos($html,'<div',$pos);$c=strpos($html,'</div>',$pos);if($c===false)break;if($o!==false&&$o<$c){$depth++;$pos=$o+4;}else{$depth--; $pos=$c+6;if($depth===0){$end=$pos;break;}}}if($end!==null)$html=substr($html,0,$statsStart).'<div class="stats">'.'<div class="stat"><div class="stat-top"><span>Servers</span><span class="stat-icon">▦</span></div><b>'.$s['servers'].'</b></div><div class="stat"><div class="stat-top"><span>Users</span><span class="stat-icon">♙</span></div><b>'.$s['users'].'</b></div><div class="stat"><div class="stat-top"><span>Plans</span><span class="stat-icon">≋</span></div><b>'.$s['plans'].'</b></div><div class="stat"><div class="stat-top"><span>Server Status</span><span class="stat-icon">↔</span></div><b style="font-size:15px">RouteBox</b></div></div>'.substr($html,$end);}
+        $statsStart=strpos($html,'<div class="stats">');
+        if($statsStart!==false){$pos=$statsStart;$depth=0;$len=strlen($html);$end=null;while($pos<$len){$o=strpos($html,'<div',$pos);$c=strpos($html,'</div>',$pos);if($c===false)break;if($o!==false&&$o<$c){$depth++;$pos=$o+4;}else{$depth--; $pos=$c+6;if($depth===0){$end=$pos;break;}}}if($end!==null)$html=substr($html,0,$end).atdProviderStatusHtml($db,'routebox','servers',$lang,csrf_token()).substr($html,$end);}
+    }
+    echo $html;exit;
 }
 
 if ($section === 'provider-plans') {
-    require_once __DIR__ . '/../src/Admin/Plans/PlanPolicy.php';
-    require_once __DIR__ . '/../src/Admin/Plans/PlanRepository.php';
-    require_once __DIR__ . '/../src/Admin/Plans/ProviderPlansSection.php';
-    $provider = trim((string)($_GET['provider'] ?? 'routebox'));
-    if (!in_array($provider, ['routebox', 'ibsng', 'mikrotik_wireguard'], true)) $provider = 'routebox';
-    $body = \RouteBox\Admin\Plans\ProviderPlansSection::render(db(), $provider, $lang, csrf_token());
-    $title = $lang === 'fa' ? 'مدیریت پلن‌ها' : 'Plan Management';
-    $subtitle = $lang === 'fa' ? 'مدیریت یکپارچه پلن‌های Provider' : 'Shared provider-scoped plan management';
-} elseif ($section === 'provider-guide') {
-    $provider = trim((string)($_GET['provider'] ?? 'routebox'));
-    if (!in_array($provider, ['routebox', 'ibsng', 'mikrotik_wireguard'], true)) $provider = 'routebox';
-    $body = \RouteBox\Admin\ATDPanelSections::renderProviderGuide(db(), $provider, $lang, csrf_token());
-    $title = $lang === 'fa' ? 'راهنمای Provider' : 'Provider Guide';
-    $subtitle = $lang === 'fa' ? 'راهنمای اختصاصی مدیریت و اتصال Provider' : 'Provider-specific administration and connection guide';
-} elseif ($section === 'users') {
-    $body = \RouteBox\Admin\ATDPanelSections::renderUsers(db(), $lang, csrf_token());
-    $title = $lang === 'fa' ? 'کاربران' : 'Users';
-    $subtitle = $lang === 'fa' ? 'مدیریت کاربران ربات و سرویس‌های آن‌ها' : 'Manage Telegram bot users and their services';
-} elseif ($section === 'user-details') {
-    $body = \RouteBox\Admin\ATDPanelSections::renderUserDetails(db(), (int)($_GET['id'] ?? 0), $lang, csrf_token());
-    $title = $lang === 'fa' ? 'جزئیات کاربر' : 'User Details';
-    $subtitle = $lang === 'fa' ? 'سرویس‌ها و اشتراک‌های کاربر' : 'User services and subscriptions';
-} elseif ($section === 'payment-settings') {
-    $body = \RouteBox\Admin\ATDPanelSections::renderPayments(db(), $lang, csrf_token());
-    $title = $lang === 'fa' ? 'تنظیمات پرداخت' : 'Payment Settings';
-    $subtitle = $lang === 'fa' ? 'زیرساخت مشترک پرداخت برای همه Providerها' : 'Shared payment foundation for all providers';
-} elseif ($section === 'bot-guides') {
-    $body = \RouteBox\Admin\ATDPanelSections::renderBot(db(), $lang, csrf_token());
-    $title = $lang === 'fa' ? 'راهنمای ربات' : 'Telegram Bot Usage Guides';
-    $subtitle = $lang === 'fa' ? 'راهنمای عمومی و راهنمای اتصال هر سرویس' : 'General and per-service connection guides';
-} elseif ($section === 'ibsng') {
-    $admin = IBSngModule::admin(db());
-    $body = IBSngSection::render($admin, $lang, csrf_token());
-    $title = $lang === 'fa' ? 'مدیریت IBSng' : 'IBSng Management';
-    $subtitle = $lang === 'fa' ? 'مدیریت اتصال و تنظیمات IBSng از داخل پنل' : 'Manage IBSng connectivity and settings from the panel';
+    require_once __DIR__ . '/../src/Admin/Plans/PlanPolicy.php';require_once __DIR__ . '/../src/Admin/Plans/PlanRepository.php';require_once __DIR__ . '/../src/Admin/Plans/ProviderPlansSection.php';
+    $provider=trim((string)($_GET['provider']??'routebox'));if(!in_array($provider,['routebox','ibsng','mikrotik_wireguard'],true))$provider='routebox';
+    $body=\RouteBox\Admin\Plans\ProviderPlansSection::render(db(),$provider,$lang,csrf_token());$title=$lang==='fa'?'مدیریت پلن‌ها':'Plan Management';$subtitle=$lang==='fa'?'مدیریت یکپارچه پلن‌های Provider':'Shared provider-scoped plan management';
+} elseif($section==='provider-guide') {
+    $provider=trim((string)($_GET['provider']??'routebox'));if(!in_array($provider,['routebox','ibsng','mikrotik_wireguard'],true))$provider='routebox';$body=\RouteBox\Admin\ATDPanelSections::renderProviderGuide(db(),$provider,$lang,csrf_token());$title=$lang==='fa'?'راهنمای Provider':'Provider Guide';$subtitle=$lang==='fa'?'راهنمای اختصاصی مدیریت و اتصال Provider':'Provider-specific administration and connection guide';
+} elseif($section==='users') {
+    $body=\RouteBox\Admin\ATDPanelSections::renderUsers(db(),$lang,csrf_token());$title=$lang==='fa'?'کاربران':'Users';$subtitle=$lang==='fa'?'مدیریت کاربران ربات و سرویس‌های آن‌ها':'Manage Telegram bot users and their services';
+} elseif($section==='user-details') {
+    $body=\RouteBox\Admin\ATDPanelSections::renderUserDetails(db(),(int)($_GET['id']??0),$lang,csrf_token());$title=$lang==='fa'?'جزئیات کاربر':'User Details';$subtitle=$lang==='fa'?'سرویس‌ها و اشتراک‌های کاربر':'User services and subscriptions';
+} elseif($section==='payment-settings') {
+    $body=\RouteBox\Admin\ATDPanelSections::renderPayments(db(),$lang,csrf_token());$title=$lang==='fa'?'تنظیمات پرداخت':'Payment Settings';$subtitle=$lang==='fa'?'زیرساخت مشترک پرداخت برای همه Providerها':'Shared payment foundation for all providers';
+} elseif($section==='bot-guides') {
+    $body=\RouteBox\Admin\ATDPanelSections::renderBot(db(),$lang,csrf_token());$title=$lang==='fa'?'راهنمای ربات':'Telegram Bot Usage Guides';$subtitle=$lang==='fa'?'راهنمای عمومی و راهنمای اتصال هر سرویس':'General and per-service connection guides';
+} elseif($section==='ibsng') {
+    $admin=IBSngModule::admin(db());$body=IBSngSection::render($admin,$lang,csrf_token());$title=$lang==='fa'?'مدیریت IBSng':'IBSng Management';$subtitle=$lang==='fa'?'مدیریت اتصال و تنظیمات IBSng از داخل پنل':'Manage IBSng connectivity and settings from the panel';$s=atdProviderStats(db(),'ibsng');$body='<div class="stats"><div class="stat"><div class="stat-top"><span>Servers</span><span class="stat-icon">▦</span></div><b>'.$s['servers'].'</b></div><div class="stat"><div class="stat-top"><span>Users</span><span class="stat-icon">♙</span></div><b>'.$s['users'].'</b></div><div class="stat"><div class="stat-top"><span>Plans</span><span class="stat-icon">≋</span></div><b>'.$s['plans'].'</b></div><div class="stat"><div class="stat-top"><span>Server Status</span><span class="stat-icon">↔</span></div><b style="font-size:15px">IBSng</b></div></div>'.atdProviderStatusHtml(db(),'ibsng','ibsng',$lang,csrf_token()).$body;
 } else {
-    $admin = MikroTikModule::admin(db());
-    $body = MikroTikSection::render($admin, $lang, csrf_token());
-    $title = 'MikroTik WireGuard';
-    $subtitle = $lang === 'fa' ? 'مدیریت RouterOS، WireGuard، کاربران و پلن‌ها' : 'Manage RouterOS, WireGuard, peers and plans';
+    $admin=MikroTikModule::admin(db());$body=MikroTikSection::render($admin,$lang,csrf_token());$title='MikroTik WireGuard';$subtitle=$lang==='fa'?'مدیریت RouterOS، WireGuard، کاربران و پلن‌ها':'Manage RouterOS, WireGuard, peers and plans';$s=atdProviderStats(db(),'mikrotik_wireguard');$body='<div class="stats"><div class="stat"><div class="stat-top"><span>Servers</span><span class="stat-icon">▦</span></div><b>'.$s['servers'].'</b></div><div class="stat"><div class="stat-top"><span>Users</span><span class="stat-icon">♙</span></div><b>'.$s['users'].'</b></div><div class="stat"><div class="stat-top"><span>Plans</span><span class="stat-icon">≋</span></div><b>'.$s['plans'].'</b></div><div class="stat"><div class="stat-top"><span>Server Status</span><span class="stat-icon">↔</span></div><b style="font-size:15px">MikroTik</b></div></div>'.atdProviderStatusHtml(db(),'mikrotik_wireguard','mikrotik',$lang,csrf_token()).$body;
 }
 
-$titleEsc = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-$subtitleEsc = htmlspecialchars($subtitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-$html = preg_replace('~(<header class="topbar">.*?<div><div class="eyebrow">).*?(</div><h1>).*?(</h1><p>).*?(</p>)~s', '$1ATD PANEL$2' . $titleEsc . '$3' . $subtitleEsc . '$4', $html, 1) ?? $html;
-
-$headerEnd = strpos($html, '</header>');
-$footerStart = strpos($html, '<div class="footer">', $headerEnd === false ? 0 : $headerEnd);
-if ($headerEnd !== false && $footerStart !== false && $footerStart > $headerEnd) {
-    $contentStart = $headerEnd + strlen('</header>');
-    $html = substr($html, 0, $contentStart) . "\n\n" . $body . "\n\n" . substr($html, $footerStart);
-}
-
-$html = preg_replace_callback('~<a\b([^>]*)href="/\?section=dashboard"([^>]*)>~i', static function (array $m): string {
-    $attrs = $m[1] . $m[2];
-    $attrs = preg_replace('/\s+class="active"/i', '', $attrs) ?? $attrs;
-    $attrs = preg_replace('/\s+aria-current="page"/i', '', $attrs) ?? $attrs;
-    return '<a' . $attrs . ' href="/?section=dashboard">';
-}, $html, 1) ?? $html;
-
+$titleEsc=htmlspecialchars($title,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');$subtitleEsc=htmlspecialchars($subtitle,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
+$html=preg_replace('~(<header class="topbar">.*?<div><div class="eyebrow">).*?(</div><h1>).*?(</h1><p>).*?(</p>)~s','$1ATD PANEL$2'.$titleEsc.'$3'.$subtitleEsc.'$4',$html,1)??$html;
+$headerEnd=strpos($html,'</header>');$footerStart=strpos($html,'<div class="footer">',$headerEnd===false?0:$headerEnd);
+if($headerEnd!==false&&$footerStart!==false&&$footerStart>$headerEnd){$contentStart=$headerEnd+strlen('</header>');$html=substr($html,0,$contentStart)."\n\n".$body."\n\n".substr($html,$footerStart);}
+$html=preg_replace_callback('~<a\b([^>]*)href="/\?section=dashboard"([^>]*)>~i',static function(array $m):string{$attrs=$m[1].$m[2];$attrs=preg_replace('/\s+class="active"/i','',$attrs)??$attrs;$attrs=preg_replace('/\s+aria-current="page"/i','',$attrs)??$attrs;return '<a'.$attrs.' href="/?section=dashboard">';},$html,1)??$html;
 echo $html;
