@@ -213,11 +213,15 @@ if ($section === 'provider-plans') {
 } elseif ($section === 'ibsng') {
     $admin = IBSngModule::admin(db());
     $body = IBSngSection::render($admin, $lang, csrf_token());
+    require_once __DIR__ . '/../src/Admin/ATDStats.php';
+    $body = \RouteBox\Admin\ATDStats::render(db(), 'ibsng', localVersion(), $lang) . $body;
     $title = $lang === 'fa' ? 'مدیریت IBSng' : 'IBSng Management';
     $subtitle = $lang === 'fa' ? 'مدیریت اتصال و تنظیمات IBSng از داخل پنل' : 'Manage IBSng connectivity and settings from the panel';
 } else {
     $admin = MikroTikModule::admin(db());
     $body = MikroTikSection::render($admin, $lang, csrf_token());
+    require_once __DIR__ . '/../src/Admin/ATDStats.php';
+    $body = \RouteBox\Admin\ATDStats::render(db(), 'mikrotik_wireguard', localVersion(), $lang) . $body;
     $title = 'MikroTik WireGuard';
     $subtitle = $lang === 'fa' ? 'مدیریت RouterOS، WireGuard، کاربران و پلن‌ها' : 'Manage RouterOS, WireGuard, peers and plans';
 }
