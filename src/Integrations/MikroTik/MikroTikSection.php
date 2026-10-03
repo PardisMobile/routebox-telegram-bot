@@ -33,9 +33,8 @@ final class MikroTikSection
 
         $serversHtml = '';
         foreach (($data['servers'] ?? []) as $s) {
-            $router = $s['router'] ?? [];
-            $status = !empty($s['discovery_error']) ? 'Connection issue' : 'Connected';
-            $statusClass = !empty($s['discovery_error']) ? 'bad' : 'ok';
+            $router = is_array($s['router'] ?? null) ? $s['router'] : [];
+            $hasError = !empty($s['discovery_error']);
             $identity = (string)($router['identity'] ?? $s['name'] ?? '—');
             $version = (string)($router['version'] ?? '—');
             $uptime = (string)($router['uptime'] ?? '—');
@@ -45,34 +44,35 @@ final class MikroTikSection
             $interfaces = is_array($s['interfaces'] ?? null) ? $s['interfaces'] : [];
             $serverId = (int)$s['id'];
             $editId = 'mikrotik-edit-'.$serverId;
+            $statusText = $hasError ? 'Connection issue' : 'Connected';
+            $statusColor = $hasError ? 'var(--red)' : 'var(--green)';
+            $errorHtml = $hasError
+                ? '<div class="flash err" style="margin-top:12px">'.$h((string)$s['discovery_error']).'</div>'
+                : '';
 
-            $serversHtml .= '<article class="server-card">'
-                .'<div class="server-card-head">'
-                    .'<div><div class="server-title">'.$h($identity).'</div><div class="server-sub" dir="ltr">'.$h((string)$s['host']).':'.$h((string)$s['api_port']).'</div></div>'
-                    .'<span class="status '.$statusClass.'">'.$h($status).'</span>'
+            $serversHtml .= '<article class="card" style="margin-bottom:14px">'
+                .'<div class="section-head"><div class="section-title"><div class="section-icon">▤</div><div>'
+                    .'<h2>'.$h($identity).' <span class="status"><span class="dot" style="background:'.$statusColor.'"></span>'.$h($statusText).'</span></h2>'
+                    .'<p dir="ltr">'.$h((string)$s['host']).' : '.$h((string)$s['api_port']).' · WireGuard '.count($interfaces).' interface(s)</p>'
+                .'</div></div></div>'
+                .'<div class="grid">'
+                    .'<div><div class="help">RouterOS</div><strong>'.$h($version).'</strong><p class="help" style="margin-top:5px">Uptime: '.$h($uptime).'</p></div>'
+                    .'<div><div class="help">Performance</div><strong>CPU '.$h($cpu).'</strong><p class="help" style="margin-top:5px">Memory: '.$h($memory).' · Ping: '.$h($latency).'</p></div>'
+                    .'<div><div class="help">WireGuard</div><strong>'.$h((string)count($interfaces)).' interface(s)</strong><p class="help" style="margin-top:5px">Port: '.$h((int)$s['vpn_port'] > 0 ? (string)$s['vpn_port'] : 'Auto-detect').' · Interface: '.$h((string)$s['interface_name']).'</p></div>'
+                    .'<div><div class="help">IP Pool</div><strong>'.$h((string)($s['pool_name'] ?: '—')).'</strong><p class="help" style="margin-top:5px">DNS: '.$h((string)($s['dns_servers'] ?: '—')).'</p></div>'
                 .'</div>'
-                .'<div class="server-meta">'
-                    .'<span>RouterOS '.$h($version).'</span><span>Uptime '.$h($uptime).'</span><span>CPU '.$h($cpu).'</span><span>Memory '.$h($memory).'</span><span>Ping '.$h($latency).'</span>'
-                .'</div>'
-                .'<div class="server-meta">'
-                    .'<span>WireGuard: '.count($interfaces).'</span><span>VPN port '.((int)$s['vpn_port'] > 0 ? $h((string)$s['vpn_port']) : 'Auto-detect').'</span><span>Interface '.$h((string)$s['interface_name']).'</span><span>Pool '.$h((string)$s['pool_name']).'</span>'
-                .'</div>'
+                .$errorHtml
                 .'<div class="form-actions" style="margin-top:14px">'
-                    .'<form method="post" style="display:inline"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="test_server"><input type="hidden" name="id" value="'.$serverId.'"><button class="btn btn-secondary" type="submit">↻ Test Connection</button></form>'
-                    .'<button class="btn btn-primary" type="button" onclick="document.getElementById(\''.$h($editId).'\').open=!document.getElementById(\''.$h($editId).'\').open">✎ Edit Server</button>'
+                    .'<form method="post"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="test_server"><input type="hidden" name="id" value="'.$serverId.'"><button class="btn btn-secondary" type="submit">↻ Test Connection</button></form>'
+                    .'<details id="'.$h($editId).'" style="display:inline"><summary class="btn btn-primary" style="cursor:pointer;list-style:none">✎ Edit Server</summary><div style="margin-top:14px">'.self::serverForm($s, $csrf, true).'</div></details>'
                 .'</div>'
-                .'<details id="'.$h($editId).'" style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">Server settings</summary>'.self::serverForm($s, $csrf, true).'</details>'
                 .'</article>';
         }
-        if ($serversHtml === '') $serversHtml = '<div class="help">No MikroTik servers configured yet.</div>';
+        if ($serversHtml === '') $serversHtml = '<div class="empty">No MikroTik servers configured yet.</div>';
 
         $planRows = '';
         foreach (($data['plans'] ?? []) as $p) {
             $id = (int)$p['id'];
-            $meta = json_decode((string)($p['metadata_json'] ?? '{}'), true);
-            $meta = is_array($meta) ? $meta : [];
-            $upload = (string)($meta['upload_limit'] ?? '');
-            $download = (string)($meta['download_limit'] ?? '');
             $planEditId = 'mikrotik-plan-edit-'.$id;
             $planRows .= '<tr>'
                 .'<td>'.$h((string)$p['display_name_fa']).'</td>'
@@ -82,12 +82,9 @@ final class MikroTikSection
                 .'<td>'.$h((string)$p['price_minor']).'</td>'
                 .'<td>'.(!empty($p['enabled']) ? 'Active' : 'Disabled').'</td>'
                 .'<td><div class="form-actions">'
-                    .'<button class="btn btn-secondary" type="button" onclick="document.getElementById(\''.$h($planEditId).'\').open=!document.getElementById(\''.$h($planEditId).'\').open">✎ Edit</button>'
-                    .'<form method="post" style="display:inline" onsubmit="return confirm(\'Delete this plan? Existing subscription history will be preserved.\')"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="delete_plan"><input type="hidden" name="id" value="'.$id.'"><button class="btn btn-danger" type="submit">⌫ Delete</button></form>'
-                .'</div><details id="'.$h($planEditId).'" style="margin-top:10px">'
-                    .'<summary style="cursor:pointer;font-weight:700">Edit plan</summary>'
-                    .self::planForm($p, $data['servers'] ?? [], $csrf, true)
-                .'</details></td>'
+                    .'<details id="'.$h($planEditId).'" style="display:inline"><summary class="btn btn-secondary" style="cursor:pointer;list-style:none">✎ Edit</summary><div style="margin-top:10px">'.self::planForm($p, $data['servers'] ?? [], $csrf, true).'</div></details>'
+                    .'<form method="post" onsubmit="return confirm(\'Delete this plan? Existing subscription history will be preserved.\')"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="delete_plan"><input type="hidden" name="id" value="'.$id.'"><button class="btn btn-secondary" style="color:var(--red);border-color:rgba(255,80,80,.35)" type="submit">× Delete</button></form>'
+                .'</div></td>'
             .'</tr>';
         }
         if ($planRows === '') $planRows = '<tr><td colspan="7" class="help">No MikroTik WireGuard plans yet.</td></tr>';
@@ -100,8 +97,8 @@ final class MikroTikSection
             $peerRows .= '<tr>'
                 .'<td>'.$h((string)$p['username']).'</td><td dir="ltr">'.$h((string)$p['assigned_ip']).'</td><td>'.$h((string)($p['server_name'] ?? '—')).'</td><td>'.$h((string)$p['interface_name']).'</td><td>'.$h((string)$p['status']).'</td><td>'.(!empty($p['expires_at']) ? date('Y-m-d H:i',(int)$p['expires_at']) : '—').'</td>'
                 .'<td><div class="form-actions">'
-                    .'<form method="post" style="display:inline"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="'.$action.'"><input type="hidden" name="id" value="'.$peerId.'"><button class="btn btn-secondary" type="submit">'.$label.'</button></form>'
-                    .'<form method="post" style="display:inline" onsubmit="return confirm(\'Delete this WireGuard peer? The peer will also be removed from RouterOS.\')"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="delete_peer"><input type="hidden" name="id" value="'.$peerId.'"><button class="btn btn-danger" type="submit">⌫ Delete</button></form>'
+                    .'<form method="post"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="'.$action.'"><input type="hidden" name="id" value="'.$peerId.'"><button class="btn btn-secondary" type="submit">'.$label.'</button></form>'
+                    .'<form method="post" onsubmit="return confirm(\'Delete this WireGuard peer? The peer will also be removed from RouterOS.\')"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="delete_peer"><input type="hidden" name="id" value="'.$peerId.'"><button class="btn btn-secondary" style="color:var(--red);border-color:rgba(255,80,80,.35)" type="submit">× Delete</button></form>'
                 .'</div></td>'
             .'</tr>';
         }
