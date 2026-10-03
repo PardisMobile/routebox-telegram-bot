@@ -226,7 +226,7 @@ final class ATDStats
             . '<input type="hidden" name="id" value="'.$id.'">'
             . '<button class="atd-status-refresh" type="submit" title="Refresh">↻</button></form>';
         return '<div class="atd-provider-status"><div class="atd-status-head"><span>Server Status</span>'.$action.'</div>'
-            . '<div class="atd-status-main"><span class="atd-flag">'.$esc($flag).'</span><div><strong>'.$esc($name).'</strong><div class="atd-status-state"><i style="background:'.$color.'"></i>'.$esc($status).'</div></div></div>'
+            . '<div class="atd-status-main"><span class="atd-flag">'.$esc($flag).'</span><div><strong>'.$esc($name).'</strong><span class="status"><span class="dot" style="background:'.$color.'"></span>'.$esc($status).'</span></div></div>'
             . '<div class="atd-status-grid"><div><span>Server IP</span><b dir="ltr">'.$esc($ip).'</b></div><div><span>Ping</span><b dir="ltr">'.$esc($ping).'</b></div></div></div>';
     }
 
@@ -242,7 +242,7 @@ final class ATDStats
             . '<input type="hidden" name="csrf_token" value="'.$esc(csrf_token()).'">'
             . '<button class="atd-status-refresh" type="submit" title="Reload Worker">↻</button></form>';
         return '<div class="atd-provider-status"><div class="atd-status-head"><span>Bot Server</span>'.$action.'</div>'
-            . '<div class="atd-status-main"><span class="atd-flag">'.$esc($flag).'</span><div><strong>Telegram Worker</strong><div class="atd-status-state"><i style="background:'.$color.'"></i>'.$esc($state).'</div></div></div>'
+            . '<div class="atd-status-main"><span class="atd-flag">'.$esc($flag).'</span><div><strong>Telegram Worker</strong><span class="status"><span class="dot" style="background:'.$color.'"></span>'.$esc($state).'</span></div></div>'
             . '<div class="atd-status-grid"><div><span>Server IP</span><b dir="ltr">'.$esc((string)$info['ip']).'</b></div><div><span>Ping</span><b dir="ltr">'.$esc((string)$status['service']).'</b></div></div></div>';
     }
 
