@@ -19,8 +19,7 @@ final class ATDStats
 
     private static function countRows(PDO $db, string $table): int
     {
-        if (!self::tableExists($db, $table)) return 0;
-        return (int)$db->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
+        return self::tableExists($db, $table) ? (int)$db->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn() : 0;
     }
 
     private static function scalar(PDO $db, string $sql, array $params = []): int
@@ -29,27 +28,28 @@ final class ATDStats
             $st = $db->prepare($sql);
             $st->execute($params);
             return (int)$st->fetchColumn();
-        } catch (\Throwable $e) {
+        } catch (\Throwable) {
             return 0;
         }
     }
 
     private static function providerTable(string $provider): ?string
     {
-        return ['routebox'=>'routebox_servers','ibsng'=>'ibsng_servers','mikrotik_wireguard'=>'mikrotik_servers'][$provider] ?? null;
+        return [
+            'routebox' => 'routebox_servers',
+            'ibsng' => 'ibsng_servers',
+            'mikrotik_wireguard' => 'mikrotik_servers',
+        ][$provider] ?? null;
     }
 
     private static function providerStats(PDO $db, string $provider): array
     {
         $table = self::providerTable($provider);
-        $servers = $table ? self::countRows($db, $table) : 0;
-        $users = self::tableExists($db, 'service_subscriptions')
-            ? self::scalar($db, "SELECT COUNT(DISTINCT telegram_user_id) FROM service_subscriptions WHERE provider_key=? AND status != 'deleted'", [$provider]) : 0;
-        $plans = self::tableExists($db, 'service_plans')
-            ? self::scalar($db, 'SELECT COUNT(*) FROM service_plans WHERE provider_key=?', [$provider]) : 0;
-        $online = $table && self::tableExists($db, $table)
-            ? self::scalar($db, 'SELECT COUNT(*) FROM ' . $table . ' WHERE enabled = 1') : 0;
-        return [$servers, $users, $plans, $online];
+        return [
+            $table ? self::countRows($db, $table) : 0,
+            self::scalar($db, "SELECT COUNT(DISTINCT telegram_user_id) FROM service_subscriptions WHERE provider_key=? AND status != 'deleted'", [$provider]),
+            self::scalar($db, 'SELECT COUNT(*) FROM service_plans WHERE provider_key=?', [$provider]),
+        ];
     }
 
     private static function globalStats(PDO $db): array
@@ -63,10 +63,7 @@ final class ATDStats
 
     private static function systemInfo(): array
     {
-        // The admin web service runs with open_basedir limited to the application
-        // directory, so direct PHP access to /proc can be blocked. shell_exec()
-        // is already available in this deployment (nproc is used below), so read
-        // the host metrics through standard system commands instead.
+        $cpu = null;
         $readCpu = static function (): ?array {
             $raw = @shell_exec('/bin/cat /proc/stat 2>/dev/null');
             if (!is_string($raw) || $raw === '') return null;
@@ -75,83 +72,57 @@ final class ATDStats
                 $parts = preg_split('/\s+/', trim($row));
                 if (count($parts) < 5) return null;
                 $values = array_map('intval', array_slice($parts, 1));
-                $idle = ($values[3] ?? 0) + ($values[4] ?? 0);
-                $total = array_sum($values);
-                return [$total, $idle];
+                return [array_sum($values), ($values[3] ?? 0) + ($values[4] ?? 0)];
             }
             return null;
         };
-
-        $cpu = null;
         $a = $readCpu();
         if ($a !== null) {
             usleep(100000);
             $b = $readCpu();
-            if ($b !== null) {
-                $total = $b[0] - $a[0];
-                $idle = $b[1] - $a[1];
-                if ($total > 0) {
-                    $cpu = max(0, min(100, round((1 - ($idle / $total)) * 100, 1)));
-                }
+            if ($b !== null && ($total = $b[0] - $a[0]) > 0) {
+                $cpu = max(0, min(100, round((1 - (($b[1] - $a[1]) / $total)) * 100, 1)));
             }
         }
 
-        $memTotal = 0;
-        $memAvailable = 0;
+        $memTotal = 0; $memAvailable = 0;
         $memRaw = @shell_exec('/bin/cat /proc/meminfo 2>/dev/null');
         foreach (preg_split('/\r?\n/', is_string($memRaw) ? $memRaw : '') as $line) {
-            if (preg_match('/^MemTotal:\s+(\d+)\s+kB$/', trim($line), $m)) {
-                $memTotal = (int)$m[1] * 1024;
-            } elseif (preg_match('/^MemAvailable:\s+(\d+)\s+kB$/', trim($line), $m)) {
-                $memAvailable = (int)$m[1] * 1024;
-            }
+            if (preg_match('/^MemTotal:\s+(\d+)\s+kB$/', trim($line), $m)) $memTotal = (int)$m[1] * 1024;
+            elseif (preg_match('/^MemAvailable:\s+(\d+)\s+kB$/', trim($line), $m)) $memAvailable = (int)$m[1] * 1024;
         }
         $memUsed = max(0, $memTotal - $memAvailable);
-        $memPct = $memTotal > 0 ? round(($memUsed / $memTotal) * 100, 1) : null;
 
-        $diskTotal = 0;
-        $diskUsed = 0;
+        $diskTotal = 0; $diskUsed = 0;
         $diskRaw = @shell_exec('/bin/df -B1 / 2>/dev/null');
-        $diskLines = preg_split('/\r?\n/', trim(is_string($diskRaw) ? $diskRaw : ''));
-        if (is_array($diskLines) && count($diskLines) > 1) {
-            $last = trim((string)end($diskLines));
-            if (preg_match('/\s+(\d+)\s+(\d+)\s+(\d+)\s+\d+%\s+\S+$/', $last, $m)) {
-                $diskTotal = (int)$m[1];
-                $diskUsed = (int)$m[2];
-            }
+        $lines = preg_split('/\r?\n/', trim(is_string($diskRaw) ? $diskRaw : ''));
+        $last = is_array($lines) && count($lines) > 1 ? trim((string)end($lines)) : '';
+        if (preg_match('/\s+(\d+)\s+(\d+)\s+(\d+)\s+\d+%\s+\S+$/', $last, $m)) {
+            $diskTotal = (int)$m[1]; $diskUsed = (int)$m[2];
         }
-        $diskPct = $diskTotal > 0 ? round(($diskUsed / $diskTotal) * 100, 1) : null;
 
-        $formatBytes = static function (int $bytes): string {
+        $format = static function (int $bytes): string {
             if ($bytes <= 0) return '—';
             $gb = $bytes / 1073741824;
-            if ($gb >= 10) return number_format($gb, 0) . ' GB';
-            return number_format($gb, 1) . ' GB';
+            return ($gb >= 10 ? number_format($gb, 0) : number_format($gb, 1)) . ' GB';
         };
-
         $cores = (int)@shell_exec('/usr/bin/nproc 2>/dev/null');
-        if ($cores <= 0) {
-            $cpuInfo = @shell_exec('/bin/grep -c "^processor" /proc/cpuinfo 2>/dev/null');
-            $cores = (int)trim((string)$cpuInfo);
-        }
+        if ($cores <= 0) $cores = (int)trim((string)@shell_exec('/bin/grep -c "^processor" /proc/cpuinfo 2>/dev/null'));
 
         return [
-            'cpu' => $cpu,
-            'cores' => $cores,
-            'ram_used' => $formatBytes($memUsed),
-            'ram_total' => $formatBytes($memTotal),
-            'ram_pct' => $memPct,
-            'disk_used' => $formatBytes($diskUsed),
-            'disk_total' => $formatBytes($diskTotal),
-            'disk_pct' => $diskPct,
+            'cpu' => $cpu, 'cores' => $cores,
+            'ram_used' => $format($memUsed), 'ram_total' => $format($memTotal),
+            'ram_pct' => $memTotal > 0 ? round(($memUsed / $memTotal) * 100, 1) : null,
+            'disk_used' => $format($diskUsed), 'disk_total' => $format($diskTotal),
+            'disk_pct' => $diskTotal > 0 ? round(($diskUsed / $diskTotal) * 100, 1) : null,
         ];
     }
 
-    private static function countryCodeFromRow(array $row): string
+    private static function countryCode(array $row): string
     {
         foreach (['country_code','countryCode','geo_country_code','location_country_code'] as $key) {
-            $value = strtoupper(trim((string)($row[$key] ?? '')));
-            if (preg_match('/^[A-Z]{2}$/', $value)) return $value;
+            $v = strtoupper(trim((string)($row[$key] ?? '')));
+            if (preg_match('/^[A-Z]{2}$/', $v)) return $v;
         }
         $map = [
             'United States'=>'US','United States of America'=>'US','USA'=>'US','US'=>'US',
@@ -161,11 +132,9 @@ final class ATDStats
             'South Korea'=>'KR','Korea'=>'KR','KR'=>'KR',
         ];
         foreach (['country','country_name','location','name','title','isp_name'] as $key) {
-            $value = trim((string)($row[$key] ?? ''));
-            if (preg_match('/^[A-Za-z]{2}$/', $value)) return strtoupper($value);
-            foreach ($map as $name => $code) {
-                if (strcasecmp($value, $name) === 0 || stripos($value, $name) !== false) return $code;
-            }
+            $v = trim((string)($row[$key] ?? ''));
+            if (preg_match('/^[A-Za-z]{2}$/', $v)) return strtoupper($v);
+            foreach ($map as $name => $code) if (strcasecmp($v, $name) === 0 || stripos($v, $name) !== false) return $code;
         }
         return '';
     }
@@ -173,8 +142,7 @@ final class ATDStats
     private static function countryFromHost(string $host, int $port): string
     {
         try {
-            $scheme = $port === 443 ? 'https' : 'http';
-            $url = $scheme . '://' . trim($host, '/') . ':' . $port;
+            $url = ($port === 443 ? 'https' : 'http') . '://' . trim($host, '/') . ':' . $port;
             if (function_exists('detectCountryCode')) {
                 $code = strtoupper(trim((string)\detectCountryCode($url)));
                 if (preg_match('/^[A-Z]{2}$/', $code)) return $code;
@@ -183,28 +151,24 @@ final class ATDStats
             if (!filter_var($ip, FILTER_VALIDATE_IP)) return '';
             $ch = curl_init('https://ipapi.co/' . rawurlencode($ip) . '/country/');
             curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>3, CURLOPT_CONNECTTIMEOUT=>2, CURLOPT_USERAGENT=>'RouteBox-Telegram-Bot']);
-            $code = strtoupper(trim((string)curl_exec($ch)));
-            curl_close($ch);
+            $code = strtoupper(trim((string)curl_exec($ch))); curl_close($ch);
             return preg_match('/^[A-Z]{2}$/', $code) ? $code : '';
-        } catch (\Throwable $e) {
-            return '';
-        }
+        } catch (\Throwable) { return ''; }
     }
 
-    private static function flagForCode(string $country): string
+    private static function flag(string $country): string
     {
-        if (!preg_match('/^[A-Z]{2}$/', $country) || !function_exists('mb_chr')) return '🌐';
-        return mb_chr(127397 + ord($country[0])) . mb_chr(127397 + ord($country[1]));
+        return preg_match('/^[A-Z]{2}$/', $country) && function_exists('mb_chr')
+            ? mb_chr(127397 + ord($country[0])) . mb_chr(127397 + ord($country[1])) : '🌐';
     }
 
     private static function snapshot(PDO $db, string $provider): array
     {
         $table = self::providerTable($provider);
-        if ($table === null) return [];
+        if ($table === null || !self::tableExists($db, $table)) return [];
         try {
             $row = $db->query('SELECT * FROM ' . $table . ' ORDER BY id LIMIT 1')->fetch(PDO::FETCH_ASSOC);
             if (!is_array($row)) return [];
-
             $host = trim((string)($row['host'] ?? $row['ip'] ?? $row['address'] ?? ''));
             $port = (int)($row['api_port'] ?? $row['port'] ?? 0);
             if ($provider === 'routebox') {
@@ -212,23 +176,19 @@ final class ATDStats
                 $parsed = parse_url($url);
                 $host = is_array($parsed) && !empty($parsed['host']) ? (string)$parsed['host'] : $host;
                 $port = (int)($parsed['port'] ?? (($parsed['scheme'] ?? 'https') === 'https' ? 443 : 80));
-            } elseif ($port <= 0) {
-                $port = $provider === 'mikrotik_wireguard' ? 443 : 80;
-            }
+            } elseif ($port <= 0) $port = $provider === 'mikrotik_wireguard' ? 443 : 80;
 
             $ip = filter_var($host, FILTER_VALIDATE_IP) ? $host : gethostbyname($host);
-            $ping = null;
-            $connected = false;
+            $ping = null; $connected = false;
             if (filter_var($ip, FILTER_VALIDATE_IP)) {
-                $start = microtime(true);
-                $errno = 0; $errstr = '';
+                $start = microtime(true); $errno = 0; $errstr = '';
                 $socket = @fsockopen($ip, $port, $errno, $errstr, 1.2);
                 $ping = round((microtime(true) - $start) * 1000, 1);
                 $connected = is_resource($socket);
                 if ($connected) fclose($socket);
             }
 
-            $country = self::countryCodeFromRow($row);
+            $country = self::countryCode($row);
             if ($provider === 'routebox' && self::tableExists($db, 'server_meta')) {
                 $st = $db->prepare('SELECT country_code,ping_ms FROM server_meta WHERE server_id=? LIMIT 1');
                 $st->execute([(int)($row['id'] ?? 0)]);
@@ -237,20 +197,13 @@ final class ATDStats
                 if ($ping === null && isset($meta['ping_ms']) && $meta['ping_ms'] !== null) $ping = (float)$meta['ping_ms'];
             }
             if ($country === '' && $provider !== 'routebox' && $host !== '') $country = self::countryFromHost($host, $port);
-
-            $name = trim((string)($row['name'] ?? ''));
-            if ($name === '') $name = $host !== '' ? $host : 'Server';
+            $name = trim((string)($row['name'] ?? '')) ?: ($host !== '' ? $host : 'Server');
             return [
-                'id'=>(int)($row['id'] ?? 0),
-                'name'=>$name,
-                'ip'=>(string)$ip,
-                'flag'=>self::flagForCode($country),
-                'ping'=>$ping,
+                'id'=>(int)($row['id'] ?? 0), 'name'=>$name, 'ip'=>(string)$ip,
+                'flag'=>self::flag($country), 'ping'=>$ping,
                 'connected'=>$connected || (!empty($row['last_test_at']) && empty($row['last_error'])),
             ];
-        } catch (\Throwable $e) {
-            return [];
-        }
+        } catch (\Throwable) { return []; }
     }
 
     public static function statusCard(PDO $db, string $provider, callable $esc): string
@@ -266,8 +219,7 @@ final class ATDStats
         $name = (string)($s['name'] ?? '—');
         $color = $connected ? 'var(--green)' : 'var(--red)';
         $section = $provider === 'routebox' ? 'servers' : ($provider === 'ibsng' ? 'ibsng' : 'mikrotik');
-        $actionUrl = '/?section=' . rawurlencode($section);
-        $action = '<form method="post" action="'.$esc($actionUrl).'" style="margin:0">'
+        $action = '<form method="post" action="/?section=' . rawurlencode($section) . '" style="margin:0">'
             . '<input type="hidden" name="csrf_token" value="'.$esc($csrf).'">'
             . '<input type="hidden" name="action" value="test_server">'
             . '<input type="hidden" name="section" value="'.$esc($section).'">'
@@ -283,15 +235,15 @@ final class ATDStats
         $status = ATDWorker::status();
         $info = ATDWorker::serverInfo();
         $flag = ATDWorker::flag((string)$info['country']);
-        $state = !empty($status['running']) ? 'Running' : 'Stopped';
-        $color = !empty($status['running']) ? 'var(--green)' : 'var(--red)';
-        $ping = (string)$status['service'];
+        $running = !empty($status['running']);
+        $state = $running ? 'Running' : 'Stopped';
+        $color = $running ? 'var(--green)' : 'var(--red)';
         $action = '<form method="post" action="/reload-worker.php" style="margin:0">'
             . '<input type="hidden" name="csrf_token" value="'.$esc(csrf_token()).'">'
             . '<button class="atd-status-refresh" type="submit" title="Reload Worker">↻</button></form>';
         return '<div class="atd-provider-status"><div class="atd-status-head"><span>Bot Server</span>'.$action.'</div>'
             . '<div class="atd-status-main"><span class="atd-flag">'.$esc($flag).'</span><div><strong>Telegram Worker</strong><div class="atd-status-state"><i style="background:'.$color.'"></i>'.$esc($state).'</div></div></div>'
-            . '<div class="atd-status-grid"><div><span>Server IP</span><b dir="ltr">'.$esc((string)$info['ip']).'</b></div><div><span>Ping</span><b dir="ltr">'.$esc($ping).'</b></div></div></div>';
+            . '<div class="atd-status-grid"><div><span>Server IP</span><b dir="ltr">'.$esc((string)$info['ip']).'</b></div><div><span>Ping</span><b dir="ltr">'.$esc((string)$status['service']).'</b></div></div></div>';
     }
 
     private static function dashboardSystemCard(string $version, callable $esc): string
@@ -319,7 +271,7 @@ final class ATDStats
     {
         $context = $context === 'servers' ? 'routebox' : $context;
         $provider = in_array($context, ['routebox','ibsng','mikrotik_wireguard'], true) ? $context : null;
-        if ($provider !== null) [$servers,$users,$plans] = array_slice(self::providerStats($db,$provider),0,3);
+        if ($provider !== null) [$servers,$users,$plans] = self::providerStats($db, $provider);
         else [$servers,$users,$plans] = self::globalStats($db);
 
         $esc = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -330,12 +282,16 @@ final class ATDStats
             .'<div class="stat"><div class="stat-top"><span>Users</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$userIcon.'</svg></span></div><b>'.number_format($users).'</b></div>'
             .'<div class="stat"><div class="stat-top"><span>Plans</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$planIcon.'</svg></span></div><b>'.number_format($plans).'</b></div>';
         if ($context === 'bot') {
-            $cards.='<div class="stat atd-status-stat">'.self::botCard($db,$version,$esc).'</div>';
+            $cards .= '<div class="stat atd-status-stat">'.self::botCard($db,$version,$esc).'</div>';
         } elseif ($context === 'dashboard') {
-            $cards.=self::dashboardSystemCard($version,$esc);
+            $cards .= self::dashboardSystemCard($version,$esc);
+        } elseif ($provider !== null) {
+            $cards .= '<div class="stat atd-status-stat">'.self::statusCard($db,$provider,$esc).'</div>';
         } else {
-            $cards.='<div class="stat"><div class="stat-top"><span>Version</span><span class="stat-icon"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-4L3 10m0 0V5m0 5h5M4 13a8 8 0 0 0 14.9 4L21 14m0 0v5m0-5h-5"/></svg></span></div><b style="font-size:18px">v'.$esc($version).'</b></div>';
+            $cards .= '<div class="stat"><div class="stat-top"><span>Version</span><span class="stat-icon"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-4L3 10m0 0V5m0 5h5M4 13a8 8 0 0 0 14.9 4L21 14m0 0v5m0-5h-5"/></svg></span></div><b style="font-size:18px">v'.$esc($version).'</b></div>';
         }
-        return '<div class="stats atd-stats">'.$cards.'</div><style>.atd-status-stat{min-width:0}.atd-provider-status{margin-top:4px}.atd-status-head{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px;font-weight:700}.atd-status-refresh{width:30px;height:30px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);cursor:pointer;font-size:18px}.atd-status-main{display:flex;align-items:center;gap:10px;margin-top:8px}.atd-flag{font-size:29px;min-width:38px;text-align:center}.atd-status-main strong{display:block;font-size:13px;max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-status-state{font-size:11px;color:var(--muted);margin-top:4px}.atd-status-state i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-inline-end:5px}.atd-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.atd-status-grid span{display:block;color:var(--muted);font-size:10px}.atd-status-grid b{display:block;margin-top:3px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-system-stat{min-width:0}.atd-version-value{font-size:17px!important;line-height:1.15}.atd-resource-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}.atd-resource-grid>div{min-width:0}.atd-resource-grid span{display:block;color:var(--muted);font-size:9px;font-weight:700}.atd-resource-grid strong{display:block;margin-top:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.atd-resource-grid small{display:block;margin-top:3px;color:var(--muted);font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.atd-resource-bar{display:block;height:4px;margin-top:5px;border-radius:99px;background:rgba(127,127,127,.16);overflow:hidden}.atd-resource-bar i{display:block;height:100%;border-radius:inherit;background:currentColor;opacity:.8}@media(max-width:700px){.atd-resource-grid{gap:5px}.atd-resource-grid strong{font-size:10px}.atd-resource-grid small{font-size:7px}}</style>\n';
+
+        return '<div class="stats atd-stats">'.$cards.'</div><style>'
+            . '.atd-status-stat{min-width:0}.atd-provider-status{margin-top:4px}.atd-status-head{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px;font-weight:700}.atd-status-refresh{width:30px;height:30px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);cursor:pointer;font-size:18px}.atd-status-main{display:flex;align-items:center;gap:10px;margin-top:8px}.atd-flag{font-size:29px;min-width:38px;text-align:center}.atd-status-main strong{display:block;font-size:13px;max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-status-state{font-size:11px;color:var(--muted);margin-top:4px}.atd-status-state i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-inline-end:5px}.atd-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.atd-status-grid span{display:block;color:var(--muted);font-size:10px}.atd-status-grid b{display:block;margin-top:3px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-system-stat{min-width:0}.atd-version-value{font-size:17px!important;line-height:1.15}.atd-resource-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}.atd-resource-grid>div{min-width:0}.atd-resource-grid span{display:block;color:var(--muted);font-size:9px;font-weight:700}.atd-resource-grid strong{display:block;margin-top:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.atd-resource-grid small{display:block;margin-top:3px;color:var(--muted);font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.atd-resource-bar{display:block;height:4px;margin-top:5px;border-radius:99px;background:rgba(127,127,127,.16);overflow:hidden}.atd-resource-bar i{display:block;height:100%;border-radius:inherit;background:currentColor;opacity:.8}@media(max-width:700px){.atd-resource-grid{gap:5px}.atd-resource-grid strong{font-size:10px}.atd-resource-grid small{font-size:7px}}</style>\n';
     }
 }
