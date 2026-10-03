@@ -15,8 +15,35 @@ final class ATDPanelSections
         return '<div class="field"><label>'.self::esc($label).'</label>'.$tag.'</div>';
     }
 
+    private static function ensureSchema(PDO $db): void
+    {
+        $now = time();
+        $db->exec("CREATE TABLE IF NOT EXISTS telegram_service_guides (id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER, title_fa TEXT NOT NULL, title_en TEXT NOT NULL, body_fa TEXT NOT NULL DEFAULT '', body_en TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(category_id), FOREIGN KEY(category_id) REFERENCES service_categories(id) ON DELETE CASCADE)");
+        $db->exec("CREATE TABLE IF NOT EXISTS provider_admin_guides (id INTEGER PRIMARY KEY AUTOINCREMENT, provider_key TEXT UNIQUE NOT NULL, title_fa TEXT NOT NULL, title_en TEXT NOT NULL, body_fa TEXT NOT NULL DEFAULT '', body_en TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+        $general = $db->query("SELECT COUNT(*) FROM telegram_service_guides WHERE category_id IS NULL")->fetchColumn();
+        if ((int)$general === 0) {
+            $q=$db->prepare("SELECT value FROM settings WHERE key=?");
+            $q->execute(['guide_fa']); $fa=(string)($q->fetchColumn()?:'');
+            $q->execute(['guide_en']); $en=(string)($q->fetchColumn()?:'');
+            $db->prepare('INSERT INTO telegram_service_guides(category_id,title_fa,title_en,body_fa,body_en,enabled,sort_order,created_at,updated_at) VALUES(NULL,?,?,?,?,1,0,?,?)')->execute(['راهنمای عمومی','General Guide',$fa,$en,$now,$now]);
+        }
+        $cats=$db->query('SELECT id,name_fa,name_en,sort_order FROM service_categories')->fetchAll(PDO::FETCH_ASSOC);
+        $ins=$db->prepare("INSERT OR IGNORE INTO telegram_service_guides(category_id,title_fa,title_en,body_fa,body_en,enabled,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?,?)");
+        foreach($cats as $c)$ins->execute([(int)$c['id'],(string)$c['name_fa'],(string)$c['name_en'],'','',10+(int)$c['sort_order'],$now,$now]);
+        $guides=[
+            'routebox'=>['راهنمای RouteBox','RouteBox Admin Guide','راهنمای API، URL، TLS و تست اتصال RouteBox را اینجا ثبت کنید.','Add the RouteBox API, URL, TLS and smoke-test instructions here.'],
+            'ibsng'=>['راهنمای IBSng','IBSng Admin Guide','راهنمای API، احراز هویت، گروه‌ها و پیش‌نیازهای Provisioning را اینجا ثبت کنید.','Add IBSng API, authentication, group mapping and provisioning prerequisites here.'],
+            'mikrotik_wireguard'=>['راهنمای MikroTik WireGuard','MikroTik WireGuard Admin Guide','راهنمای RouterOS REST، WireGuard interface، Pool، Endpoint و Listen Port را اینجا ثبت کنید.','Add RouterOS REST, WireGuard interface, pool, endpoint and listen-port instructions here.'],
+        ];
+        $ins=$db->prepare('INSERT OR IGNORE INTO provider_admin_guides(provider_key,title_fa,title_en,body_fa,body_en,enabled,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?)');
+        foreach($guides as $key=>$g)$ins->execute([$key,$g[0],$g[1],$g[2],$g[3],$now,$now]);
+        $db->exec("INSERT OR IGNORE INTO payment_providers(provider_key,display_name,enabled,config_json,sort_order,created_at,updated_at) VALUES('zarinpal','ZarinPal',0,'{}',10,strftime('%s','now'),strftime('%s','now')),('crypto','Crypto Gateway',0,'{}',20,strftime('%s','now'),strftime('%s','now'))");
+        $db->exec("INSERT OR IGNORE INTO settings(key,value) VALUES('payment_currency','IRR'),('payment_callback_url','')");
+    }
+
     public static function handle(PDO $db, array $post): string
     {
+        self::ensureSchema($db);
         $action = (string)($post['atd_action'] ?? '');
         if ($action === '') return (string)($post['return_section'] ?? 'dashboard');
         $now = time();
@@ -32,10 +59,10 @@ final class ATDPanelSections
                 $q=$db->prepare('INSERT INTO telegram_service_guides(category_id,title_fa,title_en,body_fa,body_en,enabled,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)');
                 $q->execute([$cat,trim((string)$post['title_fa']),trim((string)$post['title_en']),trim((string)$post['body_fa']),trim((string)$post['body_en']),$enabled,$sort,$now,$now]);
             }
-            return 'bot';
+            return 'bot-guides';
         }
         if ($action === 'delete_bot_guide') {
-            $id=(int)($post['id']??0); if($id>0)$db->prepare('DELETE FROM telegram_service_guides WHERE id=?')->execute([$id]); return 'bot';
+            $id=(int)($post['id']??0); if($id>0)$db->prepare('DELETE FROM telegram_service_guides WHERE id=?')->execute([$id]); return 'bot-guides';
         }
         if ($action === 'save_provider_guide') {
             $key=trim((string)$post['provider_key']);
@@ -71,24 +98,25 @@ final class ATDPanelSections
     }
 
     public static function renderBot(PDO $db,string $lang,string $csrf): string {
+        self::ensureSchema($db);
         $cats=$db->query('SELECT id,name_fa,name_en,provider_key FROM service_categories ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
         $guides=$db->query('SELECT g.*,c.name_fa as cat_fa,c.name_en as cat_en FROM telegram_service_guides g LEFT JOIN service_categories c ON c.id=g.category_id ORDER BY g.sort_order,g.id')->fetchAll(PDO::FETCH_ASSOC);
         $fa=self::fa($lang); $catOptions='<option value="">'.($fa?'راهنمای عمومی':'General guide').'</option>'; foreach($cats as $c)$catOptions.='<option value="'.(int)$c['id'].'">'.self::esc($fa?$c['name_fa']:$c['name_en']).'</option>';
         $body='<div class="item"><div class="item-head"><div><strong>'.($fa?'راهنمای عمومی فعلی حفظ شده است':'Existing general guide is preserved').'</strong><div class="muted">'.($fa?'می‌توانید محتوای عمومی و راهنمای هر سرویس را جداگانه مدیریت کنید.':'Manage the existing general guide and each service guide separately.').'</div></div></div><details><summary>'.($fa?'افزودن راهنمای جدید':'Add service guide').'</summary>'.self::guideForm($csrf,$catOptions,$fa,null).'</details></div><div class="list">';
-        foreach($guides as $g){$title=$fa?(string)$g['title_fa']:(string)$g['title_en'];$cat=$g['category_id']?(string)($fa?$g['cat_fa']:$g['cat_en']):($fa?'عمومی':'General');$body.='<div class="item"><div class="item-head"><div><strong>'.self::esc($title).'</strong><div class="muted">'.self::esc($cat).' · '.((int)$g['enabled']?$fa?'فعال':'Enabled':$fa?'غیرفعال':'Disabled').'</div></div><span class="badge">Guide</span></div><details><summary>'.($fa?'ویرایش':'Edit').'</summary>'.self::guideForm($csrf,$catOptions,$fa,$g).'</details></div>';}
+        foreach($guides as $g){$title=$fa?(string)$g['title_fa']:(string)$g['title_en'];$cat=$g['category_id']?(string)($fa?$g['cat_fa']:$g['cat_en']):($fa?'عمومی':'General');$body.='<div class="item"><div class="item-head"><div><strong>'.self::esc($title).'</strong><div class="muted">'.self::esc($cat).' · '.((int)$g['enabled'] ? ($fa ? 'فعال' : 'Enabled') : ($fa ? 'غیرفعال' : 'Disabled')).'</div></div><span class="badge">Guide</span></div><details><summary>'.($fa?'ویرایش':'Edit').'</summary>'.self::guideForm($csrf,$catOptions,$fa,$g).'</details></div>';}
         $body.='</div>';
         return self::shell($fa?'راهنمای ربات':'Telegram Bot Usage Guides',$fa?'راهنمای عمومی و راهنمای اتصال هر سرویس را از اینجا مدیریت کنید.':'Manage the existing general guide and separate connection guides for each service.',$body,'bot');
     }
 
     private static function guideForm(string $csrf,string $catOptions,bool $fa,?array $g): string {
-        $id=$g?(int)$g['id']:0;
-        $options=$catOptions;
+        $id=$g?(int)$g['id']:0; $options=$catOptions;
         if($g && $g['category_id']) $options=str_replace('value="'.(int)$g['category_id'].'"','value="'.(int)$g['category_id'].'" selected',$options);
-        $html='<form method="post"><input type="hidden" name="csrf_token" value="'.$csrf.'"><input type="hidden" name="atd_action" value="save_bot_guide"><input type="hidden" name="id" value="'.$id.'"><div class="grid"><div class="field"><label>'.($fa?'دسته سرویس':'Service').'</label><select name="category_id">'.$options.'</select></div><div class="field"><label>'.($fa?'ترتیب':'Sort order').'</label><input name="sort_order" type="number" value="'.(int)($g['sort_order']??0).'" min="0"></div>'.self::input('title_fa',$fa?'عنوان فارسی':'Persian title',(string)($g['title_fa']??''), 'text',true).self::input('title_en','English title',(string)($g['title_en']??''),'text',true).'<div class="field full"><label>'.($fa?'متن فارسی':'Persian content').'</label><textarea name="body_fa" rows="10">'.self::esc((string)($g['body_fa']??'')).'</textarea></div><div class="field full"><label>English content</label><textarea name="body_en" rows="10">'.self::esc((string)($g['body_en']??'')).'</textarea></div><div class="field"><label><input type="checkbox" name="enabled" '.((int)($g['enabled']??1)?'checked':'').'> '.($fa?'فعال':'Enabled').'</label></div></div><div class="form-actions"><button class="btn btn-primary" type="submit">'.($fa?'ذخیره راهنما':'Save guide').'</button></div></form>';
+        $html='<form method="post" action="/?section=provider-guide"><input type="hidden" name="csrf_token" value="'.$csrf.'"><input type="hidden" name="atd_action" value="save_bot_guide"><input type="hidden" name="id" value="'.$id.'"><div class="grid"><div class="field"><label>'.($fa?'دسته سرویس':'Service').'</label><select name="category_id">'.$options.'</select></div><div class="field"><label>'.($fa?'ترتیب':'Sort order').'</label><input name="sort_order" type="number" value="'.(int)($g['sort_order']??0).'" min="0"></div>'.self::input('title_fa',$fa?'عنوان فارسی':'Persian title',(string)($g['title_fa']??''), 'text',true).self::input('title_en','English title',(string)($g['title_en']??''),'text',true).'<div class="field full"><label>'.($fa?'متن فارسی':'Persian content').'</label><textarea name="body_fa" rows="10">'.self::esc((string)($g['body_fa']??'')).'</textarea></div><div class="field full"><label>English content</label><textarea name="body_en" rows="10">'.self::esc((string)($g['body_en']??'')).'</textarea></div><div class="field"><label><input type="checkbox" name="enabled" '.((int)($g['enabled']??1)?'checked':'').'> '.($fa?'فعال':'Enabled').'</label></div></div><div class="form-actions"><button class="btn btn-primary" type="submit">'.($fa?'ذخیره راهنما':'Save guide').'</button></div></form>';
         return $html;
     }
 
     public static function renderProviderGuide(PDO $db,string $provider,string $lang,string $csrf): string {
+        self::ensureSchema($db);
         $q=$db->prepare('SELECT * FROM provider_admin_guides WHERE provider_key=?');$q->execute([$provider]);$g=$q->fetch(PDO::FETCH_ASSOC);if(!$g)return self::shell('Provider Guide','Guide is not configured.','<div class="empty-state">Provider guide not found.</div>',$provider==='ibsng'?'ibsng':($provider==='mikrotik_wireguard'?'mikrotik':'servers'));
         $fa=self::fa($lang);$title=$fa?(string)$g['title_fa']:(string)$g['title_en'];$back=$provider==='ibsng'?'ibsng':($provider==='mikrotik_wireguard'?'mikrotik':'servers');
         $body='<form method="post"><input type="hidden" name="csrf_token" value="'.$csrf.'"><input type="hidden" name="atd_action" value="save_provider_guide"><input type="hidden" name="provider_key" value="'.self::esc($provider).'"><div class="grid">'.self::input('title_fa','عنوان فارسی',(string)$g['title_fa'],'text',true).self::input('title_en','English title',(string)$g['title_en'],'text',true).'<div class="field full"><label>'.($fa?'راهنمای فارسی':'Persian guide').'</label><textarea name="body_fa" rows="16">'.self::esc((string)$g['body_fa']).'</textarea></div><div class="field full"><label>English guide</label><textarea name="body_en" rows="16">'.self::esc((string)$g['body_en']).'</textarea></div><div class="field"><label><input type="checkbox" name="enabled" '.((int)$g['enabled']?'checked':'').'> '.($fa?'فعال':'Enabled').'</label></div></div><div class="form-actions"><button class="btn btn-primary" type="submit">'.($fa?'ذخیره راهنمای Provider':'Save provider guide').'</button></div></form><div class="item" style="margin-top:18px"><strong>'.self::esc($title).'</strong><div class="guide-copy">'.self::esc($fa?(string)$g['body_fa']:(string)$g['body_en']).'</div></div>';
@@ -96,6 +124,7 @@ final class ATDPanelSections
     }
 
     public static function renderUsers(PDO $db,string $lang,string $csrf): string {
+        self::ensureSchema($db);
         $fa=self::fa($lang);$search=trim((string)($_GET['q']??''));$sql='SELECT u.*,COUNT(s.id) AS subscription_count,MAX(s.expires_at) AS latest_expiry FROM telegram_users u LEFT JOIN service_subscriptions s ON s.telegram_user_id=u.id';$params=[];if($search!==''){$sql.=' WHERE u.telegram_id LIKE ? OR COALESCE(u.username,\'\') LIKE ? OR COALESCE(u.first_name,\'\') LIKE ?';$like='%'.$search.'%';$params=[$like,$like,$like];}$sql.=' GROUP BY u.id ORDER BY u.last_seen DESC LIMIT 100';$q=$db->prepare($sql);$q->execute($params);$users=$q->fetchAll(PDO::FETCH_ASSOC);
         $body='<form class="searchbar" method="get"><input type="hidden" name="section" value="users"><input name="q" value="'.self::esc($search).'" placeholder="'.($fa?'جستجو با Telegram ID، username یا نام':'Search Telegram ID, username or name').'"/><button class="btn btn-primary" type="submit">🔎 '.($fa?'جستجو':'Search').'</button></form><div class="table-wrap"><table><thead><tr><th>'.($fa?'کاربر':'User').'</th><th>Telegram ID</th><th>'.($fa?'سرویس‌ها':'Services').'</th><th>'.($fa?'آخرین فعالیت':'Last seen').'</th><th></th></tr></thead><tbody>';
         foreach($users as $u){$name=trim((string)($u['first_name']??''));$uname=trim((string)($u['username']??''));$display=$name!==''?$name:($uname!==''?'@'.$uname:(string)$u['telegram_id']);$body.='<tr><td><strong>'.self::esc($display).'</strong><div class="muted">'.self::esc($uname!==''?'@'.$uname:'').'</div></td><td>'.self::esc((string)$u['telegram_id']).'</td><td>'.(int)$u['subscription_count'].'</td><td>'.date('Y-m-d H:i',(int)$u['last_seen']).'</td><td><a class="btn btn-secondary" href="/?section=user-details&id='.(int)$u['id'].'">'.($fa?'جزئیات':'Details').'</a></td></tr>';}
@@ -104,13 +133,15 @@ final class ATDPanelSections
     }
 
     public static function renderUserDetails(PDO $db,int $id,string $lang,string $csrf): string {
+        self::ensureSchema($db);
         $fa=self::fa($lang);$q=$db->prepare('SELECT * FROM telegram_users WHERE id=?');$q->execute([$id]);$u=$q->fetch(PDO::FETCH_ASSOC);if(!$u)return self::shell($fa?'کاربر پیدا نشد':'User not found','', '<div class="empty-state">'.($fa?'کاربر وجود ندارد.':'User does not exist.').'</div>','users');
         $q=$db->prepare('SELECT s.*,c.name_fa,c.name_en,p.display_name_fa,p.display_name_en FROM service_subscriptions s LEFT JOIN service_categories c ON c.id=s.category_id LEFT JOIN service_plans p ON p.id=s.plan_id WHERE s.telegram_user_id=? ORDER BY s.created_at DESC');$q->execute([$id]);$subs=$q->fetchAll(PDO::FETCH_ASSOC);
-        $body='<div class="item"><div class="user-card"><div><strong>'.self::esc((string)($u['first_name']??'')).'</strong><div class="muted">@'.self::esc((string)($u['username']??'' )).' · Telegram ID '.self::esc((string)$u['telegram_id']).'</div></div><span class="badge">'.self::esc((string)$u['language']).'</span></div></div><div class="list">';foreach($subs as $s){$name=$fa?(string)$s['name_fa']:(string)$s['name_en'];$plan=$fa?(string)$s['display_name_fa']:(string)$s['display_name_en'];$body.='<div class="item"><div class="item-head"><div><strong>'.self::esc($name).' — '.self::esc($plan).'</strong><div class="muted">'.self::esc((string)$s['status']).' · '.($s['expires_at']?date('Y-m-d H:i',(int)$s['expires_at']):'—').'</div></div><span class="badge">'.self::esc((string)$s['provider_key']).'</span></div></div>';}$body.='</div>';
+        $body='<div class="item"><div class="user-card"><div><strong>'.self::esc((string)($u['first_name']??'' )).'</strong><div class="muted">@'.self::esc((string)($u['username']??'' )).' · Telegram ID '.self::esc((string)$u['telegram_id']).'</div></div><span class="badge">'.self::esc((string)$u['language']).'</span></div></div><div class="list">';foreach($subs as $s){$name=$fa?(string)$s['name_fa']:(string)$s['name_en'];$plan=$fa?(string)$s['display_name_fa']:(string)$s['display_name_en'];$body.='<div class="item"><div class="item-head"><div><strong>'.self::esc($name).' — '.self::esc($plan).'</strong><div class="muted">'.self::esc((string)$s['status']).' · '.($s['expires_at']?date('Y-m-d H:i',(int)$s['expires_at']):'—').'</div></div><span class="badge">'.self::esc((string)$s['provider_key']).'</span></div></div>';}$body.='</div>';
         return self::shell($fa?'جزئیات کاربر':'User Details',$fa?'سرویس‌ها و Subscriptionهای این کاربر.':'Services and subscriptions for this user.',$body,'users');
     }
 
     public static function renderPayments(PDO $db,string $lang,string $csrf): string {
+        self::ensureSchema($db);
         $fa=self::fa($lang);$currency=(string)($db->query("SELECT value FROM settings WHERE key='payment_currency'")->fetchColumn()?:'IRR');$callback=(string)($db->query("SELECT value FROM settings WHERE key='payment_callback_url'")->fetchColumn()?:'');$providers=$db->query('SELECT * FROM payment_providers ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
         $body='<form method="post" class="item"><input type="hidden" name="csrf_token" value="'.$csrf.'"><input type="hidden" name="atd_action" value="save_payment_global"><div class="grid">'.self::input('payment_currency',$fa?'واحد پول':'Currency',$currency,'text',true).self::input('payment_callback_url',$fa?'آدرس Callback':'Callback URL',$callback).'</div><div class="form-actions"><button class="btn btn-primary">'.($fa?'ذخیره تنظیمات پرداخت':'Save payment settings').'</button></div></form><div class="list">';
         foreach($providers as $p){$cfg=json_decode((string)$p['config_json'],true);if(!is_array($cfg))$cfg=[];$body.='<div class="item"><div class="item-head"><div><strong>'.self::esc((string)$p['display_name']).'</strong><div class="muted">'.self::esc((string)$p['provider_key']).'</div></div><span class="badge">'.((int)$p['enabled']?($fa?'فعال':'Enabled'):($fa?'غیرفعال':'Disabled')).'</span></div><details><summary>'.($fa?'ویرایش تنظیمات':'Edit settings').'</summary><form method="post"><input type="hidden" name="csrf_token" value="'.$csrf.'"><input type="hidden" name="atd_action" value="save_payment_provider"><input type="hidden" name="id" value="'.(int)$p['id'].'"><div class="grid">'.self::input('provider_key','Provider key',(string)$p['provider_key'], 'text',true).self::input('display_name',$fa?'نام نمایشی':'Display name',(string)$p['display_name'],'text',true).self::input('merchant_id','Merchant ID',(string)($cfg['merchant_id']??'')).self::input('api_key','API Key',(string)($cfg['api_key']??'')).'</div><div class="form-actions"><button class="btn btn-primary">'.($fa?'ذخیره':'Save').'</button></div></form></details><form method="post" style="margin-top:8px"><input type="hidden" name="csrf_token" value="'.$csrf.'"><input type="hidden" name="atd_action" value="toggle_payment_provider"><input type="hidden" name="id" value="'.(int)$p['id'].'"><button class="btn btn-secondary">'.((int)$p['enabled']?($fa?'غیرفعال کردن':'Disable'):($fa?'فعال کردن':'Enable')).'</button></form></div>';}
