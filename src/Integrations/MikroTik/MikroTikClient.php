@@ -82,7 +82,9 @@ final class MikroTikClient
         }
         $decoded = json_decode((string)$body, true);
         if ($status < 200 || $status >= 300) {
-            $detail = is_array($decoded) ? (string)($decoded['detail'] ?? $decoded['message'] ?? '') : trim((string)$body);
+            $detail = is_array($decoded)
+                ? (string)($decoded['detail'] ?? $decoded['message'] ?? $decoded['error'] ?? '')
+                : trim((string)$body);
             throw new RuntimeException('MikroTik REST HTTP ' . $status . ($detail !== '' ? ': ' . $detail : '.'));
         }
         if ($body === '' || $decoded === null) {
@@ -117,18 +119,11 @@ final class MikroTikClient
     {
         $rows = $this->request('GET', 'system/resource');
 
-        // RouterOS returns /system/resource as a single JSON object, while
-        // collection endpoints return an array of objects. Keep both forms
-        // compatible so fields such as version/uptime/cpu-load are preserved.
         if (array_is_list($rows)) {
             $first = $rows[0] ?? [];
             $rows = is_array($first) ? $first : [];
         }
 
-        // /system/identity returns the RouterOS System Identity shown in the
-        // MikroTik console prompt (for example: "MikroTik USA"). Keep it
-        // alongside the resource fields so the admin UI can display both the
-        // RouteBox server label and the actual router identity.
         try {
             $identity = $this->request('GET', 'system/identity');
             if (array_is_list($identity)) {
@@ -138,8 +133,6 @@ final class MikroTikClient
                 $rows['identity'] = (string)($identity['name'] ?? '');
             }
         } catch (\Throwable) {
-            // Identity discovery is supplemental; an older/restricted RouterOS
-            // endpoint must not make an otherwise healthy resource check fail.
             $rows['identity'] = '';
         }
 
@@ -199,12 +192,32 @@ final class MikroTikClient
     /** @return array<string,mixed> */
     public function updatePeer(string $id, array $peer): array
     {
-        return $this->request('PATCH', 'interface/wireguard/peers/' . rawurlencode($id), $peer);
+        $payload = $peer;
+        if (array_key_exists('disabled', $payload)) {
+            $payload['disabled'] = $payload['disabled'] ? 'yes' : 'no';
+        }
+        try {
+            return $this->request('PATCH', 'interface/wireguard/peers/' . rawurlencode($id), $payload);
+        } catch (\Throwable $first) {
+            try {
+                return $this->request('POST', 'interface/wireguard/peers/set', array_merge(['.id' => $id], $payload));
+            } catch (\Throwable $fallback) {
+                throw new RuntimeException($first->getMessage() . ' Fallback set failed: ' . $fallback->getMessage(), 0, $fallback);
+            }
+        }
     }
 
     public function deletePeer(string $id): void
     {
-        $this->request('DELETE', 'interface/wireguard/peers/' . rawurlencode($id));
+        try {
+            $this->request('DELETE', 'interface/wireguard/peers/' . rawurlencode($id));
+        } catch (\Throwable $first) {
+            try {
+                $this->request('POST', 'interface/wireguard/peers/remove', ['.id' => $id]);
+            } catch (\Throwable $fallback) {
+                throw new RuntimeException($first->getMessage() . ' Fallback remove failed: ' . $fallback->getMessage(), 0, $fallback);
+            }
+        }
     }
 
     /** @return array<string,mixed> */
