@@ -80,7 +80,7 @@ try {
         $url = rtrim(trim((string)($_POST['url'] ?? '')), '/');
         $username = trim((string)($_POST['username'] ?? ''));
         $password = (string)($_POST['password'] ?? '');
-        $verify = isset($_POST['verify_tls']) ? 1 : 0;
+        $verify = isset($_POST['verify_tls']) ? 1 : (int)$server['verify_tls'];
         $country = strtoupper(trim((string)($_POST['country_code'] ?? '')));
 
         if ($name === '' || mb_strlen($name) > 80 || !filter_var($url, FILTER_VALIDATE_URL)) {
