@@ -61,6 +61,68 @@ final class ATDStats
         ];
     }
 
+    private static function systemInfo(): array
+    {
+        $cpu = null;
+        $readCpu = static function (): ?array {
+            $line = @file('/proc/stat', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if (!$line) return null;
+            foreach ($line as $row) {
+                if (strpos($row, 'cpu ') !== 0) continue;
+                $parts = preg_split('/\s+/', trim($row));
+                if (count($parts) < 5) return null;
+                $values = array_map('intval', array_slice($parts, 1));
+                $idle = ($values[3] ?? 0) + ($values[4] ?? 0);
+                $total = array_sum($values);
+                return [$total, $idle];
+            }
+            return null;
+        };
+        $a = $readCpu();
+        if ($a !== null) {
+            usleep(100000);
+            $b = $readCpu();
+            if ($b !== null) {
+                $total = $b[0] - $a[0];
+                $idle = $b[1] - $a[1];
+                if ($total > 0) $cpu = max(0, min(100, round((1 - ($idle / $total)) * 100, 1)));
+            }
+        }
+
+        $memTotal = 0;
+        $memAvailable = 0;
+        $mem = @file('/proc/meminfo', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($mem ?: [] as $line) {
+            if (preg_match('/^MemTotal:\s+(\d+)\s+kB$/', $line, $m)) $memTotal = (int)$m[1] * 1024;
+            elseif (preg_match('/^MemAvailable:\s+(\d+)\s+kB$/', $line, $m)) $memAvailable = (int)$m[1] * 1024;
+        }
+        $memUsed = max(0, $memTotal - $memAvailable);
+        $memPct = $memTotal > 0 ? round(($memUsed / $memTotal) * 100, 1) : null;
+
+        $diskTotal = @disk_total_space('/');
+        $diskFree = @disk_free_space('/');
+        $diskUsed = ($diskTotal !== false && $diskFree !== false) ? max(0, $diskTotal - $diskFree) : 0;
+        $diskPct = ($diskTotal !== false && $diskTotal > 0) ? round(($diskUsed / $diskTotal) * 100, 1) : null;
+
+        $formatBytes = static function (int $bytes): string {
+            if ($bytes <= 0) return '—';
+            $gb = $bytes / 1073741824;
+            if ($gb >= 10) return number_format($gb, 0) . ' GB';
+            return number_format($gb, 1) . ' GB';
+        };
+
+        return [
+            'cpu' => $cpu,
+            'cores' => (int)@shell_exec('/usr/bin/nproc 2>/dev/null') ?: (int)@preg_match_all('/^processor\s*:/m', (string)@file_get_contents('/proc/cpuinfo')),
+            'ram_used' => $formatBytes($memUsed),
+            'ram_total' => $formatBytes($memTotal),
+            'ram_pct' => $memPct,
+            'disk_used' => $formatBytes($diskUsed),
+            'disk_total' => $formatBytes((int)$diskTotal),
+            'disk_pct' => $diskPct,
+        ];
+    }
+
     private static function countryCodeFromRow(array $row): string
     {
         foreach (['country_code','countryCode','geo_country_code','location_country_code'] as $key) {
@@ -208,6 +270,27 @@ final class ATDStats
             . '<div class="atd-status-grid"><div><span>Server IP</span><b dir="ltr">'.$esc((string)$info['ip']).'</b></div><div><span>Ping</span><b dir="ltr">'.$esc($ping).'</b></div></div></div>';
     }
 
+    private static function dashboardSystemCard(string $version, callable $esc): string
+    {
+        $s = self::systemInfo();
+        $cpu = $s['cpu'] !== null ? number_format((float)$s['cpu'], 1) . '%' : '—';
+        $ramPct = $s['ram_pct'] !== null ? number_format((float)$s['ram_pct'], 1) : null;
+        $diskPct = $s['disk_pct'] !== null ? number_format((float)$s['disk_pct'], 1) : null;
+        $cpuPct = $s['cpu'] !== null ? number_format((float)$s['cpu'], 1) : null;
+        $bar = static function (?string $pct): string {
+            $value = $pct === null ? 0 : max(0, min(100, (float)$pct));
+            return '<span class="atd-resource-bar"><i style="width:'.$value.'%"></i></span>';
+        };
+        return '<div class="stat atd-system-stat">'
+            . '<div class="stat-top"><span>Version</span><span class="stat-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 20h8M12 17v3"/></svg></span></div>'
+            . '<b class="atd-version-value">v'.$esc($version).'</b>'
+            . '<div class="atd-resource-grid">'
+            . '<div><span>CPU</span><strong>'.$esc($cpu).'</strong>'.$bar($cpuPct).'<small>'.number_format((int)$s['cores']).' Cores</small></div>'
+            . '<div><span>RAM</span><strong>'.$esc((string)$s['ram_used']).'</strong>'.$bar($ramPct).'<small>'.$esc((string)$s['ram_total']).' Total</small></div>'
+            . '<div><span>Disk</span><strong>'.$esc((string)$s['disk_used']).'</strong>'.$bar($diskPct).'<small>'.$esc((string)$s['disk_total']).' Total</small></div>'
+            . '</div></div>';
+    }
+
     public static function render(PDO $db, string $context, string $version, string $lang): string
     {
         $context = $context === 'servers' ? 'routebox' : $context;
@@ -219,17 +302,16 @@ final class ATDStats
         $serverIcon='<path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/>';
         $userIcon='<path d="M16 20c0-3-1.8-5-5-5s-5 2-5 5"/><circle cx="11" cy="8" r="3"/><path d="M17 11a3 3 0 0 0 0-6M18 20c-.3-2.2-1.2-3.8-2.7-4.7"/>';
         $planIcon='<path d="m12 3 8 4-8 4-8-4 8-4Zm-8 9 8 4 8-4M4 17l8 4 8-4"/>';
-        $refreshIcon='<path d="M20 11a8 8 0 0 0-14.9-4L3 10m0 0V5m0 5h5M4 13a8 8 0 0 0 14.9 4L21 14m0 0v5m0-5h-5"/>';
         $cards='<div class="stat"><div class="stat-top"><span>Servers</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$serverIcon.'</svg></span></div><b>'.number_format($servers).'</b></div>'
             .'<div class="stat"><div class="stat-top"><span>Users</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$userIcon.'</svg></span></div><b>'.number_format($users).'</b></div>'
             .'<div class="stat"><div class="stat-top"><span>Plans</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$planIcon.'</svg></span></div><b>'.number_format($plans).'</b></div>';
         if ($context === 'bot') {
             $cards.='<div class="stat atd-status-stat">'.self::botCard($db,$version,$esc).'</div>';
         } elseif ($provider === null) {
-            $cards.='<div class="stat"><div class="stat-top"><span>Version</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$refreshIcon.'</svg></span></div><b style="font-size:18px">v'.$esc($version).'</b></div>';
+            $cards.=self::dashboardSystemCard($version,$esc);
         } else {
             $cards.='<div class="stat atd-status-stat">'.self::statusCard($db,$provider,$esc).'</div>';
         }
-        return '<div class="stats atd-stats">'.$cards.'</div><style>.atd-status-stat{min-width:0}.atd-provider-status{margin-top:4px}.atd-status-head{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px;font-weight:700}.atd-status-refresh{width:30px;height:30px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);cursor:pointer;font-size:18px}.atd-status-main{display:flex;align-items:center;gap:10px;margin-top:8px}.atd-flag{font-size:29px;min-width:38px;text-align:center}.atd-status-main strong{display:block;font-size:13px;max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-status-state{font-size:11px;color:var(--muted);margin-top:4px}.atd-status-state i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-inline-end:5px}.atd-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.atd-status-grid span{display:block;color:var(--muted);font-size:10px}.atd-status-grid b{display:block;margin-top:3px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}</style>\n';
+        return '<div class="stats atd-stats">'.$cards.'</div><style>.atd-status-stat{min-width:0}.atd-provider-status{margin-top:4px}.atd-status-head{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px;font-weight:700}.atd-status-refresh{width:30px;height:30px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);cursor:pointer;font-size:18px}.atd-status-main{display:flex;align-items:center;gap:10px;margin-top:8px}.atd-flag{font-size:29px;min-width:38px;text-align:center}.atd-status-main strong{display:block;font-size:13px;max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-status-state{font-size:11px;color:var(--muted);margin-top:4px}.atd-status-state i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-inline-end:5px}.atd-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.atd-status-grid span{display:block;color:var(--muted);font-size:10px}.atd-status-grid b{display:block;margin-top:3px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-system-stat{min-width:0}.atd-version-value{font-size:17px!important;line-height:1.15}.atd-resource-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}.atd-resource-grid>div{min-width:0}.atd-resource-grid span{display:block;color:var(--muted);font-size:9px;font-weight:700}.atd-resource-grid strong{display:block;margin-top:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.atd-resource-grid small{display:block;margin-top:3px;color:var(--muted);font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.atd-resource-bar{display:block;height:4px;margin-top:5px;border-radius:99px;background:rgba(127,127,127,.16);overflow:hidden}.atd-resource-bar i{display:block;height:100%;border-radius:inherit;background:currentColor;opacity:.8}@media(max-width:700px){.atd-resource-grid{gap:5px}.atd-resource-grid strong{font-size:10px}.atd-resource-grid small{font-size:7px}}</style>\n';
     }
 }
