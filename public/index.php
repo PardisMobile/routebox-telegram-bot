@@ -68,7 +68,8 @@ if (!in_array($requestedSection, $specialSections, true)) {
     $section = $requestedSection;
 } else {
     $originalGet = $_GET;
-    $_GET['section'] = $requestedSection;
+    $_GET['section'] = 'dashboard';
+    $_GET['atd_stats_context'] = $requestedSection === 'ibsng' ? 'ibsng' : ($requestedSection === 'mikrotik' ? 'mikrotik_wireguard' : $requestedSection);
     ob_start();
     require __DIR__ . '/index.core.php';
     $html = (string)ob_get_clean();

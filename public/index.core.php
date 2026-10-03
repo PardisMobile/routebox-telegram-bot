@@ -371,22 +371,10 @@ function navIcon(string $key): string
   <?php endif; ?>
 
   <?php
-$statsServers = count($servers);
-$statsUsers = $users;
-$statsPlans = count($plans);
-$statsFourthLabel = $T['version'];
-$statsFourthValue = 'v' . $version;
-if ($section === 'servers') {
-    $statsUsers = (int)db()->query("SELECT COUNT(DISTINCT telegram_user_id) FROM service_subscriptions WHERE provider_key='routebox' AND status != 'deleted'")->fetchColumn();
-    $statsPlans = (int)db()->query("SELECT COUNT(*) FROM service_plans WHERE provider_key='routebox'")->fetchColumn();
-}
+require_once __DIR__ . '/../src/Admin/ATDStats.php';
+$atdStatsContext = (string)($_GET['atd_stats_context'] ?? $section);
+echo \RouteBox\Admin\ATDStats::render(db(), $atdStatsContext, $version, $lang);
 ?>
-<div class="stats">
-  <div class="stat"><div class="stat-top"><span><?=$T['servers']?></span><span class="stat-icon"><?=navIcon('servers')?></span></div><b><?=number_format($statsServers)?></b></div>
-  <div class="stat"><div class="stat-top"><span><?=$T['users']?></span><span class="stat-icon"><?=navIcon('bot')?></span></div><b><?=number_format($statsUsers)?></b></div>
-  <div class="stat"><div class="stat-top"><span><?=$T['plans']?></span><span class="stat-icon"><?=navIcon('plans')?></span></div><b><?=number_format($statsPlans)?></b></div>
-  <div class="stat"><div class="stat-top"><span><?=$statsFourthLabel?></span><span class="stat-icon"><?=navIcon('updates')?></span></div><b style="font-size:18px"><?=h($statsFourthValue)?></b></div>
-</div>
 
   <?php if($section==='dashboard'): ?>
     <section class="card"><div class="section-head"><div class="section-title"><div class="section-icon"><?=navIcon('updates')?></div><div><h2><?=$T['updates']?></h2><p><?=$T['updates_sub']?></p></div></div><a class="btn btn-secondary" href="/?section=updates">View status</a></div><div class="update-box"><div class="version-box"><div class="version-label">Installed</div><div class="version-value">v<?=h($version)?></div></div><div class="version-box"><div class="version-label">GitHub</div><div class="version-value"><?=$remote!==null?'v'.h($remote):'—'?></div></div><div class="version-box"><div class="version-label">Updater</div><div class="version-value <?=$updater?'state-ok':'state-bad'?>" style="font-size:15px"><?=$updater?$T['updater_ready']:$T['updater_missing']?></div></div></div></section>
