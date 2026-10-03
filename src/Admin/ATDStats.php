@@ -56,6 +56,34 @@ final class ATDStats
         ];
     }
 
+    private static function countryCodeFromRow(array $row): string
+    {
+        foreach (['country_code','countryCode','geo_country_code','location_country_code'] as $key) {
+            $value = strtoupper(trim((string)($row[$key] ?? '')));
+            if (preg_match('/^[A-Z]{2}$/', $value)) return $value;
+        }
+        $map = [
+            'United States'=>'US','United States of America'=>'US','USA'=>'US','US'=>'US',
+            'United Kingdom'=>'GB','UK'=>'GB','Germany'=>'DE','Turkey'=>'TR','Netherlands'=>'NL',
+            'France'=>'FR','Canada'=>'CA','Poland'=>'PL','Finland'=>'FI','Sweden'=>'SE',
+            'Singapore'=>'SG','Japan'=>'JP','India'=>'IN','Iran'=>'IR','UAE'=>'AE','United Arab Emirates'=>'AE',
+        ];
+        foreach (['country','country_name','location','name','title'] as $key) {
+            $value = trim((string)($row[$key] ?? ''));
+            if (preg_match('/^[A-Za-z]{2}$/', $value)) return strtoupper($value);
+            foreach ($map as $name => $code) {
+                if (strcasecmp($value, $name) === 0 || stripos($value, $name) !== false) return $code;
+            }
+        }
+        return '';
+    }
+
+    private static function flagForCode(string $country): string
+    {
+        if (!preg_match('/^[A-Z]{2}$/', $country) || !function_exists('mb_chr')) return '🌐';
+        return mb_chr(127397 + ord($country[0])) . mb_chr(127397 + ord($country[1]));
+    }
+
     private static function snapshot(PDO $db, string $provider): array
     {
         $table = self::providerTable($provider);
@@ -84,17 +112,17 @@ final class ATDStats
                 $connected = is_resource($socket);
                 if ($connected) fclose($socket);
             }
-            $country = '';
+            $country = self::countryCodeFromRow($row);
             if ($provider === 'routebox' && self::tableExists($db, 'server_meta')) {
                 $st = $db->prepare('SELECT country_code,ping_ms FROM server_meta WHERE server_id=? LIMIT 1');
                 $st->execute([(int)($row['id'] ?? 0)]);
                 $meta = $st->fetch(PDO::FETCH_ASSOC);
-                $country = strtoupper(trim((string)($meta['country_code'] ?? '')));
+                $country = $country ?: strtoupper(trim((string)($meta['country_code'] ?? '')));
                 if ($ping === null && isset($meta['ping_ms']) && $meta['ping_ms'] !== null) $ping = (float)$meta['ping_ms'];
             }
-            $flag = '🌐';
-            if (preg_match('/^[A-Z]{2}$/', $country) && function_exists('mb_chr')) $flag = mb_chr(127397 + ord($country[0])) . mb_chr(127397 + ord($country[1]));
-            return ['id'=>(int)($row['id'] ?? 0),'name'=>(string)($row['name'] ?? ''),'ip'=>(string)$ip,'flag'=>$flag,'ping'=>$ping,'connected'=>$connected || (!empty($row['last_test_at']) && empty($row['last_error']))];
+            $name = trim((string)($row['name'] ?? ''));
+            if ($name === '') $name = $host !== '' ? $host : 'Server';
+            return ['id'=>(int)($row['id'] ?? 0),'name'=>$name,'ip'=>(string)$ip,'flag'=>self::flagForCode($country),'ping'=>$ping,'connected'=>$connected || (!empty($row['last_test_at']) && empty($row['last_error']))];
         } catch (\Throwable $e) { return []; }
     }
 
