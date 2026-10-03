@@ -35,6 +35,41 @@ final class ATDPanelSections
         $db->exec("INSERT OR IGNORE INTO settings(key,value) VALUES('payment_currency','IRR'),('payment_callback_url','')");
     }
 
+    private static function providerUserCount(PDO $db, string $provider): int
+    {
+        try {
+            $st = $db->prepare("SELECT COUNT(DISTINCT telegram_user_id) FROM service_subscriptions WHERE provider_key=? AND status != 'deleted'");
+            $st->execute([$provider]);
+            return (int)$st->fetchColumn();
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    private static function telegramUserCount(PDO $db): int
+    {
+        try {
+            return (int)$db->query('SELECT COUNT(*) FROM telegram_users')->fetchColumn();
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    private static function userStatsCards(PDO $db, bool $fa): string
+    {
+        $cards = [
+            ['label' => $fa ? 'کاربران RouteBox' : 'RouteBox Users', 'value' => self::providerUserCount($db, 'routebox')],
+            ['label' => $fa ? 'کاربران IBSng' : 'IBSng Users', 'value' => self::providerUserCount($db, 'ibsng')],
+            ['label' => $fa ? 'کاربران MikroTik' : 'MikroTik Users', 'value' => self::providerUserCount($db, 'mikrotik_wireguard')],
+            ['label' => $fa ? 'کاربران ربات تلگرام' : 'Telegram Bot Users', 'value' => self::telegramUserCount($db)],
+        ];
+        $html = '<div class="atd-user-stats-grid">';
+        foreach ($cards as $card) {
+            $html .= '<div class="atd-user-stat-card"><div class="atd-user-stat-label">'.self::esc((string)$card['label']).'</div><strong>'.number_format((int)$card['value']).'</strong><span>'.($fa?'کاربر':'Users').'</span></div>';
+        }
+        return $html.'</div>';
+    }
+
     public static function handle(PDO $db, array $post): string
     {
         self::ensureSchema($db);
@@ -81,8 +116,7 @@ final class ATDPanelSections
     }
 
     private static function styles(): string {
-        return '<style id="atd-extra-sections">.atd-admin-section{margin-top:8px}.atd-admin-section .section-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:20px}.atd-admin-section h2{margin:3px 0 6px;font-size:26px}.atd-admin-section .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.atd-admin-section .field{display:flex;flex-direction:column;gap:7px}.atd-admin-section .field label{font-weight:700;color:var(--muted)}.atd-admin-section input,.atd-admin-section textarea,.atd-admin-section select{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid var(--line);border-radius:11px;background:var(--card);color:inherit;font:inherit}.atd-admin-section textarea{resize:vertical;min-height:150px}.atd-admin-section .full{grid-column:1/-1}.atd-admin-section .form-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.atd-admin-section .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}.atd-admin-section table{width:100%;border-collapse:collapse}.atd-admin-section th,.atd-admin-section td{padding:12px 13px;border-bottom:1px solid var(--line);text-align:start;white-space:nowrap}.atd-admin-section th{color:var(--muted);font-size:12px}.atd-admin-section tr:last-child td{border-bottom:0}.atd-admin-section .list{display:grid;gap:12px}.atd-admin-section .item{border:1px solid var(--line);border-radius:15px;padding:15px;background:var(--card2)}.atd-admin-section .item-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.atd-admin-section .muted{color:var(--muted);font-size:12px}.atd-admin-section details{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}.atd-admin-section summary{cursor:pointer;font-weight:750}.atd-admin-section .badge{display:inline-flex;padding:4px 8px;border-radius:999px;background:rgba(110,140,255,.13);font-size:11px}.atd-admin-section .danger{color:var(--red)}.atd-admin-section .user-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center}.atd-admin-section .searchbar{display:flex;gap:8px;margin-bottom:16px}.atd-admin-section .searchbar input{flex:1}.atd-admin-section .guide-copy{white-space:pre-wrap;line-height:1.75;padding:12px;border:1px dashed var(--line);border-radius:12px;background:var(--card)}@media(max-width:760px){.atd-admin-section .grid{grid-template-columns:1fr}.atd-admin-section .user-card{grid-template-columns:1fr}.atd-admin-section .section-head{flex-direction:column}}
-</style>';
+        return '<style id="atd-extra-sections">.atd-admin-section{margin-top:8px}.atd-admin-section .section-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:20px}.atd-admin-section h2{margin:3px 0 6px;font-size:26px}.atd-admin-section .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.atd-admin-section .field{display:flex;flex-direction:column;gap:7px}.atd-admin-section .field label{font-weight:700;color:var(--muted)}.atd-admin-section input,.atd-admin-section textarea,.atd-admin-section select{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid var(--line);border-radius:11px;background:var(--card);color:inherit;font:inherit}.atd-admin-section textarea{resize:vertical;min-height:150px}.atd-admin-section .full{grid-column:1/-1}.atd-admin-section .form-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.atd-admin-section .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}.atd-admin-section table{width:100%;border-collapse:collapse}.atd-admin-section th,.atd-admin-section td{padding:12px 13px;border-bottom:1px solid var(--line);text-align:start;white-space:nowrap}.atd-admin-section th{color:var(--muted);font-size:12px}.atd-admin-section tr:last-child td{border-bottom:0}.atd-admin-section .list{display:grid;gap:12px}.atd-admin-section .item{border:1px solid var(--line);border-radius:15px;padding:15px;background:var(--card2)}.atd-admin-section .item-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.atd-admin-section .muted{color:var(--muted);font-size:12px}.atd-admin-section details{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}.atd-admin-section summary{cursor:pointer;font-weight:750}.atd-admin-section .badge{display:inline-flex;padding:4px 8px;border-radius:999px;background:rgba(110,140,255,.13);font-size:11px}.atd-admin-section .danger{color:var(--red)}.atd-admin-section .user-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center}.atd-admin-section .searchbar{display:flex;gap:8px;margin-bottom:16px}.atd-admin-section .searchbar input{flex:1}.atd-admin-section .guide-copy{white-space:pre-wrap;line-height:1.75;padding:12px;border:1px dashed var(--line);border-radius:12px;background:var(--card)}.atd-user-stats-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}.atd-user-stat-card{border:1px solid var(--line);border-radius:16px;padding:17px 18px;background:var(--card2);min-width:0}.atd-user-stat-label{color:var(--muted);font-size:12px;font-weight:750;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.atd-user-stat-card strong{display:block;font-size:28px;line-height:1.1;letter-spacing:-.02em}.atd-user-stat-card span{display:block;margin-top:5px;color:var(--muted);font-size:10px}@media(max-width:900px){.atd-user-stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.atd-admin-section .grid{grid-template-columns:1fr}.atd-admin-section .user-card{grid-template-columns:1fr}.atd-admin-section .section-head{flex-direction:column}.atd-user-stats-grid{grid-template-columns:1fr 1fr;gap:10px}.atd-user-stat-card{padding:14px}.atd-user-stat-card strong{font-size:24px}}</style>';
     }
 
     public static function renderBot(PDO $db,string $lang,string $csrf): string {
@@ -110,15 +144,14 @@ final class ATDPanelSections
     public static function renderUsers(PDO $db,string $lang,string $csrf): string {
         self::ensureSchema($db);
         $fa=self::fa($lang);$search=trim((string)($_GET['q']??''));$sql='SELECT u.*,COUNT(s.id) AS subscription_count,MAX(s.expires_at) AS latest_expiry FROM telegram_users u LEFT JOIN service_subscriptions s ON s.telegram_user_id=u.id';$params=[];if($search!==''){$sql.=' WHERE u.telegram_id LIKE ? OR COALESCE(u.username,\'\') LIKE ? OR COALESCE(u.first_name,\'\') LIKE ?';$like='%'.$search.'%';$params=[$like,$like,$like];}$sql.=' GROUP BY u.id ORDER BY u.last_seen DESC LIMIT 100';$q=$db->prepare($sql);$q->execute($params);$users=$q->fetchAll(PDO::FETCH_ASSOC);
-        $body='<form class="searchbar" method="get"><input type="hidden" name="section" value="users"><input name="q" value="'.self::esc($search).'" placeholder="'.($fa?'جستجو با Telegram ID، username یا نام':'Search Telegram ID, username or name').'"/><button class="btn btn-primary" type="submit">🔎 '.($fa?'جستجو':'Search').'</button></form><div class="table-wrap"><table><thead><tr><th>'.($fa?'کاربر':'User').'</th><th>Telegram ID</th><th>'.($fa?'سرویس‌ها':'Services').'</th><th>'.($fa?'آخرین فعالیت':'Last seen').'</th><th></th></tr></thead><tbody>';
+        $body=self::userStatsCards($db,$fa).'<form class="searchbar" method="get"><input type="hidden" name="section" value="users"><input name="q" value="'.self::esc($search).'" placeholder="'.($fa?'جستجو با Telegram ID، username یا نام':'Search Telegram ID, username or name').'"/><button class="btn btn-primary" type="submit">🔎 '.($fa?'جستجو':'Search').'</button></form><div class="table-wrap"><table><thead><tr><th>'.($fa?'کاربر':'User').'</th><th>Telegram ID</th><th>'.($fa?'سرویس‌ها':'Services').'</th><th>'.($fa?'آخرین فعالیت':'Last seen').'</th><th></th></tr></thead><tbody>';
         foreach($users as $u){$name=trim((string)($u['first_name']??''));$uname=trim((string)($u['username']??''));$display=$name!==''?$name:($uname!==''?'@'.$uname:(string)$u['telegram_id']);$body.='<tr><td><strong>'.self::esc($display).'</strong><div class="muted">'.self::esc($uname!==''?'@'.$uname:'').'</div></td><td>'.self::esc((string)$u['telegram_id']).'</td><td>'.(int)$u['subscription_count'].'</td><td>'.date('Y-m-d H:i',(int)$u['last_seen']).'</td><td><a class="btn btn-secondary" href="/?section=user-details&id='.(int)$u['id'].'">'.($fa?'جزئیات':'Details').'</a></td></tr>';}
         if(!$users)$body.='<tr><td colspan="5">'.($fa?'کاربری پیدا نشد.':'No users found.').'</td></tr>'; $body.='</tbody></table></div>';
         return self::shell($fa?'کاربران':'Users',$fa?'تمام کاربران ربات و وضعیت سرویس‌هایشان.':'All Telegram bot users and their service subscriptions.',$body,'dashboard');
     }
 
     public static function renderUserDetails(PDO $db,int $id,string $lang,string $csrf): string {
-        self::ensureSchema($db);
-        $fa=self::fa($lang);$q=$db->prepare('SELECT * FROM telegram_users WHERE id=?');$q->execute([$id]);$u=$q->fetch(PDO::FETCH_ASSOC);if(!$u)return self::shell($fa?'کاربر پیدا نشد':'User not found','', '<div class="empty-state">'.($fa?'کاربر وجود ندارد.':'User does not exist.').'</div>','users');
+        self::ensureSchema($db);$fa=self::fa($lang);$q=$db->prepare('SELECT * FROM telegram_users WHERE id=?');$q->execute([$id]);$u=$q->fetch(PDO::FETCH_ASSOC);if(!$u)return self::shell($fa?'کاربر پیدا نشد':'User not found','', '<div class="empty-state">'.($fa?'کاربر وجود ندارد.':'User does not exist.').'</div>','users');
         $q=$db->prepare('SELECT s.*,c.name_fa,c.name_en,p.display_name_fa,p.display_name_en FROM service_subscriptions s LEFT JOIN service_categories c ON c.id=s.category_id LEFT JOIN service_plans p ON p.id=s.plan_id WHERE s.telegram_user_id=? ORDER BY s.created_at DESC');$q->execute([$id]);$subs=$q->fetchAll(PDO::FETCH_ASSOC);
         $body='<div class="item"><div class="user-card"><div><strong>'.self::esc((string)($u['first_name']??'' )).'</strong><div class="muted">@'.self::esc((string)($u['username']??'' )).' · Telegram ID '.self::esc((string)$u['telegram_id']).'</div></div><span class="badge">'.self::esc((string)$u['language']).'</span></div></div><div class="list">';foreach($subs as $s){$name=$fa?(string)$s['name_fa']:(string)$s['name_en'];$plan=$fa?(string)$s['display_name_fa']:(string)$s['display_name_en'];$body.='<div class="item"><div class="item-head"><div><strong>'.self::esc($name).' — '.self::esc($plan).'</strong><div class="muted">'.self::esc((string)$s['status']).' · '.($s['expires_at']?date('Y-m-d H:i',(int)$s['expires_at']):'—').'</div></div><span class="badge">'.self::esc((string)$s['provider_key']).'</span></div></div>';}$body.='</div>';
         return self::shell($fa?'جزئیات کاربر':'User Details',$fa?'سرویس‌ها و Subscriptionهای این کاربر.':'Services and subscriptions for this user.',$body,'users');
