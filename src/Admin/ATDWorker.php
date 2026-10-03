@@ -19,6 +19,13 @@ final class ATDWorker
         $candidates[] = 'routebox-telegram-bot-dev.service';
         $candidates[] = 'routebox-telegram-bot-worker.service';
         $candidates[] = 'routebox-telegram-bot.service';
+
+        $listed = @shell_exec("/usr/bin/systemctl list-unit-files --type=service --no-legend 'routebox-telegram-bot*' 2>/dev/null");
+        foreach (preg_split('/\R/', trim((string)$listed)) ?: [] as $line) {
+            $parts = preg_split('/\s+/', trim($line));
+            $unit = (string)($parts[0] ?? '');
+            if ($unit !== '' && preg_match('/^routebox-telegram-bot.*\.service$/', $unit)) $candidates[] = $unit;
+        }
         return array_values(array_unique($candidates));
     }
 
@@ -36,50 +43,67 @@ final class ATDWorker
         ];
     }
 
-    private static function processLooksLikeWorker(int $pid): bool
-    {
-        if ($pid <= 1 || !is_file('/proc/' . $pid . '/cmdline')) return false;
-        $cmdline = str_replace("\0", ' ', (string)@file_get_contents('/proc/' . $pid . '/cmdline'));
-        return $cmdline !== '' && preg_match('/(?:^|\s)(?:[^\s]*\/)?worker\.php(?:\s|$)/i', $cmdline) === 1;
-    }
-
     public static function serviceName(): string
     {
         foreach (self::candidateUnits() as $service) {
             $info = self::unitInfo($service);
             if ($info['load'] !== 'loaded') continue;
-            if (stripos($info['exec'], 'worker.php') !== false || stripos($info['description'], 'worker') !== false || self::processLooksLikeWorker((int)$info['pid'])) {
-                return $service;
-            }
+            if (stripos($info['exec'], 'worker.php') !== false || stripos($info['description'], 'worker') !== false || stripos($service, 'worker') !== false) return $service;
         }
         return 'routebox-telegram-bot-worker.service';
+    }
+
+    private static function pingMs(string $ip): ?float
+    {
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) return null;
+        $output = @shell_exec('/bin/ping -n -c 1 -W 1 ' . escapeshellarg($ip) . ' 2>/dev/null');
+        if (preg_match('/time[=<]([0-9.]+)\s*ms/i', (string)$output, $m)) return round((float)$m[1], 1);
+        return null;
     }
 
     public static function status(): array
     {
         $service = self::serviceName();
         $info = self::unitInfo($service);
-        $pid = (int)$info['pid'];
         $running = $info['load'] === 'loaded'
             && $info['active'] === 'active'
             && in_array($info['sub'], ['running', 'auto-restart'], true)
-            && $pid > 0
-            && self::processLooksLikeWorker($pid);
-        return ['service'=>'','running'=>$running,'active'=>$info['active'],'sub'=>$info['sub'],'pid'=>$pid];
+            && (int)$info['pid'] > 0;
+        $server = self::serverInfo();
+        $ping = self::pingMs((string)$server['ip']);
+        return [
+            'service'=>$ping !== null ? number_format($ping, 1) . ' ms' : '—',
+            'running'=>$running,
+            'active'=>$info['active'],
+            'sub'=>$info['sub'],
+            'pid'=>(int)$info['pid'],
+        ];
     }
 
     public static function reload(): array
     {
-        $status = self::status();
-        $pid = (int)$status['pid'];
-        if (!$status['running'] || $pid <= 1) {
-            return ['ok'=>false,'message'=>'Worker process is not running.','status'=>$status];
+        $service = self::serviceName();
+        $info = self::unitInfo($service);
+        if ($info['load'] !== 'loaded') return ['ok'=>false,'message'=>'Worker service was not found.','status'=>self::status()];
+
+        foreach ([
+            '/usr/bin/sudo -n /usr/bin/systemctl restart ' . escapeshellarg($service),
+            '/usr/bin/systemctl restart ' . escapeshellarg($service),
+        ] as $cmd) {
+            $rc = 1;
+            @exec($cmd . ' 2>&1', $out, $rc);
+            if ($rc === 0) {
+                usleep(700000);
+                return ['ok'=>true,'message'=>'Worker reloaded.','status'=>self::status()];
+            }
         }
-        if (!function_exists('posix_kill') || !@posix_kill($pid, SIGTERM)) {
-            return ['ok'=>false,'message'=>'Worker reload permission was denied.','status'=>$status];
+
+        $pid = (int)$info['pid'];
+        if ($pid > 1 && function_exists('posix_kill') && @posix_kill($pid, SIGTERM)) {
+            usleep(500000);
+            return ['ok'=>true,'message'=>'Worker reloaded.','status'=>self::status()];
         }
-        usleep(500000);
-        return ['ok'=>true,'message'=>'Worker reloaded.','status'=>self::status()];
+        return ['ok'=>false,'message'=>'Worker reload permission was denied.','status'=>self::status()];
     }
 
     public static function serverInfo(): array
@@ -91,9 +115,7 @@ final class ATDWorker
             $ip = trim((string)@curl_exec($ch));
             @curl_close($ch);
         }
-        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
-            $ip = trim((string)@shell_exec("/usr/bin/ip -4 route get 1.1.1.1 2>/dev/null | /usr/bin/awk '/src/ {for(i=1;i<=NF;i++) if(\$i==\"src\") {print \$(i+1); exit}}'"));
-        }
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) $ip = trim((string)@shell_exec("/usr/bin/ip -4 route get 1.1.1.1 2>/dev/null | /usr/bin/awk '/src/ {for(i=1;i<=NF;i++) if(\$i==\"src\") {print \$(i+1); exit}}'"));
 
         $country = '';
         if (filter_var($ip, FILTER_VALIDATE_IP)) {
