@@ -150,9 +150,7 @@ final class ATDStats
                 $country = $country ?: strtoupper(trim((string)($meta['country_code'] ?? '')));
                 if ($ping === null && isset($meta['ping_ms']) && $meta['ping_ms'] !== null) $ping = (float)$meta['ping_ms'];
             }
-            if ($country === '' && $provider !== 'routebox' && $host !== '') {
-                $country = self::countryFromHost($host, $port);
-            }
+            if ($country === '' && $provider !== 'routebox' && $host !== '') $country = self::countryFromHost($host, $port);
 
             $name = trim((string)($row['name'] ?? ''));
             if ($name === '') $name = $host !== '' ? $host : 'Server';
@@ -201,13 +199,13 @@ final class ATDStats
         $flag = ATDWorker::flag((string)$info['country']);
         $state = !empty($status['running']) ? 'Running' : 'Stopped';
         $color = !empty($status['running']) ? 'var(--green)' : 'var(--red)';
-        $service = (string)$status['service'];
+        $ping = (string)$status['service'];
         $action = '<form method="post" action="/reload-worker.php" style="margin:0">'
             . '<input type="hidden" name="csrf_token" value="'.$esc(csrf_token()).'">'
             . '<button class="atd-status-refresh" type="submit" title="Reload Worker">↻</button></form>';
         return '<div class="atd-provider-status"><div class="atd-status-head"><span>Bot Server</span>'.$action.'</div>'
             . '<div class="atd-status-main"><span class="atd-flag">'.$esc($flag).'</span><div><strong>Telegram Worker</strong><div class="atd-status-state"><i style="background:'.$color.'"></i>'.$esc($state).'</div></div></div>'
-            . '<div class="atd-status-grid"><div><span>Server IP</span><b dir="ltr">'.$esc((string)$info['ip']).'</b></div><div><span>Worker</span><b dir="ltr" title="'.$esc($service).'">'.$esc($service).'</b></div></div></div>';
+            . '<div class="atd-status-grid"><div><span>Server IP</span><b dir="ltr">'.$esc((string)$info['ip']).'</b></div><div><span>Ping</span><b dir="ltr">'.$esc($ping).'</b></div></div></div>';
     }
 
     public static function render(PDO $db, string $context, string $version, string $lang): string
