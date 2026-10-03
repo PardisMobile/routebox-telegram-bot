@@ -303,6 +303,22 @@ unset($sv);
 
 $users = (int)db()->query('SELECT COUNT(*) FROM telegram_users')->fetchColumn();
 $plans = db()->query('SELECT * FROM plans ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
+
+/* ATD stats: global on Dashboard/Telegram Bot, provider-scoped on RouteBox Servers. */
+$providerServerCount = static function (string $table): int {
+    if (!in_array($table, ['routebox_servers', 'ibsng_servers', 'mikrotik_servers'], true)) return 0;
+    $exists = db()->prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1");
+    $exists->execute([$table]);
+    if ($exists->fetchColumn() === false) return 0;
+    return (int)db()->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
+};
+$globalServerCount = $providerServerCount('routebox_servers') + $providerServerCount('ibsng_servers') + $providerServerCount('mikrotik_servers');
+$globalPlanCount = (int)db()->query("SELECT COUNT(*) FROM service_plans")->fetchColumn();
+$routeboxUserCount = (int)db()->query('SELECT COUNT(DISTINCT telegram_user_id) FROM provisions')->fetchColumn();
+$routeboxPlanCount = (int)db()->query("SELECT COUNT(*) FROM service_plans WHERE provider_key='routebox'")->fetchColumn();
+$routeboxConnectedCount = 0;
+foreach ($servers as $sv) { if ((int)$sv['enabled'] === 1) $routeboxConnectedCount++; }
+$routeboxStatusServer = $servers[0] ?? null;
 $buttons = db()->query('SELECT * FROM telegram_buttons ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
 $trial = (int)(db()->query("SELECT value FROM settings WHERE key='trial_hours'")->fetchColumn() ?: 12);
 $wf = cleanBotText((string)(db()->query("SELECT value FROM settings WHERE key='welcome_fa'")->fetchColumn() ?: "🚀 RouteBox Telegram Bot\n\nسلام 👋\nسرویس موردنظر را انتخاب کنید:"));
@@ -370,12 +386,42 @@ function navIcon(string $key): string
   <section class="hero"><div class="hero-row"><div><div class="eyebrow">CONTROL CENTER</div><h2>RouteBox Telegram Bot</h2><p><?=$lang==='fa'?'مدیریت سرورها، ربات، پلن‌ها و به‌روزرسانی‌ها از یک پنل یکپارچه و تمیز.':'Manage servers, bot settings, plans and updates from one clean control center.'?></p></div><div class="hero-actions"><a class="btn btn-primary" href="/?section=servers"><?=navIcon('servers')?> <?=$T['servers']?></a><a class="btn btn-support" href="<?=h(SUPPORT_URL)?>" target="_blank" rel="noopener"><?=$T['support']?></a></div></div></section>
   <?php endif; ?>
 
-  <div class="stats">
-    <div class="stat"><div class="stat-top"><span><?=$T['servers']?></span><span class="stat-icon"><?=navIcon('servers')?></span></div><b><?=count($servers)?></b></div>
-    <div class="stat"><div class="stat-top"><span><?=$T['users']?></span><span class="stat-icon"><?=navIcon('bot')?></span></div><b><?=number_format($users)?></b></div>
-    <div class="stat"><div class="stat-top"><span><?=$T['plans']?></span><span class="stat-icon"><?=navIcon('plans')?></span></div><b><?=count($plans)?></b></div>
-    <div class="stat"><div class="stat-top"><span><?=$T['version']?></span><span class="stat-icon"><?=navIcon('updates')?></span></div><b style="font-size:18px">v<?=h($version)?></b></div>
+  <?php
+$statsServers = count($servers);
+$statsUsers = $users;
+$statsPlans = count($plans);
+$statsGlobal = $section === 'dashboard' || $section === 'bot';
+$statsServerStatus = $section === 'servers';
+if ($statsGlobal) {
+    $statsServers = $globalServerCount;
+    $statsPlans = $globalPlanCount;
+} elseif ($statsServerStatus) {
+    $statsUsers = $routeboxUserCount;
+    $statsPlans = $routeboxPlanCount;
+}
+?>
+<div class="stats">
+  <div class="stat"><div class="stat-top"><span><?=$T['servers']?></span><span class="stat-icon"><?=navIcon('servers')?></span></div><b><?=number_format($statsServers)?></b></div>
+  <div class="stat"><div class="stat-top"><span><?=$T['users']?></span><span class="stat-icon"><?=navIcon('bot')?></span></div><b><?=number_format($statsUsers)?></b></div>
+  <div class="stat"><div class="stat-top"><span><?=$T['plans']?></span><span class="stat-icon"><?=navIcon('plans')?></span></div><b><?=number_format($statsPlans)?></b></div>
+  <?php if ($statsServerStatus): ?>
+  <div class="stat">
+    <div class="stat-top"><span><?=$lang==='fa'?'وضعیت سرور':'Server Status'?></span><span class="stat-icon"><?=navIcon('servers')?></span></div>
+    <?php if ($routeboxStatusServer): ?>
+      <b style="font-size:16px" class="state-ok">● <?=$routeboxConnectedCount?> <?=$lang==='fa'?'متصل':'Connected'?></b>
+      <div style="margin-top:7px;font-size:11px;color:var(--muted);direction:ltr;text-align:left"><?=h((string)($routeboxStatusServer['base_url'] ?? ''))?></div>
+      <div style="margin-top:4px;font-size:11px;color:var(--muted)">⚡ <?= $routeboxStatusServer['ping_ms'] !== null ? h((string)$routeboxStatusServer['ping_ms']).' ms' : '—' ?> · <?=h(countryFlag((string)$routeboxStatusServer['country_code']))?></div>
+      <div class="form-actions" style="margin-top:9px">
+        <form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="servers"><input type="hidden" name="id" value="<?=h((string)$routeboxStatusServer['id'])?>"><button class="btn btn-secondary" type="submit">↻ <?=$lang==='fa'?'رفرش / تست':'Refresh / Check'?></button></form>
+      </div>
+    <?php else: ?>
+      <b style="font-size:15px;color:var(--muted)"><?=$lang==='fa'?'سروری ثبت نشده':'No server configured'?></b>
+    <?php endif; ?>
   </div>
+  <?php else: ?>
+  <div class="stat"><div class="stat-top"><span><?=$T['version']?></span><span class="stat-icon"><?=navIcon('updates')?></span></div><b style="font-size:18px">v<?=h($version)?></b></div>
+  <?php endif; ?>
+</div>
 
   <?php if($section==='dashboard'): ?>
     <section class="card"><div class="section-head"><div class="section-title"><div class="section-icon"><?=navIcon('updates')?></div><div><h2><?=$T['updates']?></h2><p><?=$T['updates_sub']?></p></div></div><a class="btn btn-secondary" href="/?section=updates">View status</a></div><div class="update-box"><div class="version-box"><div class="version-label">Installed</div><div class="version-value">v<?=h($version)?></div></div><div class="version-box"><div class="version-label">GitHub</div><div class="version-value"><?=$remote!==null?'v'.h($remote):'—'?></div></div><div class="version-box"><div class="version-label">Updater</div><div class="version-value <?=$updater?'state-ok':'state-bad'?>" style="font-size:15px"><?=$updater?$T['updater_ready']:$T['updater_missing']?></div></div></div></section>
