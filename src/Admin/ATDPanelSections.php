@@ -19,7 +19,6 @@ final class ATDPanelSections
     {
         $now = time();
         $db->exec("CREATE TABLE IF NOT EXISTS telegram_service_guides (id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER, title_fa TEXT NOT NULL, title_en TEXT NOT NULL, body_fa TEXT NOT NULL DEFAULT '', body_en TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(category_id), FOREIGN KEY(category_id) REFERENCES service_categories(id) ON DELETE CASCADE)");
-        $db->exec("CREATE TABLE IF NOT EXISTS provider_admin_guides (id INTEGER PRIMARY KEY AUTOINCREMENT, provider_key TEXT UNIQUE NOT NULL, title_fa TEXT NOT NULL, title_en TEXT NOT NULL, body_fa TEXT NOT NULL DEFAULT '', body_en TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
         $general = $db->query("SELECT COUNT(*) FROM telegram_service_guides WHERE category_id IS NULL")->fetchColumn();
         if ((int)$general === 0) {
             $q=$db->prepare("SELECT value FROM settings WHERE key=?");
@@ -30,13 +29,6 @@ final class ATDPanelSections
         $cats=$db->query('SELECT id,name_fa,name_en,sort_order FROM service_categories')->fetchAll(PDO::FETCH_ASSOC);
         $ins=$db->prepare("INSERT OR IGNORE INTO telegram_service_guides(category_id,title_fa,title_en,body_fa,body_en,enabled,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?,?)");
         foreach($cats as $c)$ins->execute([(int)$c['id'],(string)$c['name_fa'],(string)$c['name_en'],'','',10+(int)$c['sort_order'],$now,$now]);
-        $guides=[
-            'routebox'=>['راهنمای RouteBox','RouteBox Admin Guide','راهنمای API، URL، TLS و تست اتصال RouteBox را اینجا ثبت کنید.','Add the RouteBox API, URL, TLS and smoke-test instructions here.'],
-            'ibsng'=>['راهنمای IBSng','IBSng Admin Guide','راهنمای API، احراز هویت، گروه‌ها و پیش‌نیازهای Provisioning را اینجا ثبت کنید.','Add IBSng API, authentication, group mapping and provisioning prerequisites here.'],
-            'mikrotik_wireguard'=>['راهنمای MikroTik WireGuard','MikroTik WireGuard Admin Guide','راهنمای RouterOS REST، WireGuard interface، Pool، Endpoint و Listen Port را اینجا ثبت کنید.','Add RouterOS REST, WireGuard interface, pool, endpoint and listen-port instructions here.'],
-        ];
-        $ins=$db->prepare('INSERT OR IGNORE INTO provider_admin_guides(provider_key,title_fa,title_en,body_fa,body_en,enabled,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?)');
-        foreach($guides as $key=>$g)$ins->execute([$key,$g[0],$g[1],$g[2],$g[3],$now,$now]);
         $db->exec("INSERT OR IGNORE INTO payment_providers(provider_key,display_name,enabled,config_json,sort_order,created_at,updated_at) VALUES('zarinpal','ZarinPal',0,'{}',10,strftime('%s','now'),strftime('%s','now')),('crypto','Crypto Gateway',0,'{}',20,strftime('%s','now'),strftime('%s','now'))");
         $db->exec("INSERT OR IGNORE INTO settings(key,value) VALUES('payment_currency','IRR'),('payment_callback_url','')");
     }
@@ -63,12 +55,6 @@ final class ATDPanelSections
         }
         if ($action === 'delete_bot_guide') {
             $id=(int)($post['id']??0); if($id>0)$db->prepare('DELETE FROM telegram_service_guides WHERE id=?')->execute([$id]); return 'bot-guides';
-        }
-        if ($action === 'save_provider_guide') {
-            $key=trim((string)$post['provider_key']);
-            $q=$db->prepare('UPDATE provider_admin_guides SET title_fa=?,title_en=?,body_fa=?,body_en=?,enabled=?,updated_at=? WHERE provider_key=?');
-            $q->execute([trim((string)$post['title_fa']),trim((string)$post['title_en']),trim((string)$post['body_fa']),trim((string)$post['body_en']),isset($post['enabled'])?1:0,$now,$key]);
-            return 'provider-guide&provider='.rawurlencode($key);
         }
         if ($action === 'save_payment_global') {
             foreach (['payment_currency','payment_callback_url'] as $key) {
@@ -116,11 +102,7 @@ final class ATDPanelSections
     }
 
     public static function renderProviderGuide(PDO $db,string $provider,string $lang,string $csrf): string {
-        self::ensureSchema($db);
-        $q=$db->prepare('SELECT * FROM provider_admin_guides WHERE provider_key=?');$q->execute([$provider]);$g=$q->fetch(PDO::FETCH_ASSOC);if(!$g)return self::shell('Provider Guide','Guide is not configured.','<div class="empty-state">Provider guide not found.</div>',$provider==='ibsng'?'ibsng':($provider==='mikrotik_wireguard'?'mikrotik':'servers'));
-        $fa=self::fa($lang);$title=$fa?(string)$g['title_fa']:(string)$g['title_en'];$back=$provider==='ibsng'?'ibsng':($provider==='mikrotik_wireguard'?'mikrotik':'servers');
-        $body='<form method="post"><input type="hidden" name="csrf_token" value="'.$csrf.'"><input type="hidden" name="atd_action" value="save_provider_guide"><input type="hidden" name="provider_key" value="'.self::esc($provider).'"><div class="grid">'.self::input('title_fa','عنوان فارسی',(string)$g['title_fa'],'text',true).self::input('title_en','English title',(string)$g['title_en'],'text',true).'<div class="field full"><label>'.($fa?'راهنمای فارسی':'Persian guide').'</label><textarea name="body_fa" rows="16">'.self::esc((string)$g['body_fa']).'</textarea></div><div class="field full"><label>English guide</label><textarea name="body_en" rows="16">'.self::esc((string)$g['body_en']).'</textarea></div><div class="field"><label><input type="checkbox" name="enabled" '.((int)$g['enabled']?'checked':'').'> '.($fa?'فعال':'Enabled').'</label></div></div><div class="form-actions"><button class="btn btn-primary" type="submit">'.($fa?'ذخیره راهنمای Provider':'Save provider guide').'</button></div></form><div class="item" style="margin-top:18px"><strong>'.self::esc($title).'</strong><div class="guide-copy">'.self::esc($fa?(string)$g['body_fa']:(string)$g['body_en']).'</div></div>';
-        return self::shell($fa?'راهنمای Provider':'Provider Guide',$fa?'راهنمای مدیریت و اتصال این Provider.':'Provider-specific server setup and connection guide.',$body,$back);
+        return ProviderGuideSection::render($provider, $lang);
     }
 
     public static function renderUsers(PDO $db,string $lang,string $csrf): string {
