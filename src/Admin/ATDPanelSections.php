@@ -6,6 +6,8 @@ namespace RouteBox\Admin;
 
 use PDO;
 
+require_once __DIR__ . '/ProviderGuideSection.php';
+
 final class ATDPanelSections
 {
     private static function esc(string $v): string { return htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
