@@ -292,6 +292,59 @@ final class ATDStats
         }
 
         return '<div class="stats atd-stats">'.$cards.'</div><style>'
-            . '.atd-status-stat{min-width:0}.atd-provider-status{margin-top:4px}.atd-status-head{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px;font-weight:700}.atd-status-refresh{width:30px;height:30px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);cursor:pointer;font-size:18px}.atd-status-main{display:flex;align-items:center;gap:10px;margin-top:8px}.atd-flag{font-size:29px;min-width:38px;text-align:center}.atd-status-main strong{display:block;font-size:13px;max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-status-state{font-size:11px;color:var(--muted);margin-top:4px}.atd-status-state i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-inline-end:5px}.atd-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.atd-status-grid span{display:block;color:var(--muted);font-size:10px}.atd-status-grid b{display:block;margin-top:3px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-system-stat{min-width:0}.atd-version-value{font-size:17px!important;line-height:1.15}.atd-resource-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}.atd-resource-grid>div{min-width:0}.atd-resource-grid span{display:block;color:var(--muted);font-size:9px;font-weight:700}.atd-resource-grid strong{display:block;margin-top:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.atd-resource-grid small{display:block;margin-top:3px;color:var(--muted);font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.atd-resource-bar{display:block;height:4px;margin-top:5px;border-radius:99px;background:rgba(127,127,127,.16);overflow:hidden}.atd-resource-bar i{display:block;height:100%;border-radius:inherit;background:currentColor;opacity:.8}@media(max-width:700px){.atd-resource-grid{gap:5px}.atd-resource-grid strong{font-size:10px}.atd-resource-grid small{font-size:7px}}</style>\n';
+            . '.atd-status-stat{min-width:0}.atd-provider-status{margin-top:4px}.atd-status-head{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:11px;font-weight:700}.atd-status-refresh{width:30px;height:30px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text);cursor:pointer;font-size:18px}.atd-status-main{display:flex;align-items:center;gap:10px;margin-top:8px}.atd-flag{font-size:29px;min-width:38px;text-align:center}.atd-status-main strong{display:block;font-size:13px;max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-status-state{font-size:11px;color:var(--muted);margin-top:4px}.atd-status-state i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-inline-end:5px}.atd-status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.atd-status-grid span{display:block;color:var(--muted);font-size:10px}.atd-status-grid b{display:block;margin-top:3px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atd-system-stat{min-width:0}.atd-version-value{font-size:17px!important;line-height:1.15}.atd-resource-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}.atd-resource-grid>div{min-width:0}.atd-resource-grid span{display:block;color:var(--muted);font-size:9px;font-weight:700}.atd-resource-grid strong{display:block;margin-top:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.atd-resource-grid small{display:block;margin-top:3px;color:var(--muted);font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.atd-resource-bar{display:block;height:4px;margin-top:5px;border-radius:99px;background:rgba(127,127,127,.16);overflow:hidden}.atd-resource-bar i{display:block;height:100%;border-radius:inherit;background:currentColor;opacity:.8}.atd-server-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;align-items:center}.atd-server-edit{display:inline-block}.atd-server-edit>summary{list-style:none}.atd-server-edit>summary::-webkit-details-marker{display:none}.atd-server-edit-box{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--card2);min-width:min(560px,80vw)}.atd-server-edit-box form{display:grid;gap:10px}.atd-server-edit-box .atd-edit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.atd-server-edit-box label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin-bottom:5px}.atd-server-edit-box input{width:100%;box-sizing:border-box}.atd-unified-danger{color:#fff!important;background:linear-gradient(135deg,#e33b5b,#b91c3c)!important;border-color:transparent!important}.atd-unified-action{min-height:40px!important;padding:10px 14px!important;border-radius:11px!important;font-weight:750!important}.atd-server-actions form{margin:0}@media(max-width:760px){.atd-server-edit-box{min-width:0;width:min(92vw,560px)}.atd-server-edit-box .atd-edit-grid{grid-template-columns:1fr}}@media(max-width:700px){.atd-resource-grid{gap:5px}.atd-resource-grid strong{font-size:10px}.atd-resource-grid small{font-size:7px}}</style><script>(function(){
+  function hidden(name,value){var i=document.createElement("input");i.type="hidden";i.name=name;i.value=value;return i;}
+  function addField(parent,labelText,name,value,type){var wrap=document.createElement("div");var label=document.createElement("label");label.textContent=labelText;var input=document.createElement("input");input.name=name;input.value=value||"";input.type=type||"text";if(name==="password")input.autocomplete="new-password";wrap.appendChild(label);wrap.appendChild(input);parent.appendChild(wrap);return input;}
+  function routeboxActions(){
+    document.querySelectorAll(".server-list .server").forEach(function(server){
+      if(server.dataset.atdActions==="1")return;
+      var idInput=server.querySelector('form input[name="id"]');
+      var btnrow=server.querySelector(".btnrow");
+      if(!idInput||!btnrow)return;
+      var id=idInput.value;
+      var title=server.querySelector(".server-title");
+      var name="";
+      if(title){var clone=title.cloneNode(true);clone.querySelectorAll(".status,.flag").forEach(function(n){n.remove();});name=clone.textContent.trim();}
+      var urlEl=server.querySelector(".server-url");
+      var url=urlEl?urlEl.textContent.trim():"";
+      var actions=document.createElement("div");actions.className="atd-server-actions";
+      var details=document.createElement("details");details.className="atd-server-edit";
+      var summary=document.createElement("summary");summary.className="btn btn-secondary atd-unified-action";summary.textContent="✎ Edit Server";details.appendChild(summary);
+      var box=document.createElement("div");box.className="atd-server-edit-box";
+      var form=document.createElement("form");form.method="post";form.action="/routebox-server-action.php";
+      form.appendChild(hidden("csrf_token",(document.querySelector('input[name="csrf_token"]')||{}).value||""));
+      form.appendChild(hidden("action","update_server"));form.appendChild(hidden("id",id));
+      var grid=document.createElement("div");grid.className="atd-edit-grid";
+      addField(grid,"Server name","name",name);addField(grid,"RouteBox panel URL","url",url);addField(grid,"Username (blank = unchanged)","username","");addField(grid,"Password (blank = unchanged)","password","","password");addField(grid,"Country code (blank = unchanged)","country_code","");
+      form.appendChild(grid);
+      var save=document.createElement("button");save.type="submit";save.className="btn btn-primary atd-unified-action";save.textContent="✓ Test & Save Changes";form.appendChild(save);
+      box.appendChild(form);details.appendChild(box);actions.appendChild(details);
+      var del=document.createElement("form");del.method="post";del.action="/routebox-server-action.php";del.onsubmit=function(){return confirm("Delete this RouteBox server?");};
+      del.appendChild(hidden("csrf_token",(document.querySelector('input[name="csrf_token"]')||{}).value||""));del.appendChild(hidden("action","delete_server"));del.appendChild(hidden("id",id));
+      var db=document.createElement("button");db.type="submit";db.className="btn atd-unified-action atd-unified-danger";db.textContent="× Delete Server";del.appendChild(db);actions.appendChild(del);
+      btnrow.appendChild(actions);server.dataset.atdActions="1";
+    });
+  }
+  function providerButtons(){
+    var section=new URLSearchParams(location.search).get("section");
+    if(section==="ibsng"){
+      document.querySelectorAll('details > summary').forEach(function(s){if(s.textContent.trim()==="✎")s.textContent="✎ Edit Server";});
+      document.querySelectorAll('form button').forEach(function(b){if(/Delete Server/i.test(b.textContent)){b.classList.remove("btn-secondary");b.classList.add("atd-unified-action","atd-unified-danger");b.style.removeProperty("color");b.style.removeProperty("border-color");}});
+    }
+    if(section==="mikrotik"){
+      document.querySelectorAll('details > summary').forEach(function(s){if(/Edit Server/i.test(s.textContent)){s.classList.remove("btn-primary");s.classList.add("btn-secondary","atd-unified-action");}});
+      document.querySelectorAll('form input[name="action"][value="test_server"]').forEach(function(input){
+        var form=input.closest("form");var id=input.parentElement&&input.parentElement.querySelector('input[name="id"]');var actions=form?form.parentElement:null;
+        if(!form||!actions||actions.dataset.atdDelete==="1")return;
+        var serverId=id?id.value:"";if(!serverId)return;
+        var del=document.createElement("form");del.method="post";del.onsubmit=function(){return confirm("Delete this MikroTik server?");};
+        var csrf=(document.querySelector('input[name="csrf_token"]')||{}).value||"";del.appendChild(hidden("csrf_token",csrf));del.appendChild(hidden("action","delete_server"));del.appendChild(hidden("id",serverId));
+        var b=document.createElement("button");b.type="submit";b.className="btn atd-unified-action atd-unified-danger";b.textContent="× Delete Server";del.appendChild(b);actions.appendChild(del);actions.dataset.atdDelete="1";
+      });
+    }
+  }
+  function init(){var section=new URLSearchParams(location.search).get("section");if(section==="servers")routeboxActions();providerButtons();}
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);else init();
+})();</script>\n';
     }
 }
