@@ -15,29 +15,22 @@ jobs:
       - uses: actions/checkout@v4
       - name: Patch existing stats context
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import re
-
           p = Path('public/index.core.php')
           s = p.read_text()
-
-          old = '$statsServers = $globalServerCount;'
-          new = "$statsServers = $section === 'servers' ? count($servers) : $globalServerCount;"
-          if old not in s:
-              raise SystemExit('Expected existing stats assignment was not found; refusing to modify the file.')
-          s2 = s.replace(old, new, 1)
-          if s2 == s:
-              raise SystemExit('Stats patch made no change.')
+          pattern = r"\$statsServers\s*=\s*[^;]+;"
+          replacement = "$statsServers = $section === 'servers' ? count($servers) : $globalServerCount;"
+          s2, n = re.subn(pattern, replacement, s, count=1)
+          if n != 1:
+              raise SystemExit(f'Expected one statsServers assignment, found {n}; refusing to modify the file.')
           p.write_text(s2)
           PY
-
           php -l public/index.core.php
           php -l public/index.php
           git diff --check
-
-      - name: Commit patch
-        run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add public/index.core.php
