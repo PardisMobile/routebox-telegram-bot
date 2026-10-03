@@ -1,6 +1,6 @@
 # 🚀 RouteBox Telegram Bot
 
-Telegram Bot + independent Web Admin Panel for **RouteBox / AmneziaWG**, with a modular service architecture for multiple service providers such as **IBSng**.
+Telegram Bot + independent Web Admin Panel for **RouteBox / AmneziaWG**, with a modular service architecture for multiple providers including **IBSng** and **MikroTik WireGuard**.
 
 **Current version:** `0.1.0-beta.11.05` · **Status:** 🧪 Beta  
 **Production installer:** `install.sh`  
@@ -19,8 +19,11 @@ Telegram Bot + independent Web Admin Panel for **RouteBox / AmneziaWG**, with a 
 - Free trial with trial-reuse protection
 - Configurable welcome messages and Telegram buttons
 - My Services management
+- Service detail view with provider-specific actions
 - `.conf` configuration delivery
-- QR-code delivery for AmneziaWG
+- QR-code delivery for AmneziaWG and MikroTik WireGuard
+- Services shortcut after config / QR delivery
+- Back-to-main-menu navigation from the services list
 - Guide links for Android, iPhone/iPad, Windows and macOS
 - Basic commands: `/start`, `/menu`, `/account`, `/help`
 
@@ -76,24 +79,67 @@ Telegram Bot
       v
 ServiceRouter / ServiceDispatcher
       |
-      +----------------------+
-      |                      |
-      v                      v
-RouteBox provider       IBSngService
-                             |
-                             v
-                        IBSngProvider
-                             |
-                             v
-                        IBSngClient
-                             |
-                             v
-                      IBSng A1.24 API
+      +----------------------+----------------------+
+      |                      |                      |
+      v                      v                      v
+RouteBox provider       IBSngService        MikroTikService
+                             |                      |
+                             v                      v
+                        IBSngProvider       MikroTikProvider
+                             |                      |
+                             v                      v
+                        IBSngClient          MikroTikClient
+                             |                      |
+                             v                      v
+                      IBSng A1.24 API       RouterOS REST API
 ```
 
 The IBSng module lives under `src/Integrations/IBSng/`. Provider-specific protocol code stays isolated from the existing RouteBox client and provisioning flow.
 
 > **Important terminology:** IBSng `owner` / `owner_name` is an IBSng-specific concept. It is **not** the Telegram Bot Admin system. Telegram Bot Admin is a separate future permission layer.
+
+## 🟢 MikroTik WireGuard integration — completed core milestone
+
+MikroTik RouterOS WireGuard is now integrated as a third modular service provider alongside RouteBox and IBSng.
+
+### Admin Panel
+
+- Add MikroTik RouterOS servers through the existing Admin Panel
+- REST API connection test before saving/updating a server
+- Edit existing MikroTik server settings
+- Delete MikroTik servers
+- RouterOS version, uptime, CPU, memory and REST latency discovery
+- WireGuard interface discovery
+- IP pool and DNS discovery
+- Automatic WireGuard interface selection when not explicitly configured
+- Automatic WireGuard `listen-port` detection from RouterOS when the VPN port is left blank
+- Server card with operational status and discovered RouterOS/WireGuard information
+
+### WireGuard plans
+
+- Create MikroTik WireGuard plans
+- Edit existing plans
+- Delete plans without breaking subscription history; plans with subscription history are disabled instead of being permanently removed
+- Configure Persian/English names, price, duration, quota, server and upload/download metadata
+
+### Peer lifecycle
+
+- Create WireGuard peers through the Telegram service flow
+- Store provider-neutral subscription records
+- Disable / enable peers
+- Delete peers from RouterOS and RouteBox state
+- Keep peer and subscription state synchronized when deleting a service
+
+### Telegram delivery
+
+- MikroTik WireGuard service provisioning through the shared service architecture
+- Username / assigned VPN IP / server / expiry display
+- WireGuard `.conf` delivery
+- QR delivery
+- Services shortcut after config and QR delivery
+- Back-to-main-menu button from the My Services view
+
+The MikroTik module lives under `src/Integrations/MikroTik/` and uses the shared service/subscription architecture instead of embedding RouterOS protocol logic directly into the Telegram UI.
 
 ## 💳 Payment foundation
 
@@ -106,7 +152,7 @@ The payment layer is architecturally present, but real payment gateways are not 
 - Coupon and coupon-redemption schema
 - Provider-independent service catalog and dispatcher
 
-Future gateways can be added without rewriting the RouteBox or IBSng provisioning implementations.
+Future gateways can be added without rewriting the RouteBox, IBSng or MikroTik provisioning implementations.
 
 ## 📦 Installation
 
@@ -173,7 +219,7 @@ The Admin Panel also contains the update workflow. The repository includes backu
 ## 🔐 Security model
 
 - Telegram Bot Tokens are entered silently during installation and stored encrypted.
-- RouteBox and IBSng credentials are stored encrypted.
+- RouteBox, IBSng and MikroTik credentials are stored encrypted.
 - Admin sessions use HTTP-only / SameSite cookies and CSRF protection.
 - SQLite/database and configuration are kept outside the public web root.
 - The Admin Panel runs as `www-data`.
@@ -183,12 +229,20 @@ The Admin Panel also contains the update workflow. The repository includes backu
 
 ## 🗺️ Development roadmap
 
-### ✅ Completed IBSng milestone
+### ✅ Completed — Modular service foundation
+
+- [x] Provider-independent service catalog / routing / dispatching
+- [x] Shared `service_subscriptions` persistence
+- [x] RouteBox provider retained as a backward-compatible provider
+- [x] IBSng provider integrated without replacing RouteBox provisioning
+- [x] MikroTik provider integrated without moving RouterOS protocol logic into the UI
+
+### ✅ Completed — IBSng milestone
 
 - [x] Modular IBSng provider integration
 - [x] IBSng A1.24 connection/authentication/session handling
 - [x] IBSng server configuration foundation
-- [x] IBSng group mapping and listing
+- [x] IBSng group mapping and listing/synchronization support
 - [x] IBSng user lookup operations
 - [x] IBSng test-user creation support
 - [x] End-to-end Telegram IBSng account provisioning
@@ -198,7 +252,26 @@ The Admin Panel also contains the update workflow. The repository includes backu
 - [x] Worker integration with the isolated IBSng client
 - [x] Real IBSng A1.24 provisioning flow tested successfully
 
-### 🔜 Upcoming: Telegram Bot Admin
+### ✅ Completed — MikroTik WireGuard milestone
+
+- [x] RouterOS REST client and MikroTik provider
+- [x] MikroTik server add / edit / delete / connection test
+- [x] RouterOS version, uptime, CPU, memory and REST latency discovery
+- [x] WireGuard interface discovery
+- [x] IP pool and DNS discovery
+- [x] Automatic WireGuard interface selection
+- [x] Automatic WireGuard `listen-port` detection
+- [x] MikroTik WireGuard plan create / edit / delete
+- [x] Safe plan deletion when subscription history exists
+- [x] WireGuard peer create / disable / enable / delete lifecycle
+- [x] RouterOS peer deletion and RouteBox subscription-state synchronization
+- [x] Telegram MikroTik provisioning flow
+- [x] Config and QR delivery
+- [x] Services shortcut after config / QR
+- [x] Back-to-main-menu navigation from My Services
+- [x] Recent panel/card/peer-operation fixes verified in the development environment
+
+### 🔜 Phase 1 — Telegram Bot Admin
 
 Telegram Bot Admin is a **new, independent permission layer**. It is not the same thing as the IBSng `owner` / `owner_name` concept.
 
@@ -208,16 +281,17 @@ Telegram Bot Admin is a **new, independent permission layer**. It is not the sam
 - [ ] Dedicated Telegram Bot Admin menu
 - [ ] Telegram service-management capabilities for authorized admins
 
-### 💳 Upcoming: Admin payment bypass
+### 💳 Phase 2 — Admin payment bypass
 
 - [ ] Authorized Telegram Bot Admin can bypass customer payment when creating services
 - [ ] RouteBox service creation without customer payment
 - [ ] IBSng service creation without customer payment
-- [ ] Provider-neutral design so the bypass can support future service providers
+- [ ] MikroTik service creation without customer payment
+- [ ] Provider-neutral payment bypass authorization
 - [ ] Keep the normal customer payment flow unchanged
 - [ ] Record admin-created orders/provisioning actions for auditability
 
-### 🔵 Upcoming: IBSng user management from Telegram Bot Admin
+### 🔵 Phase 3 — IBSng user management from Telegram Bot Admin
 
 - [ ] Search IBSng users by username
 - [ ] View IBSng username and account information
@@ -229,14 +303,14 @@ Telegram Bot Admin is a **new, independent permission layer**. It is not the sam
 - [ ] Additional safe account-management actions as appropriate
 - [ ] Renewal must use the IBSng plans already configured in the RouteBox Admin Panel; no separate hard-coded renewal catalog
 
-### ⚙️ Upcoming: IBSng administration tools
+### ⚙️ Phase 4 — IBSng administration tools
 
 - [ ] Configurable generated IBSng username prefix from the Admin Panel
-- [ ] Current generated prefix is `rb`; allow future configuration such as `tgbot`
+- [ ] Keep `rb` as the default generated prefix; allow future values such as `tgbot`
 - [ ] Move `test-ibsng-account.php` functionality into the IBSng Admin Panel as a safe UI
 - [ ] Keep the standalone test script out of the normal user workflow
 
-### 🔧 Upcoming: Worker operations
+### 🔧 Phase 5 — Worker operations
 
 - [ ] Telegram Bot Worker status in the Admin Panel
 - [ ] Restart/reload button in the Telegram Bot section
@@ -244,15 +318,15 @@ Telegram Bot Admin is a **new, independent permission layer**. It is not the sam
 - [ ] Worker health monitoring
 - [ ] Recent operational logs / diagnostics
 
-### 📦 Completed: Installer refactor
+### 💳 Phase 6 — Production payment system
 
-- [x] `install.sh` remains the user-facing production entrypoint
-- [x] `install-v2.sh` renamed to `installer-core.sh`
-- [x] Production entrypoint updated to use `installer-core.sh`
-- [x] Production installer UX improved with clear sections, status messages and final summary
-- [x] Installer core UX improved without changing the production architecture
-- [x] Development installers retained as `install-dev.sh` and `install-dev-full.sh`
-- [x] Installer documentation updated to the final four-file structure
+- [ ] Complete order lifecycle
+- [ ] Payment callback endpoints and verification
+- [ ] ZarinPal adapter
+- [ ] Crypto gateway adapter
+- [ ] Verified-payment-only provisioning
+- [ ] Coupon administration and enforcement
+- [ ] Invoice and payment history
 
 ## 📚 Documentation
 
