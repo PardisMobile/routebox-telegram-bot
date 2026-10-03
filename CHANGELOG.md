@@ -4,7 +4,30 @@ Important user-visible and operational changes for RouteBox Telegram Bot.
 
 Version source of truth: [`VERSION`](./VERSION)
 
-## 0.1.0-beta.11.05 — Current milestone
+## 0.1.0-beta.11.05 — Current development milestone
+
+### 🟢 Completed MikroTik WireGuard milestone
+
+- Added MikroTik RouterOS WireGuard as a modular provider alongside RouteBox and IBSng.
+- Added RouterOS REST connectivity and connection testing.
+- Added MikroTik server management in the Admin Panel: create, edit, delete and test connection.
+- Added RouterOS version, uptime, CPU, memory and REST latency discovery.
+- Added WireGuard interface, IP pool and DNS discovery.
+- Added automatic WireGuard interface selection.
+- Added automatic WireGuard `listen-port` detection when the VPN port is left blank.
+- Added MikroTik WireGuard plan creation, editing and deletion.
+- Made plan deletion subscription-safe: plans with subscription history are disabled rather than permanently removed.
+- Added WireGuard peer lifecycle management: create, disable, enable and delete.
+- Peer deletion removes the peer from RouterOS and updates the corresponding RouteBox subscription state.
+- Connected MikroTik provisioning to the shared `service_subscriptions` architecture.
+- Added Telegram MikroTik WireGuard service flow with username, VPN IP, server and expiry display.
+- Added `.conf` and QR delivery for MikroTik WireGuard.
+- Added a Services shortcut after config / QR delivery.
+- Added a back-to-main-menu action from the My Services list.
+- Fixed peer enable/disable/delete compatibility issues with RouterOS.
+- Fixed and restored the MikroTik Admin Panel server card, including RouterOS metrics and interface information.
+- Fixed recent Admin Panel HTTP 500 / rendering regressions in the MikroTik section.
+- Verified the current MikroTik flow in the development environment.
 
 ### 🔵 Completed IBSng modular-service milestone
 
@@ -26,9 +49,10 @@ Version source of truth: [`VERSION`](./VERSION)
 ### 🧩 Modular services
 
 - Provider-independent service catalog / routing / dispatching is documented and retained.
-- RouteBox and IBSng remain separate providers.
+- RouteBox, IBSng and MikroTik remain separate providers.
 - `service_subscriptions` provides persistent provider-neutral subscription records.
 - The existing RouteBox provisioning implementation remains backward-compatible.
+- Provider protocol logic remains inside provider modules rather than the Telegram UI.
 - IBSng `owner` / `owner_name` terminology remains an IBSng-specific concept and is not treated as Telegram Bot Admin authorization.
 
 ### 📦 Installer refactor — completed
@@ -72,6 +96,7 @@ Version source of truth: [`VERSION`](./VERSION)
 - [ ] Allow authorized Telegram Bot Admin users to create services without customer payment.
 - [ ] RouteBox service creation without payment.
 - [ ] IBSng service creation without payment.
+- [ ] MikroTik service creation without payment.
 - [ ] Provider-neutral design for future service providers.
 - [ ] Preserve the normal customer payment flow.
 - [ ] Record admin-created orders/provisioning actions for auditability.
@@ -116,5 +141,6 @@ Version source of truth: [`VERSION`](./VERSION)
 - `install-dev.sh` / `install-dev-full.sh` are isolated development tools for the modular-services/IBSng branch.
 - Existing tested IBSng provisioning must be extended, not rewritten.
 - Existing RouteBox provisioning must remain backward-compatible.
+- Existing MikroTik provisioning should be extended through the provider/service layer rather than rewritten in Telegram UI code.
 - Telegram Bot Admin permissions are independent from IBSng `owner` / `owner_name`.
 - Payment integration must remain provider-independent.
