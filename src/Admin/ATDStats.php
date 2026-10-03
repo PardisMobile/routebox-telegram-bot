@@ -6,6 +6,8 @@ namespace RouteBox\Admin;
 
 use PDO;
 
+require_once __DIR__ . '/ATDWorker.php';
+
 final class ATDStats
 {
     private static function tableExists(PDO $db, string $table): bool
@@ -192,6 +194,22 @@ final class ATDStats
             . '<div class="atd-status-grid"><div><span>Server IP</span><b dir="ltr">'.$esc($ip).'</b></div><div><span>Ping</span><b dir="ltr">'.$esc($ping).'</b></div></div></div>';
     }
 
+    public static function botCard(PDO $db, string $version, callable $esc): string
+    {
+        $status = ATDWorker::status();
+        $info = ATDWorker::serverInfo();
+        $flag = ATDWorker::flag((string)$info['country']);
+        $state = !empty($status['running']) ? 'Running' : 'Stopped';
+        $color = !empty($status['running']) ? 'var(--green)' : 'var(--red)';
+        $service = (string)$status['service'];
+        $action = '<form method="post" action="/reload-worker.php" style="margin:0">'
+            . '<input type="hidden" name="csrf_token" value="'.$esc(csrf_token()).'">'
+            . '<button class="atd-status-refresh" type="submit" title="Reload Worker">↻</button></form>';
+        return '<div class="atd-provider-status"><div class="atd-status-head"><span>Bot Server</span>'.$action.'</div>'
+            . '<div class="atd-status-main"><span class="atd-flag">'.$esc($flag).'</span><div><strong>Telegram Worker</strong><div class="atd-status-state"><i style="background:'.$color.'"></i>'.$esc($state).'</div></div></div>'
+            . '<div class="atd-status-grid"><div><span>Server IP</span><b dir="ltr">'.$esc((string)$info['ip']).'</b></div><div><span>Worker</span><b dir="ltr" title="'.$esc($service).'">'.$esc($service).'</b></div></div></div>';
+    }
+
     public static function render(PDO $db, string $context, string $version, string $lang): string
     {
         $context = $context === 'servers' ? 'routebox' : $context;
@@ -207,7 +225,9 @@ final class ATDStats
         $cards='<div class="stat"><div class="stat-top"><span>Servers</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$serverIcon.'</svg></span></div><b>'.number_format($servers).'</b></div>'
             .'<div class="stat"><div class="stat-top"><span>Users</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$userIcon.'</svg></span></div><b>'.number_format($users).'</b></div>'
             .'<div class="stat"><div class="stat-top"><span>Plans</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$planIcon.'</svg></span></div><b>'.number_format($plans).'</b></div>';
-        if ($provider === null) {
+        if ($context === 'bot') {
+            $cards.='<div class="stat atd-status-stat">'.self::botCard($db,$version,$esc).'</div>';
+        } elseif ($provider === null) {
             $cards.='<div class="stat"><div class="stat-top"><span>Version</span><span class="stat-icon"><svg viewBox="0 0 24 24">'.$refreshIcon.'</svg></span></div><b style="font-size:18px">v'.$esc($version).'</b></div>';
         } else {
             $cards.='<div class="stat atd-status-stat">'.self::statusCard($db,$provider,$esc).'</div>';
