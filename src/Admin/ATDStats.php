@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace RouteBox\Admin;
@@ -47,7 +48,12 @@ final class ATDStats
             ? self::scalar($db, 'SELECT COUNT(*) FROM service_plans WHERE provider_key=?', [$provider])
             : 0;
 
-        return [$servers, $users, $plans];
+        $online = 0;
+        if ($serverTable && self::tableExists($db, $serverTable)) {
+            $online = self::scalar($db, 'SELECT COUNT(*) FROM ' . $serverTable . ' WHERE enabled = 1');
+        }
+
+        return [$servers, $users, $plans, $online];
     }
 
     private static function globalStats(PDO $db): array
@@ -64,23 +70,42 @@ final class ATDStats
 
     public static function render(PDO $db, string $context, string $version, string $lang): string
     {
-        $provider = in_array($context, ['routebox', 'ibsng', 'mikrotik_wireguard'], true) ? $context : null;
-        [$servers, $users, $plans] = $provider !== null
-            ? self::providerStats($db, $provider)
-            : self::globalStats($db);
+        // The legacy RouteBox section is named "servers" in the URL.
+        // Normalize it here so it can never fall back to global stats.
+        $context = match ($context) {
+            'servers' => 'routebox',
+            default => $context,
+        };
 
-        $labels = ['servers'=>'Servers','users'=>'Users','plans'=>'Plans','version'=>'Version'];
+        $provider = in_array($context, ['routebox', 'ibsng', 'mikrotik_wireguard'], true) ? $context : null;
+        if ($provider !== null) {
+            [$servers, $users, $plans, $online] = self::providerStats($db, $provider);
+        } else {
+            [$servers, $users, $plans] = self::globalStats($db);
+            $online = 0;
+        }
+
         $esc = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $cards = [
-            [$labels['servers'], number_format($servers), '<path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/>'],
-            [$labels['users'], number_format($users), '<path d="M16 20c0-3-1.8-5-5-5s-5 2-5 5"/><circle cx="11" cy="8" r="3"/><path d="M17 11a3 3 0 0 0 0-6M18 20c-.3-2.2-1.2-3.8-2.7-4.7"/>'],
-            [$labels['plans'], number_format($plans), '<path d="m12 3 8 4-8 4-8-4 8-4Zm-8 9 8 4 8-4M4 17l8 4 8-4"/>'],
-            [$labels['version'], 'v' . $version, '<path d="M20 11a8 8 0 0 0-14.9-4L3 10m0 0V5m0 5h5M4 13a8 8 0 0 0 14.9 4L21 14m0 0v5m0-5h-5"/>'],
-        ];
+        if ($provider !== null) {
+            $status = $online > 0 ? ($online . ' Online') : 'Offline';
+            $cards = [
+                ['Servers', number_format($servers), '<path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/>'],
+                ['Users', number_format($users), '<path d="M16 20c0-3-1.8-5-5-5s-5 2-5 5"/><circle cx="11" cy="8" r="3"/><path d="M17 11a3 3 0 0 0 0-6M18 20c-.3-2.2-1.2-3.8-2.7-4.7"/>'],
+                ['Plans', number_format($plans), '<path d="m12 3 8 4-8 4-8-4 8-4Zm-8 9 8 4 8-4M4 17l8 4 8-4"/>'],
+                ['Server Status', $status, '<path d="M20 11a8 8 0 0 0-14.9-4L3 10m0 0V5m0 5h5M4 13a8 8 0 0 0 14.9 4L21 14m0 0v5m0-5h-5"/>'],
+            ];
+        } else {
+            $cards = [
+                ['Servers', number_format($servers), '<path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/>'],
+                ['Users', number_format($users), '<path d="M16 20c0-3-1.8-5-5-5s-5 2-5 5"/><circle cx="11" cy="8" r="3"/><path d="M17 11a3 3 0 0 0 0-6M18 20c-.3-2.2-1.2-3.8-2.7-4.7"/>'],
+                ['Plans', number_format($plans), '<path d="m12 3 8 4-8 4-8-4 8-4Zm-8 9 8 4 8-4M4 17l8 4 8-4"/>'],
+                ['Version', 'v' . $version, '<path d="M20 11a8 8 0 0 0-14.9-4L3 10m0 0V5m0 5h5M4 13a8 8 0 0 0 14.9 4L21 14m0 0v5m0-5h-5"/>'],
+            ];
+        }
 
         $html = '<div class="stats atd-stats">';
         foreach ($cards as [$label, $value, $icon]) {
-            $size = $label === $labels['version'] ? ' style="font-size:18px"' : '';
+            $size = ($label === 'Version' || $label === 'Server Status') ? ' style="font-size:18px"' : '';
             $html .= '<div class="stat"><div class="stat-top"><span>' . $esc($label) . '</span><span class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' . $icon . '</svg></span></div><b' . $size . '>' . $esc($value) . '</b></div>';
         }
         return $html . '</div>\n';
