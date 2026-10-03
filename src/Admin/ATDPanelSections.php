@@ -133,3 +133,123 @@ final class ATDPanelSections
         return self::shell($fa?'تنظیمات پرداخت':'Payment Settings',$fa?'زیرساخت مشترک پرداخت برای همه Providerها؛ بدون تغییر در provisioning فعلی.':'Shared payment foundation for all providers; existing provisioning remains untouched.',$body,'dashboard');
     }
 }
+
+/*
+ * ATD stats normalizer.
+ * index.php already captures the legacy core page into $html and then includes
+ * this file.  Keep the provider implementations untouched, but replace the
+ * legacy/duplicate stats block with one canonical ATD block for the core
+ * sections. This also makes Dashboard and Telegram Bot use the same global
+ * counts while provider/server pages use provider-scoped counts.
+ */
+if (isset($html, $section, $lang) && is_string($html) && is_string($section) && is_string($lang)) {
+    $atdDb = db();
+    $atdTableCount = static function (PDO $db, string $table): int {
+        if (!preg_match('/^[a-z0-9_]+$/', $table)) return 0;
+        $q = $db->prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1");
+        $q->execute([$table]);
+        if ($q->fetchColumn() === false) return 0;
+        return (int)$db->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
+    };
+    $atdGlobalServers = $atdTableCount($atdDb, 'routebox_servers') + $atdTableCount($atdDb, 'ibsng_servers') + $atdTableCount($atdDb, 'mikrotik_servers');
+    $atdGlobalUsers = $atdTableCount($atdDb, 'telegram_users');
+    $atdGlobalPlans = $atdTableCount($atdDb, 'service_plans');
+    $atdRouteboxUsers = (int)$atdDb->query('SELECT COUNT(DISTINCT telegram_user_id) FROM provisions')->fetchColumn();
+    $atdRouteboxPlans = (int)$atdDb->query("SELECT COUNT(*) FROM service_plans WHERE provider_key='routebox'")->fetchColumn();
+    $atdServers = $atdDb->query('SELECT s.*,m.country_code,m.ping_ms FROM routebox_servers s LEFT JOIN server_meta m ON m.server_id=s.id ORDER BY s.id')->fetchAll(PDO::FETCH_ASSOC);
+    $atdConnected = 0;
+    foreach ($atdServers as $atdServer) { if ((int)$atdServer['enabled'] === 1) $atdConnected++; }
+    $atdStatusServer = $atdServers[0] ?? null;
+    $atdVersionFile = __DIR__ . '/../../VERSION';
+    $atdVersion = is_file($atdVersionFile) ? trim((string)file_get_contents($atdVersionFile)) : '0.0.0';
+
+    $atdBotService = 'routebox-telegram-bot.service';
+    $atdBotStatus = 'unknown';
+    foreach (['routebox-telegram-bot.service', 'routebox-telegram-bot-dev.service'] as $candidate) {
+        $candidateStatus = trim((string)@shell_exec('systemctl is-active ' . escapeshellarg($candidate) . ' 2>/dev/null'));
+        if ($candidateStatus !== '' || is_file('/etc/systemd/system/' . $candidate)) {
+            $atdBotService = $candidate;
+            $atdBotStatus = $candidateStatus !== '' ? $candidateStatus : 'unknown';
+            break;
+        }
+    }
+    $atdBotIp = trim((string)($_SERVER['SERVER_ADDR'] ?? ''));
+    if ($atdBotIp === '' || filter_var($atdBotIp, FILTER_VALIDATE_IP) === false) {
+        $atdBotIp = trim((string)@shell_exec("hostname -I 2>/dev/null | awk '{print $1}'"));
+    }
+    $atdBotCountry = '';
+    if ($atdBotIp !== '' && function_exists('detectCountryCode')) {
+        $atdBotCountry = (string)\detectCountryCode('http://' . $atdBotIp);
+    }
+    $atdBotRunning = $atdBotStatus === 'active';
+    $atdCsrf = function_exists('csrf_token') ? (string)csrf_token() : '';
+    $atdFa = $lang === 'fa';
+    $atdLabel = static function (string $fa, string $en) use ($atdFa): string {
+        return htmlspecialchars($atdFa ? $fa : $en, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    };
+    $atdFlag = static function (string $code): string {
+        $code = strtoupper(trim($code));
+        if (!preg_match('/^[A-Z]{2}$/', $code) || !function_exists('mb_chr')) return '🌐';
+        return mb_chr(127397 + ord($code[0])) . mb_chr(127397 + ord($code[1]));
+    };
+    $atdStatusCard = function (bool $routeboxScope = false) use ($atdFa, $atdLabel, $atdStatusServer, $atdConnected, $atdFlag, $atdCsrf): string {
+        if (!$atdStatusServer) {
+            return '<div class="stat"><div class="stat-top"><span>'.$atdLabel('وضعیت سرور','Server Status').'</span><span class="stat-icon">●</span></div><b style="font-size:15px;color:var(--muted)">'.$atdLabel('سروری ثبت نشده','No server configured').'</b></div>';
+        }
+        $url = htmlspecialchars((string)($atdStatusServer['base_url'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $ping = $atdStatusServer['ping_ms'] !== null ? htmlspecialchars((string)$atdStatusServer['ping_ms'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').' ms' : '—';
+        $flag = $atdFlag((string)($atdStatusServer['country_code'] ?? ''));
+        $connectedText = $atdConnected > 0 ? '<span class="state-ok">● '.$atdConnected.' '.$atdLabel('متصل','Connected').'</span>' : '<span class="state-bad">● '.$atdLabel('قطع','Offline').'</span>';
+        return '<div class="stat"><div class="stat-top"><span>'.$atdLabel('وضعیت سرور','Server Status').'</span><span class="stat-icon">↔</span></div><b style="font-size:16px">'.$connectedText.'</b><div style="margin-top:7px;font-size:11px;color:var(--muted);direction:ltr;text-align:left">'.$url.'</div><div style="margin-top:4px;font-size:11px;color:var(--muted)">⚡ '.$ping.' · '.$flag.'</div><div class="form-actions" style="margin-top:9px"><form method="post"><input type="hidden" name="csrf_token" value="'.htmlspecialchars($atdCsrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'"><input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="servers"><input type="hidden" name="id" value="'.(int)$atdStatusServer['id'].'"><button class="btn btn-secondary" type="submit">↻ '.$atdLabel('رفرش / تست','Refresh / Check').'</button></form></div></div>';
+    };
+
+    $atdStats = '<div class="stats">';
+    $atdStats .= '<div class="stat"><div class="stat-top"><span>'.$atdLabel('سرورها','Servers').'</span><span class="stat-icon">'.$atdLabel('▦','▦').'</span></div><b>'.number_format($section === 'servers' ? count($atdServers) : $atdGlobalServers).'</b></div>';
+    $atdStats .= '<div class="stat"><div class="stat-top"><span>'.$atdLabel('کاربران','Users').'</span><span class="stat-icon">'.$atdLabel('♙','♙').'</span></div><b>'.number_format($section === 'servers' ? $atdRouteboxUsers : $atdGlobalUsers).'</b></div>';
+    $atdStats .= '<div class="stat"><div class="stat-top"><span>'.$atdLabel('پلن‌ها','Plans').'</span><span class="stat-icon">'.$atdLabel('≋','≋').'</span></div><b>'.number_format($section === 'servers' ? $atdRouteboxPlans : $atdGlobalPlans).'</b></div>';
+    if ($section === 'dashboard') {
+        $atdStats .= '<div class="stat"><div class="stat-top"><span>'.$atdLabel('نسخه','Version').'</span><span class="stat-icon">↻</span></div><b style="font-size:18px">v'.htmlspecialchars($atdVersion, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</b></div>';
+    } elseif ($section === 'bot') {
+        $workerClass = $atdBotRunning ? 'state-ok' : 'state-bad';
+        $workerText = $atdBotRunning ? $atdLabel('Worker فعال','Worker Active') : $atdLabel('Worker متوقف','Worker '.($atdBotStatus ?: 'unknown'));
+        $ipEsc = htmlspecialchars($atdBotIp !== '' ? $atdBotIp : '—', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $flag = $atdFlag($atdBotCountry);
+        $atdStats .= '<div class="stat"><div class="stat-top"><span>'.$atdLabel('سرور ربات','Bot Server').'</span><span class="stat-icon">⌁</span></div><b style="font-size:15px" class="'.$workerClass.'">● '.$workerText.'</b><div style="margin-top:7px;font-size:11px;color:var(--muted);direction:ltr;text-align:left">'.$ipEsc.' · '.$flag.'</div><div class="form-actions" style="margin-top:9px"><form method="post" action="/reload-worker.php"><input type="hidden" name="csrf_token" value="'.htmlspecialchars($atdCsrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'"><button class="btn btn-secondary" type="submit">↻ '.$atdLabel('Reload Worker','Reload Worker').'</button></form></div></div>';
+    } else {
+        $atdStats .= $atdStatusCard($section === 'servers');
+    }
+    $atdStats .= '</div>';
+
+    // Remove the first/legacy stats container, including any duplicate blocks produced by older revisions.
+    $atdStart = strpos($html, '<div class="stats">');
+    while ($atdStart !== false) {
+        $depth = 0;
+        $pos = $atdStart;
+        $length = strlen($html);
+        $end = null;
+        while ($pos < $length) {
+            $open = strpos($html, '<div', $pos);
+            $close = strpos($html, '</div>', $pos);
+            if ($close === false) break;
+            if ($open !== false && $open < $close) {
+                $depth++;
+                $pos = $open + 4;
+            } else {
+                $depth--;
+                $pos = $close + 6;
+                if ($depth === 0) { $end = $pos; break; }
+            }
+        }
+        if ($end === null) break;
+        $html = substr($html, 0, $atdStart) . substr($html, $end);
+        $atdStart = strpos($html, '<div class="stats">');
+    }
+
+    // Put one canonical stats row directly after the flash message/hero area.
+    $anchor = '</header>';
+    $insertAt = strpos($html, $anchor);
+    if ($insertAt !== false) {
+        $insertAt += strlen($anchor);
+        $html = substr($html, 0, $insertAt) . $atdStats . substr($html, $insertAt);
+    }
+}
