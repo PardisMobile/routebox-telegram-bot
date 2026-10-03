@@ -69,14 +69,63 @@ use RouteBox\Integrations\MikroTik\MikroTikSection;
 
 $lang = (string)($_SESSION['panel_lang'] ?? 'fa') === 'en' ? 'en' : 'fa';
 
-$navItems = [
-    'ibsng' => '<a class="' . ($section === 'ibsng' ? 'active' : '') . '"' . ($section === 'ibsng' ? ' aria-current="page"' : '') . ' href="/?section=ibsng"><span class="nav-icon">' . IBSngSection::navIcon() . '</span><span>' . IBSngSection::navLabel($lang) . '</span></a>',
-    'mikrotik' => '<a class="' . ($section === 'mikrotik' ? 'active' : '') . '"' . ($section === 'mikrotik' ? ' aria-current="page"' : '') . ' href="/?section=mikrotik"><span class="nav-icon">' . MikroTikSection::navIcon() . '</span><span>' . MikroTikSection::navLabel($lang) . '</span></a>',
+/* Provider-first navigation. Provider pages own their Plans as a child route. */
+$label = static function (string $fa, string $en) use ($lang): string {
+    return htmlspecialchars($lang === 'fa' ? $fa : $en, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+};
+$active = static function (string $key) use ($section): string {
+    return $section === $key ? ' active' : '';
+};
+$planActive = static function (string $provider) use ($section): string {
+    if ($section !== 'provider-plans') return '';
+    return trim((string)($_GET['provider'] ?? 'routebox')) === $provider ? ' active' : '';
+};
+
+$nav = '<nav class="nav atd-nav" aria-label="' . $label('ناوبری پنل', 'Panel navigation') . '">';
+$nav .= '<a class="atd-nav-item' . $active('dashboard') . '" href="/?section=dashboard"><span class="nav-icon">⌂</span><span>' . $label('داشبورد', 'Dashboard') . '</span></a>';
+$nav .= '<a class="atd-nav-item' . $active('bot') . '" href="/?section=bot"><span class="nav-icon">🤖</span><span>' . $label('ربات تلگرام', 'Telegram Bot') . '</span></a>';
+
+$providers = [
+    'routebox' => ['section'=>'servers','fa'=>'Routebox Servers','en'=>'Routebox Servers','icon'=>'🖥️'],
+    'ibsng' => ['section'=>'ibsng','fa'=>'IBSng Servers','en'=>'IBSng Servers','icon'=>'◈'],
+    'mikrotik_wireguard' => ['section'=>'mikrotik','fa'=>'MikroTik WireGuard','en'=>'MikroTik WireGuard','icon'=>'⌁'],
 ];
-foreach ($navItems as $key => $nav) {
-    if (strpos($html, 'href="/?section=' . $key . '"') === false) {
-        $html = preg_replace('~(<nav\b[^>]*\bclass="[^"]*\bnav\b[^"]*"[^>]*>)(.*?)</nav>~is', '$1$2' . $nav . '</nav>', $html, 1) ?? $html;
-    }
+foreach ($providers as $providerKey => $provider) {
+    $providerUrl = '/?section=' . rawurlencode($provider['section']);
+    $planUrl = '/?section=provider-plans&provider=' . rawurlencode($providerKey);
+    $providerIsActive = $section === $provider['section'] || ($section === 'provider-plans' && trim((string)($_GET['provider'] ?? 'routebox')) === $providerKey);
+    $nav .= '<div class="atd-nav-group' . ($providerIsActive ? ' expanded' : '') . '">';
+    $nav .= '<a class="atd-nav-item provider-item' . ($section === $provider['section'] ? ' active' : '') . '" href="' . $providerUrl . '"><span class="nav-icon">' . $provider['icon'] . '</span><span>' . $label($provider['fa'], $provider['en']) . '</span><span class="nav-chevron">›</span></a>';
+    $nav .= '<div class="atd-nav-sub"><a class="atd-nav-subitem' . $planActive($providerKey) . '" href="' . $planUrl . '"><span class="sub-dot">•</span><span>' . $label('Plans','Plans') . '</span></a></div></div>';
+}
+$nav .= '<a class="atd-nav-item' . $active('security') . '" href="/?section=security"><span class="nav-icon">🛡</span><span>' . $label('امنیت', 'Security') . '</span></a>';
+$nav .= '<a class="atd-nav-item' . $active('updates') . '" href="/?section=updates"><span class="nav-icon">↻</span><span>' . $label('به‌روزرسانی', 'Updates') . '</span></a>';
+$nav .= '</nav>';
+
+/* Replace only navigation markup; all existing page bodies and integrations stay untouched. */
+$html = preg_replace('~<nav\b[^>]*>.*?</nav>~is', $nav, $html, 1) ?? $html;
+
+$style = <<<'CSS'
+<style id="atd-panel-nav-style">
+.atd-nav{display:flex;flex-direction:column;gap:5px;padding:8px 6px}
+.atd-nav-item,.atd-nav-subitem{box-sizing:border-box;text-decoration:none;transition:background .16s ease,transform .16s ease,box-shadow .16s ease}
+.atd-nav-item{display:flex;align-items:center;gap:11px;min-height:44px;padding:10px 12px;border-radius:12px;color:inherit;font-weight:650}
+.atd-nav-item:hover{background:rgba(127,127,127,.09);transform:translateX(-1px)}
+.atd-nav-item.active{background:rgba(127,127,127,.13);box-shadow:inset 3px 0 0 currentColor}
+.atd-nav-item .nav-icon{width:22px;min-width:22px;text-align:center;font-size:17px;line-height:1}
+.atd-nav-item>span:nth-child(2){flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.provider-item .nav-chevron{opacity:.55;font-size:21px;line-height:1;transition:transform .16s ease}
+.atd-nav-group.expanded .nav-chevron{transform:rotate(90deg);opacity:.8}
+.atd-nav-sub{display:none;margin:1px 0 4px 45px;padding-left:9px;border-left:1px solid rgba(127,127,127,.22)}
+.atd-nav-group.expanded .atd-nav-sub{display:block}
+.atd-nav-subitem{display:flex;align-items:center;gap:8px;min-height:36px;padding:7px 10px;border-radius:9px;color:inherit;font-size:.92em;font-weight:600;opacity:.78}
+.atd-nav-subitem:hover{background:rgba(127,127,127,.08);opacity:1}
+.atd-nav-subitem.active{background:rgba(127,127,127,.11);opacity:1}
+.atd-nav-subitem .sub-dot{opacity:.55;font-size:16px}
+</style>
+CSS;
+if (stripos($html, '</head>') !== false) {
+    $html = preg_replace('~</head>~i', $style . '</head>', $html, 1) ?? $html;
 }
 
 if ($section !== 'ibsng' && $section !== 'mikrotik' && $section !== 'provider-plans') {
@@ -102,7 +151,7 @@ if ($section === 'provider-plans') {
     $admin = MikroTikModule::admin(db());
     $body = MikroTikSection::render($admin, $lang, csrf_token());
     $title = 'MikroTik WireGuard';
-    $subtitle = $lang === 'fa' ? 'مدیریت RouterOS، WireGuard، کاربران و پلن‌ها' : 'Manage RouterOS, WireGuard peers and plans';
+    $subtitle = $lang === 'fa' ? 'مدیریت RouterOS، WireGuard، کاربران و پلن‌ها' : 'Manage RouterOS, WireGuard, peers and plans';
 }
 
 $titleEsc = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
