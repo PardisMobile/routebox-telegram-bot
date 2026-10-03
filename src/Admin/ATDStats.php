@@ -63,11 +63,14 @@ final class ATDStats
 
     private static function systemInfo(): array
     {
-        $cpu = null;
+        // The admin web service runs with open_basedir limited to the application
+        // directory, so direct PHP access to /proc can be blocked. shell_exec()
+        // is already available in this deployment (nproc is used below), so read
+        // the host metrics through standard system commands instead.
         $readCpu = static function (): ?array {
-            $line = @file('/proc/stat', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            if (!$line) return null;
-            foreach ($line as $row) {
+            $raw = @shell_exec('/bin/cat /proc/stat 2>/dev/null');
+            if (!is_string($raw) || $raw === '') return null;
+            foreach (preg_split('/\r?\n/', $raw) as $row) {
                 if (strpos($row, 'cpu ') !== 0) continue;
                 $parts = preg_split('/\s+/', trim($row));
                 if (count($parts) < 5) return null;
@@ -78,6 +81,8 @@ final class ATDStats
             }
             return null;
         };
+
+        $cpu = null;
         $a = $readCpu();
         if ($a !== null) {
             usleep(100000);
@@ -85,24 +90,37 @@ final class ATDStats
             if ($b !== null) {
                 $total = $b[0] - $a[0];
                 $idle = $b[1] - $a[1];
-                if ($total > 0) $cpu = max(0, min(100, round((1 - ($idle / $total)) * 100, 1)));
+                if ($total > 0) {
+                    $cpu = max(0, min(100, round((1 - ($idle / $total)) * 100, 1)));
+                }
             }
         }
 
         $memTotal = 0;
         $memAvailable = 0;
-        $mem = @file('/proc/meminfo', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        foreach ($mem ?: [] as $line) {
-            if (preg_match('/^MemTotal:\s+(\d+)\s+kB$/', $line, $m)) $memTotal = (int)$m[1] * 1024;
-            elseif (preg_match('/^MemAvailable:\s+(\d+)\s+kB$/', $line, $m)) $memAvailable = (int)$m[1] * 1024;
+        $memRaw = @shell_exec('/bin/cat /proc/meminfo 2>/dev/null');
+        foreach (preg_split('/\r?\n/', is_string($memRaw) ? $memRaw : '') as $line) {
+            if (preg_match('/^MemTotal:\s+(\d+)\s+kB$/', trim($line), $m)) {
+                $memTotal = (int)$m[1] * 1024;
+            } elseif (preg_match('/^MemAvailable:\s+(\d+)\s+kB$/', trim($line), $m)) {
+                $memAvailable = (int)$m[1] * 1024;
+            }
         }
         $memUsed = max(0, $memTotal - $memAvailable);
         $memPct = $memTotal > 0 ? round(($memUsed / $memTotal) * 100, 1) : null;
 
-        $diskTotal = @disk_total_space('/');
-        $diskFree = @disk_free_space('/');
-        $diskUsed = ($diskTotal !== false && $diskFree !== false) ? max(0, $diskTotal - $diskFree) : 0;
-        $diskPct = ($diskTotal !== false && $diskTotal > 0) ? round(($diskUsed / $diskTotal) * 100, 1) : null;
+        $diskTotal = 0;
+        $diskUsed = 0;
+        $diskRaw = @shell_exec('/bin/df -B1 / 2>/dev/null');
+        $diskLines = preg_split('/\r?\n/', trim(is_string($diskRaw) ? $diskRaw : ''));
+        if (is_array($diskLines) && count($diskLines) > 1) {
+            $last = trim((string)end($diskLines));
+            if (preg_match('/\s+(\d+)\s+(\d+)\s+(\d+)\s+\d+%\s+\S+$/', $last, $m)) {
+                $diskTotal = (int)$m[1];
+                $diskUsed = (int)$m[2];
+            }
+        }
+        $diskPct = $diskTotal > 0 ? round(($diskUsed / $diskTotal) * 100, 1) : null;
 
         $formatBytes = static function (int $bytes): string {
             if ($bytes <= 0) return '—';
@@ -111,14 +129,20 @@ final class ATDStats
             return number_format($gb, 1) . ' GB';
         };
 
+        $cores = (int)@shell_exec('/usr/bin/nproc 2>/dev/null');
+        if ($cores <= 0) {
+            $cpuInfo = @shell_exec('/bin/grep -c "^processor" /proc/cpuinfo 2>/dev/null');
+            $cores = (int)trim((string)$cpuInfo);
+        }
+
         return [
             'cpu' => $cpu,
-            'cores' => (int)@shell_exec('/usr/bin/nproc 2>/dev/null') ?: (int)@preg_match_all('/^processor\s*:/m', (string)@file_get_contents('/proc/cpuinfo')),
+            'cores' => $cores,
             'ram_used' => $formatBytes($memUsed),
             'ram_total' => $formatBytes($memTotal),
             'ram_pct' => $memPct,
             'disk_used' => $formatBytes($diskUsed),
-            'disk_total' => $formatBytes((int)$diskTotal),
+            'disk_total' => $formatBytes($diskTotal),
             'disk_pct' => $diskPct,
         ];
     }
