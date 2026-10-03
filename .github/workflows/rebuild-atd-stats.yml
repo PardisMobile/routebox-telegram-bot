@@ -26,7 +26,7 @@ jobs:
       - name: Restore UI baseline files
         run: |
           set -euo pipefail
-          git fetch origin df05c42
+          git cat-file -e df05c42^{commit}
           git checkout df05c42 -- public/index.php public/index.core.php
 
       - name: Install new independent stats component
@@ -105,10 +105,7 @@ jobs:
                       ? self::providerStats($db, $provider)
                       : self::globalStats($db);
 
-                  $labels = $lang === 'fa'
-                      ? ['servers'=>'Servers','users'=>'Users','plans'=>'Plans','version'=>'Version']
-                      : ['servers'=>'Servers','users'=>'Users','plans'=>'Plans','version'=>'Version'];
-
+                  $labels = ['servers'=>'Servers','users'=>'Users','plans'=>'Plans','version'=>'Version'];
                   $esc = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                   $cards = [
                       [$labels['servers'], number_format($servers), '<path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/>'],
@@ -136,14 +133,12 @@ jobs:
 
           p = Path('public/index.core.php')
           s = p.read_text()
-
           start = s.find('<div class="stats">')
           if start < 0:
               raise SystemExit('Old stats row not found; refusing to modify index.core.php')
 
           depth = 0
           end = None
-          pos = start
           token = re.compile(r'</?div\b[^>]*>', re.I)
           for m in token.finditer(s, start):
               if m.group(0).lower().startswith('</div'):
@@ -157,8 +152,7 @@ jobs:
               raise SystemExit('Could not find balanced end of old stats row')
 
           replacement = "<?php\nrequire_once __DIR__ . '/../src/Admin/ATDStats.php';\n$atdStatsContext = (string)($_GET['atd_stats_context'] ?? $section);\necho \\RouteBox\\Admin\\ATDStats::render(db(), $atdStatsContext, $version, $lang);\n?>"
-          s = s[:start] + replacement + s[end:]
-          p.write_text(s)
+          p.write_text(s[:start] + replacement + s[end:])
           PY
 
       - name: Pass provider context through the existing shell
