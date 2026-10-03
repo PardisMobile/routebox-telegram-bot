@@ -149,25 +149,21 @@ $html = preg_replace('~<nav\b[^>]*>.*?</nav>~is', $nav, $html, 1) ?? $html;
 
 $style = <<<'CSS'
 <style id="atd-panel-nav-style">
-.app{grid-template-columns:330px minmax(0,1fr)}
-.atd-nav{display:flex;flex-direction:column;gap:5px;padding:8px 6px}
+/* Keep the original RouteBox sidebar sizing. ATD only adds hierarchy/sub-navigation. */
 .atd-nav-item,.atd-nav-subitem{box-sizing:border-box;text-decoration:none;transition:background .16s ease,transform .16s ease,box-shadow .16s ease}
-.atd-nav-item{display:flex;align-items:center;gap:11px;min-height:44px;padding:10px 12px;border-radius:12px;color:inherit;font-weight:650}
 .atd-nav-item:hover{background:rgba(127,127,127,.09);transform:translateX(-1px)}
 .atd-nav-item.active{background:rgba(127,127,127,.13);box-shadow:inset 3px 0 0 currentColor}
-.atd-nav-item .nav-icon{width:22px;min-width:22px;text-align:center;font-size:17px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
-.atd-nav-item .nav-icon svg{width:20px;height:20px;display:block;fill:currentColor;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.atd-nav-item .nav-icon{display:inline-flex;align-items:center;justify-content:center}
+.atd-nav-item .nav-icon svg{display:block;fill:currentColor;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .atd-nav-item>span:nth-child(2){flex:1;min-width:0;white-space:nowrap;overflow:visible;text-overflow:clip}
-.provider-item .nav-chevron{margin-inline-start:auto;opacity:.55;font-size:21px;line-height:1;transition:transform .16s ease}
+.provider-item .nav-chevron{margin-inline-start:auto;opacity:.55;line-height:1;transition:transform .16s ease}
 .atd-nav-group.expanded .nav-chevron{transform:rotate(90deg);opacity:.8}
-.atd-nav-sub{display:none;margin:1px 0 4px 45px;padding-left:9px;border-left:1px solid rgba(127,127,127,.22)}
+.atd-nav-sub{display:none;margin:0 0 2px 34px;padding-left:9px;border-left:1px solid rgba(127,127,127,.22)}
 .atd-nav-group.expanded .atd-nav-sub{display:block}
-.atd-nav-subitem{display:flex;align-items:center;gap:8px;min-height:36px;padding:7px 10px;border-radius:9px;color:inherit;font-size:.92em;font-weight:600;opacity:.78}
+.atd-nav-subitem{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;color:inherit;font-size:.9em;font-weight:600;opacity:.78}
 .atd-nav-subitem:hover{background:rgba(127,127,127,.08);opacity:1}
 .atd-nav-subitem.active{background:rgba(127,127,127,.11);opacity:1}
-.atd-nav-subitem .sub-dot{opacity:.55;font-size:16px}
-@media (max-width:1100px){.app{grid-template-columns:300px minmax(0,1fr)}}
-@media (max-width:850px){.app{grid-template-columns:270px minmax(0,1fr)}}
+.atd-nav-subitem .sub-dot{opacity:.55;font-size:15px}
 </style>
 CSS;
 if (stripos($html, '</head>') !== false) {
