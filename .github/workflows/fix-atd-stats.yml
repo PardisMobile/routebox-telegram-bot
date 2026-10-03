@@ -1,0 +1,106 @@
+name: Fix ATD stats cards
+
+on:
+  push:
+    branches: [ATD-Panel]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch ATD stats cards
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('public/index.core.php')
+          s = p.read_text()
+
+          old_data = """$users = (int)db()->query('SELECT COUNT(*) FROM telegram_users')->fetchColumn();
+          $plans = db()->query('SELECT * FROM plans ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);"""
+          new_data = r'''$users = (int)db()->query('SELECT COUNT(*) FROM telegram_users')->fetchColumn();
+          $plans = db()->query('SELECT * FROM plans ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
+
+          /* ATD stats: global on Dashboard/Telegram Bot, provider-scoped on RouteBox Servers. */
+          $providerServerCount = static function (string $table): int {
+              if (!in_array($table, ['routebox_servers', 'ibsng_servers', 'mikrotik_servers'], true)) return 0;
+              $exists = db()->prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1");
+              $exists->execute([$table]);
+              if ($exists->fetchColumn() === false) return 0;
+              return (int)db()->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
+          };
+          $globalServerCount = $providerServerCount('routebox_servers') + $providerServerCount('ibsng_servers') + $providerServerCount('mikrotik_servers');
+          $globalPlanCount = (int)db()->query("SELECT COUNT(*) FROM service_plans")->fetchColumn();
+          $routeboxUserCount = (int)db()->query('SELECT COUNT(DISTINCT telegram_user_id) FROM provisions')->fetchColumn();
+          $routeboxPlanCount = (int)db()->query("SELECT COUNT(*) FROM service_plans WHERE provider_key='routebox'")->fetchColumn();
+          $routeboxConnectedCount = 0;
+          foreach ($servers as $sv) { if ((int)$sv['enabled'] === 1) $routeboxConnectedCount++; }
+          $routeboxStatusServer = $servers[0] ?? null;'''
+          new_data = '\n'.join(line[10:] if line.startswith('          ') else line for line in new_data.splitlines())
+          if old_data not in s:
+              raise SystemExit('ATD stats data anchor not found')
+          s = s.replace(old_data, new_data, 1)
+
+          old_stats = '''  <div class="stats">
+            <div class="stat"><div class="stat-top"><span><?=$T['servers']?></span><span class="stat-icon"><?=navIcon('servers')?></span></div><b><?=count($servers)?></b></div>
+            <div class="stat"><div class="stat-top"><span><?=$T['users']?></span><span class="stat-icon"><?=navIcon('bot')?></span></div><b><?=number_format($users)?></b></div>
+            <div class="stat"><div class="stat-top"><span><?=$T['plans']?></span><span class="stat-icon"><?=navIcon('plans')?></span></div><b><?=count($plans)?></b></div>
+            <div class="stat"><div class="stat-top"><span><?=$T['version']?></span><span class="stat-icon"><?=navIcon('updates')?></span></div><b style="font-size:18px">v<?=h($version)?></b></div>
+          </div>'''
+          new_stats = '''  <?php
+          $statsServers = count($servers);
+          $statsUsers = $users;
+          $statsPlans = count($plans);
+          $statsGlobal = $section === 'dashboard' || $section === 'bot';
+          $statsServerStatus = $section === 'servers';
+          if ($statsGlobal) {
+              $statsServers = $globalServerCount;
+              $statsPlans = $globalPlanCount;
+          } elseif ($statsServerStatus) {
+              $statsUsers = $routeboxUserCount;
+              $statsPlans = $routeboxPlanCount;
+          }
+          ?>
+          <div class="stats">
+            <div class="stat"><div class="stat-top"><span><?=$T['servers']?></span><span class="stat-icon"><?=navIcon('servers')?></span></div><b><?=number_format($statsServers)?></b></div>
+            <div class="stat"><div class="stat-top"><span><?=$T['users']?></span><span class="stat-icon"><?=navIcon('bot')?></span></div><b><?=number_format($statsUsers)?></b></div>
+            <div class="stat"><div class="stat-top"><span><?=$T['plans']?></span><span class="stat-icon"><?=navIcon('plans')?></span></div><b><?=number_format($statsPlans)?></b></div>
+            <?php if ($statsServerStatus): ?>
+            <div class="stat">
+              <div class="stat-top"><span><?=$lang==='fa'?'وضعیت سرور':'Server Status'?></span><span class="stat-icon"><?=navIcon('servers')?></span></div>
+              <?php if ($routeboxStatusServer): ?>
+                <b style="font-size:16px" class="state-ok">● <?=$routeboxConnectedCount?> <?=$lang==='fa'?'متصل':'Connected'?></b>
+                <div style="margin-top:7px;font-size:11px;color:var(--muted);direction:ltr;text-align:left"><?=h((string)($routeboxStatusServer['base_url'] ?? ''))?></div>
+                <div style="margin-top:4px;font-size:11px;color:var(--muted)">⚡ <?= $routeboxStatusServer['ping_ms'] !== null ? h((string)$routeboxStatusServer['ping_ms']).' ms' : '—' ?> · <?=h(countryFlag((string)$routeboxStatusServer['country_code']))?></div>
+                <div class="form-actions" style="margin-top:9px">
+                  <form method="post"><input type="hidden" name="csrf_token" value="<?=h(csrf_token())?>"><input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="servers"><input type="hidden" name="id" value="<?=h((string)$routeboxStatusServer['id'])?>"><button class="btn btn-secondary" type="submit">↻ <?=$lang==='fa'?'رفرش / تست':'Refresh / Check'?></button></form>
+                </div>
+              <?php else: ?>
+                <b style="font-size:15px;color:var(--muted)"><?=$lang==='fa'?'سروری ثبت نشده':'No server configured'?></b>
+              <?php endif; ?>
+            </div>
+            <?php else: ?>
+            <div class="stat"><div class="stat-top"><span><?=$T['version']?></span><span class="stat-icon"><?=navIcon('updates')?></span></div><b style="font-size:18px">v<?=h($version)?></b></div>
+            <?php endif; ?>
+          </div>'''
+          if old_stats not in s:
+              raise SystemExit('ATD stats HTML anchor not found')
+          s = s.replace(old_stats, new_stats, 1)
+          p.write_text(s)
+          PY
+
+          php -l public/index.core.php
+          git diff --check
+
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/index.core.php
+          git commit -m 'fix(admin): correct global and RouteBox stats cards' || exit 0
+          git push
