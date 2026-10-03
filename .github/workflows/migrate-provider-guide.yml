@@ -1,0 +1,74 @@
+name: Migrate Provider Guide Renderer
+
+on:
+  push:
+    branches: [ATD-Panel]
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ATD-Panel
+        uses: actions/checkout@v4
+        with:
+          ref: ATD-Panel
+          fetch-depth: 1
+
+      - name: Replace database-backed Provider Guide with file-backed renderer
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/Admin/ATDPanelSections.php')
+          text = path.read_text(encoding='utf-8')
+
+          text, n = re.subn(
+              r'\n        \$db->exec\(\\"CREATE TABLE IF NOT EXISTS provider_admin_guides.*?\n',
+              '\n', text, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('provider_admin_guides schema line not found')
+
+          text, n = re.subn(
+              r'\n        \$guides=\[\n            \'routebox\'.*?\n        foreach\(\$guides as \$key=>\$g\)\$ins->execute\(\[\$key,\$g\[0\],\$g\[1\],\$g\[2\],\$g\[3\],\$now,\$now\]\);',
+              '', text, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('provider guide seed block not found')
+
+          text, n = re.subn(
+              r'\n        if \(\$action === \'save_provider_guide\'\) \{.*?\n        \}\n',
+              '', text, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('save_provider_guide action not found')
+
+          text, n = re.subn(
+              r'\n    public static function renderProviderGuide\(PDO \$db,string \$provider,string \$lang,string \$csrf\): string \{.*?\n    \}\n\n    public static function renderUsers',
+              '\n    public static function renderProviderGuide(PDO $db,string $provider,string $lang,string $csrf): string {\n        return ProviderGuideSection::render($provider, $lang);\n    }\n\n    public static function renderUsers',
+              text, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('renderProviderGuide method not found')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Remove temporary migration workflow
+        run: rm -f .github/workflows/migrate-provider-guide.yml
+
+      - name: Validate PHP
+        run: |
+          php -l src/Admin/ATDPanelSections.php
+          php -l src/Admin/ProviderGuideSection.php
+          php -l docs/providers/manifest.php
+
+      - name: Commit migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/Admin/ATDPanelSections.php src/Admin/ProviderGuideSection.php docs/providers .github/workflows/migrate-provider-guide.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "refactor: make provider guides repository-managed"
+          git push origin HEAD:ATD-Panel
