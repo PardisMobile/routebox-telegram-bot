@@ -88,6 +88,7 @@ use RouteBox\Integrations\MikroTik\MikroTikModule;
 use RouteBox\Integrations\MikroTik\MikroTikSection;
 
 $lang = (string)($_SESSION['panel_lang'] ?? 'fa') === 'en' ? 'en' : 'fa';
+require_once __DIR__ . '/../src/Admin/ATDStats.php';
 
 /* Preserve the original SVG sidebar icon set from the RouteBox shell. */
 $navIcon = static function (string $key): string {
