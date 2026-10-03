@@ -6,6 +6,7 @@ declare(strict_types=1);
 $requestedSection = (string)($_GET['section'] ?? 'dashboard');
 $section = $requestedSection;
 $isProviderPlans = $requestedSection === 'provider-plans';
+$isAtdExtra = in_array($requestedSection, ['users','user-details','payment-settings','provider-guide'], true);
 
 if (in_array($requestedSection, ['ibsng', 'mikrotik'], true) && (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST')) {
     require __DIR__ . '/../src/bootstrap.php';
@@ -41,8 +42,26 @@ if ($isProviderPlans && (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST')) {
     exit;
 }
 
+if ($isAtdExtra && (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST')) {
+    require __DIR__ . '/../src/bootstrap.php';
+    require_admin();
+    require_once __DIR__ . '/../src/Admin/ATDPanelSections.php';
+    verify_csrf();
+    try {
+        $return = \RouteBox\Admin\ATDPanelSections::handle(db(), $_POST);
+        $_SESSION['flash'] = '✓ Saved.';
+    } catch (Throwable $e) {
+        $_SESSION['flash'] = '❌ ' . $e->getMessage();
+        log_event('error', 'ATD admin action failed: ' . $e->getMessage());
+        $return = $requestedSection;
+    }
+    header('Location: /?section=' . $return);
+    exit;
+}
+
 /* Every section uses the exact existing Admin shell; special sections replace only the body. */
-if (!in_array($requestedSection, ['ibsng', 'mikrotik', 'provider-plans'], true)) {
+$specialSections = ['ibsng', 'mikrotik', 'provider-plans', 'users', 'user-details', 'payment-settings', 'provider-guide'];
+if (!in_array($requestedSection, $specialSections, true)) {
     ob_start();
     require __DIR__ . '/index.core.php';
     $html = (string)ob_get_clean();
@@ -61,6 +80,7 @@ require_once __DIR__ . '/../src/Integrations/IBSng/IBSngModule.php';
 require_once __DIR__ . '/../src/Integrations/IBSng/IBSngSection.php';
 require_once __DIR__ . '/../src/Integrations/MikroTik/MikroTikModule.php';
 require_once __DIR__ . '/../src/Integrations/MikroTik/MikroTikSection.php';
+require_once __DIR__ . '/../src/Admin/ATDPanelSections.php';
 
 use RouteBox\Integrations\IBSng\IBSngModule;
 use RouteBox\Integrations\IBSng\IBSngSection;
@@ -77,6 +97,8 @@ $navIcon = static function (string $key): string {
         'bot' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3m-5 2h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3Z"/><path d="M8 13h.01M16 13h.01M9 17h6"/></svg>',
         'ibsng' => '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 9h8M8 13h5M8 17h3"/></svg>',
         'mikrotik' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 17v2M17 17v2"/><circle cx="8" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="16" cy="12" r="1"/></svg>',
+        'users' => '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20c.6-4 2.5-6 6-6s5.4 2 6 6"/><path d="M16 6.5a3 3 0 0 1 0 5.8M17 14c2.2.7 3.5 2.3 4 6"/></svg>',
+        'payment' => '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg>',
         'security' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v6c0 5-3.2 8-8 9-4.8-1-8-4-8-9V6l8-3Z"/><path d="m9 12 2 2 4-4"/></svg>',
         'updates' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.9-4L3 10m0 0V5m0 5h5M4 13a8 8 0 0 0 14.9 4L21 14m0 0v5m0-5h-5"/></svg>',
     ];
@@ -92,10 +114,16 @@ $planActive = static function (string $provider) use ($section): string {
     if ($section !== 'provider-plans') return '';
     return trim((string)($_GET['provider'] ?? 'routebox')) === $provider ? ' active' : '';
 };
+$guideActive = static function (string $provider) use ($section): string {
+    if ($section !== 'provider-guide') return '';
+    return trim((string)($_GET['provider'] ?? 'routebox')) === $provider ? ' active' : '';
+};
 
 $nav = '<nav class="nav atd-nav" aria-label="' . $label('ناوبری پنل', 'Panel navigation') . '">';
 $nav .= '<a class="atd-nav-item' . $active('dashboard') . '" href="/?section=dashboard"><span class="nav-icon">' . $navIcon('dashboard') . '</span><span>' . $label('داشبورد', 'Dashboard') . '</span></a>';
-$nav .= '<a class="atd-nav-item' . $active('bot') . '" href="/?section=bot"><span class="nav-icon">' . $navIcon('bot') . '</span><span>' . $label('ربات تلگرام', 'Telegram Bot') . '</span></a>';
+$nav .= '<div class="atd-nav-group' . ($section === 'bot' || $section === 'bot-guides' ? ' expanded' : '') . '">';
+$nav .= '<a class="atd-nav-item provider-item' . ($section === 'bot' ? ' active' : '') . '" href="/?section=bot"><span class="nav-icon">' . $navIcon('bot') . '</span><span>' . $label('ربات تلگرام', 'Telegram Bot') . '</span><span class="nav-chevron">›</span></a>';
+$nav .= '<div class="atd-nav-sub"><a class="atd-nav-subitem' . ($section === 'bot-guides' ? ' active' : '') . '" href="/?section=bot-guides"><span class="sub-dot">•</span><span>' . $label('راهنمای استفاده', 'Usage Guides') . '</span></a></div></div>';
 
 $providers = [
     'routebox' => ['section'=>'servers','fa'=>'Routebox Servers','en'=>'Routebox Servers','icon'=>'servers'],
@@ -105,22 +133,23 @@ $providers = [
 foreach ($providers as $providerKey => $provider) {
     $providerUrl = '/?section=' . rawurlencode($provider['section']);
     $planUrl = '/?section=provider-plans&provider=' . rawurlencode($providerKey);
-    $providerIsActive = $section === $provider['section'] || ($section === 'provider-plans' && trim((string)($_GET['provider'] ?? 'routebox')) === $providerKey);
+    $guideUrl = '/?section=provider-guide&provider=' . rawurlencode($providerKey);
+    $providerIsActive = $section === $provider['section'] || ($section === 'provider-plans' && trim((string)($_GET['provider'] ?? 'routebox')) === $providerKey) || ($section === 'provider-guide' && trim((string)($_GET['provider'] ?? 'routebox')) === $providerKey);
     $nav .= '<div class="atd-nav-group' . ($providerIsActive ? ' expanded' : '') . '">';
     $nav .= '<a class="atd-nav-item provider-item' . ($section === $provider['section'] ? ' active' : '') . '" href="' . $providerUrl . '"><span class="nav-icon">' . $navIcon($provider['icon']) . '</span><span>' . $label($provider['fa'], $provider['en']) . '</span><span class="nav-chevron">›</span></a>';
-    $nav .= '<div class="atd-nav-sub"><a class="atd-nav-subitem' . $planActive($providerKey) . '" href="' . $planUrl . '"><span class="sub-dot">•</span><span>' . $label('Plans','Plans') . '</span></a></div></div>';
+    $nav .= '<div class="atd-nav-sub"><a class="atd-nav-subitem' . $planActive($providerKey) . '" href="' . $planUrl . '"><span class="sub-dot">•</span><span>' . $label('Plans','Plans') . '</span></a><a class="atd-nav-subitem' . $guideActive($providerKey) . '" href="' . $guideUrl . '"><span class="sub-dot">•</span><span>' . $label('راهنمای Provider','Provider Guide') . '</span></a></div></div>';
 }
+$nav .= '<a class="atd-nav-item' . ($section === 'users' || $section === 'user-details' ? ' active' : '') . '" href="/?section=users"><span class="nav-icon">' . $navIcon('users') . '</span><span>' . $label('کاربران', 'Users') . '</span></a>';
+$nav .= '<a class="atd-nav-item' . $active('payment-settings') . '" href="/?section=payment-settings"><span class="nav-icon">' . $navIcon('payment') . '</span><span>' . $label('تنظیمات پرداخت', 'Payment Settings') . '</span></a>';
 $nav .= '<a class="atd-nav-item' . $active('security') . '" href="/?section=security"><span class="nav-icon">' . $navIcon('security') . '</span><span>' . $label('امنیت', 'Security') . '</span></a>';
 $nav .= '<a class="atd-nav-item' . $active('updates') . '" href="/?section=updates"><span class="nav-icon">' . $navIcon('updates') . '</span><span>' . $label('به‌روزرسانی', 'Updates') . '</span></a>';
 $nav .= '</nav>';
 
-/* Replace only navigation markup; all existing page bodies and integrations stay untouched. */
 $html = preg_replace('~<nav\b[^>]*>.*?</nav>~is', $nav, $html, 1) ?? $html;
 
 $style = <<<'CSS'
 <style id="atd-panel-nav-style">
-/* ATD sidebar: preserve original icons and improve only width, spacing and hierarchy. */
-.app{grid-template-columns:300px minmax(0,1fr)}
+.app{grid-template-columns:330px minmax(0,1fr)}
 .atd-nav{display:flex;flex-direction:column;gap:5px;padding:8px 6px}
 .atd-nav-item,.atd-nav-subitem{box-sizing:border-box;text-decoration:none;transition:background .16s ease,transform .16s ease,box-shadow .16s ease}
 .atd-nav-item{display:flex;align-items:center;gap:11px;min-height:44px;padding:10px 12px;border-radius:12px;color:inherit;font-weight:650}
@@ -137,18 +166,18 @@ $style = <<<'CSS'
 .atd-nav-subitem:hover{background:rgba(127,127,127,.08);opacity:1}
 .atd-nav-subitem.active{background:rgba(127,127,127,.11);opacity:1}
 .atd-nav-subitem .sub-dot{opacity:.55;font-size:16px}
-@media (max-width:1050px){.app{grid-template-columns:270px minmax(0,1fr)}}
+@media (max-width:1100px){.app{grid-template-columns:300px minmax(0,1fr)}}
+@media (max-width:850px){.app{grid-template-columns:270px minmax(0,1fr)}}
 </style>
 CSS;
 if (stripos($html, '</head>') !== false) {
     $html = preg_replace('~</head>~i', $style . '</head>', $html, 1) ?? $html;
 }
 
-/* ATD Panel is the product name; keep the existing brand icon and layout. */
 $html = str_replace('RouteBox Admin', 'ATD Panel', $html);
 $html = str_replace('Telegram Bot Control Center', 'Multi-Service Control Center', $html);
 
-if ($section !== 'ibsng' && $section !== 'mikrotik' && $section !== 'provider-plans') {
+if ($section !== 'ibsng' && $section !== 'mikrotik' && $section !== 'provider-plans' && !$isAtdExtra && $section !== 'bot-guides') {
     echo $html;
     exit;
 }
@@ -162,6 +191,28 @@ if ($section === 'provider-plans') {
     $body = \RouteBox\Admin\Plans\ProviderPlansSection::render(db(), $provider, $lang, csrf_token());
     $title = $lang === 'fa' ? 'مدیریت پلن‌ها' : 'Plan Management';
     $subtitle = $lang === 'fa' ? 'مدیریت یکپارچه پلن‌های Provider' : 'Shared provider-scoped plan management';
+} elseif ($section === 'provider-guide') {
+    $provider = trim((string)($_GET['provider'] ?? 'routebox'));
+    if (!in_array($provider, ['routebox', 'ibsng', 'mikrotik_wireguard'], true)) $provider = 'routebox';
+    $body = \RouteBox\Admin\ATDPanelSections::renderProviderGuide(db(), $provider, $lang, csrf_token());
+    $title = $lang === 'fa' ? 'راهنمای Provider' : 'Provider Guide';
+    $subtitle = $lang === 'fa' ? 'راهنمای اختصاصی مدیریت و اتصال Provider' : 'Provider-specific administration and connection guide';
+} elseif ($section === 'users') {
+    $body = \RouteBox\Admin\ATDPanelSections::renderUsers(db(), $lang, csrf_token());
+    $title = $lang === 'fa' ? 'کاربران' : 'Users';
+    $subtitle = $lang === 'fa' ? 'مدیریت کاربران ربات و سرویس‌های آن‌ها' : 'Manage Telegram bot users and their services';
+} elseif ($section === 'user-details') {
+    $body = \RouteBox\Admin\ATDPanelSections::renderUserDetails(db(), (int)($_GET['id'] ?? 0), $lang, csrf_token());
+    $title = $lang === 'fa' ? 'جزئیات کاربر' : 'User Details';
+    $subtitle = $lang === 'fa' ? 'سرویس‌ها و اشتراک‌های کاربر' : 'User services and subscriptions';
+} elseif ($section === 'payment-settings') {
+    $body = \RouteBox\Admin\ATDPanelSections::renderPayments(db(), $lang, csrf_token());
+    $title = $lang === 'fa' ? 'تنظیمات پرداخت' : 'Payment Settings';
+    $subtitle = $lang === 'fa' ? 'زیرساخت مشترک پرداخت برای همه Providerها' : 'Shared payment foundation for all providers';
+} elseif ($section === 'bot-guides') {
+    $body = \RouteBox\Admin\ATDPanelSections::renderBot(db(), $lang, csrf_token());
+    $title = $lang === 'fa' ? 'راهنمای ربات' : 'Telegram Bot Usage Guides';
+    $subtitle = $lang === 'fa' ? 'راهنمای عمومی و راهنمای اتصال هر سرویس' : 'General and per-service connection guides';
 } elseif ($section === 'ibsng') {
     $admin = IBSngModule::admin(db());
     $body = IBSngSection::render($admin, $lang, csrf_token());
