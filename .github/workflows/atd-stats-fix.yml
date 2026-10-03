@@ -1,0 +1,45 @@
+name: Fix existing admin stats row
+
+on:
+  push:
+    branches: [ATD-Panel]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch existing stats context
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('public/index.core.php')
+          s = p.read_text()
+
+          old = '$statsServers = $globalServerCount;'
+          new = "$statsServers = $section === 'servers' ? count($servers) : $globalServerCount;"
+          if old not in s:
+              raise SystemExit('Expected existing stats assignment was not found; refusing to modify the file.')
+          s2 = s.replace(old, new, 1)
+          if s2 == s:
+              raise SystemExit('Stats patch made no change.')
+          p.write_text(s2)
+          PY
+
+          php -l public/index.core.php
+          php -l public/index.php
+          git diff --check
+
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/index.core.php
+          git commit -m 'fix(admin): scope existing stats row by section'
+          git push
