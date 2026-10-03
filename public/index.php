@@ -8,7 +8,7 @@ $section = $requestedSection;
 $isProviderPlans = $requestedSection === 'provider-plans';
 $isAtdExtra = in_array($requestedSection, ['users','user-details','payment-settings','provider-guide'], true);
 
-if (in_array($requestedSection, ['ibsng', 'mikrotik'], true) && (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST')) {
+if (in_array($requestedSection, ['ibsng', 'mikrotik'], true) && (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') ) {
     require __DIR__ . '/../src/bootstrap.php';
     require_admin();
     if ($requestedSection === 'ibsng') {
@@ -154,7 +154,7 @@ $style = <<<'CSS'
 .atd-nav-item:hover{background:rgba(127,127,127,.09);transform:translateX(-1px)}
 .atd-nav-item.active{background:rgba(127,127,127,.13);box-shadow:inset 3px 0 0 currentColor}
 .atd-nav-item .nav-icon{display:inline-flex;align-items:center;justify-content:center}
-.atd-nav-item .nav-icon svg{display:block;fill:currentColor;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.atd-nav-item .nav-icon svg{display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .atd-nav-item>span:nth-child(2){flex:1;min-width:0;white-space:nowrap;overflow:visible;text-overflow:clip}
 .provider-item .nav-chevron{margin-inline-start:auto;opacity:.55;line-height:1;transition:transform .16s ease}
 .atd-nav-group.expanded .nav-chevron{transform:rotate(90deg);opacity:.8}
