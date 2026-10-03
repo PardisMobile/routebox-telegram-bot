@@ -48,7 +48,8 @@ jobs:
           if '$botWorkerStatus' not in s:
               s = s.replace(anchor, insert, 1)
 
-          new = '''<?php if ($statsServerStatus): ?>
+          replacement = '''<div class="stat"><div class="stat-top"><span><?=$T['plans']?></span><span class="stat-icon"><?=navIcon('plans')?></span></div><b><?=number_format($statsPlans)?></b></div>
+          <?php if ($statsServerStatus): ?>
           <div class="stat">
             <div class="stat-top"><span><?=$lang==='fa'?'وضعیت سرور':'Server Status'?></span><span class="stat-icon"><?=navIcon('servers')?></span></div>
             <?php if ($routeboxStatusServer): ?>
@@ -73,11 +74,12 @@ jobs:
           </div>
           <?php else: ?>
           <div class="stat"><div class="stat-top"><span><?=$T['version']?></span><span class="stat-icon"><?=navIcon('updates')?></span></div><b style="font-size:18px">v<?=h($version)?></b></div>
-          <?php endif; ?>'''
-          pattern = re.compile(r'<\?php if \(\$statsServerStatus\): \?>.*?<\?php endif; \?>', re.S)
-          s, n = pattern.subn(new, s, count=1)
+          <?php endif; ?>
+          </div>'''
+          pattern = re.compile(r'<div class="stat"><div class="stat-top"><span><\?=\$T\[\'plans\'\]\?></span><span class="stat-icon"><\?=navIcon\(\'plans\'\)\?></span></div><b><\?=number_format\(\$statsPlans\)\?></b></div>.*?\n\s*</div>\n\n\s*<\?php if\(\$section===\'dashboard\'\): \?>', re.S)
+          s, n = pattern.subn(replacement + "\n\n  <?php if($section==='dashboard'): ?>", s, count=1)
           if n != 1:
-              raise SystemExit('Bot stats HTML anchor not found')
+              raise SystemExit('Full ATD stats block anchor not found')
           p.write_text(s)
           PY
           php -l public/index.core.php
