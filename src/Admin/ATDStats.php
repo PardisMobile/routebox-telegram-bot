@@ -298,7 +298,7 @@ final class ATDStats
   function routeboxActions(){
     document.querySelectorAll(".server-list .server").forEach(function(server){
       if(server.dataset.atdActions==="1")return;
-      var idInput=server.querySelector('form input[name="id"]');
+      var idInput=server.querySelector("form input[name=\"id\"]");
       var btnrow=server.querySelector(".btnrow");
       if(!idInput||!btnrow)return;
       var id=idInput.value;
@@ -312,7 +312,7 @@ final class ATDStats
       var summary=document.createElement("summary");summary.className="btn btn-secondary atd-unified-action";summary.textContent="✎ Edit Server";details.appendChild(summary);
       var box=document.createElement("div");box.className="atd-server-edit-box";
       var form=document.createElement("form");form.method="post";form.action="/routebox-server-action.php";
-      form.appendChild(hidden("csrf_token",(document.querySelector('input[name="csrf_token"]')||{}).value||""));
+      form.appendChild(hidden("csrf_token",(document.querySelector("input[name=\"csrf_token\"]")||{}).value||""));
       form.appendChild(hidden("action","update_server"));form.appendChild(hidden("id",id));
       var grid=document.createElement("div");grid.className="atd-edit-grid";
       addField(grid,"Server name","name",name);addField(grid,"RouteBox panel URL","url",url);addField(grid,"Username (blank = unchanged)","username","");addField(grid,"Password (blank = unchanged)","password","","password");addField(grid,"Country code (blank = unchanged)","country_code","");
@@ -320,7 +320,7 @@ final class ATDStats
       var save=document.createElement("button");save.type="submit";save.className="btn btn-primary atd-unified-action";save.textContent="✓ Test & Save Changes";form.appendChild(save);
       box.appendChild(form);details.appendChild(box);actions.appendChild(details);
       var del=document.createElement("form");del.method="post";del.action="/routebox-server-action.php";del.onsubmit=function(){return confirm("Delete this RouteBox server?");};
-      del.appendChild(hidden("csrf_token",(document.querySelector('input[name="csrf_token"]')||{}).value||""));del.appendChild(hidden("action","delete_server"));del.appendChild(hidden("id",id));
+      del.appendChild(hidden("csrf_token",(document.querySelector("input[name=\"csrf_token\"]")||{}).value||""));del.appendChild(hidden("action","delete_server"));del.appendChild(hidden("id",id));
       var db=document.createElement("button");db.type="submit";db.className="btn atd-unified-action atd-unified-danger";db.textContent="× Delete Server";del.appendChild(db);actions.appendChild(del);
       btnrow.appendChild(actions);server.dataset.atdActions="1";
     });
@@ -328,17 +328,17 @@ final class ATDStats
   function providerButtons(){
     var section=new URLSearchParams(location.search).get("section");
     if(section==="ibsng"){
-      document.querySelectorAll('details > summary').forEach(function(s){if(s.textContent.trim()==="✎")s.textContent="✎ Edit Server";});
-      document.querySelectorAll('form button').forEach(function(b){if(/Delete Server/i.test(b.textContent)){b.classList.remove("btn-secondary");b.classList.add("atd-unified-action","atd-unified-danger");b.style.removeProperty("color");b.style.removeProperty("border-color");}});
+      document.querySelectorAll("details > summary").forEach(function(s){if(s.textContent.trim()==="✎")s.textContent="✎ Edit Server";});
+      document.querySelectorAll("form button").forEach(function(b){if(/Delete Server/i.test(b.textContent)){b.classList.remove("btn-secondary");b.classList.add("atd-unified-action","atd-unified-danger");b.style.removeProperty("color");b.style.removeProperty("border-color");}});
     }
     if(section==="mikrotik"){
-      document.querySelectorAll('details > summary').forEach(function(s){if(/Edit Server/i.test(s.textContent)){s.classList.remove("btn-primary");s.classList.add("btn-secondary","atd-unified-action");}});
-      document.querySelectorAll('form input[name="action"][value="test_server"]').forEach(function(input){
-        var form=input.closest("form");var id=input.parentElement&&input.parentElement.querySelector('input[name="id"]');var actions=form?form.parentElement:null;
+      document.querySelectorAll("details > summary").forEach(function(s){if(/Edit Server/i.test(s.textContent)){s.classList.remove("btn-primary");s.classList.add("btn-secondary","atd-unified-action");}});
+      document.querySelectorAll("form input[name=\"action\"][value=\"test_server\"]").forEach(function(input){
+        var form=input.closest("form");var id=input.parentElement&&input.parentElement.querySelector("input[name=\"id\"]");var actions=form?form.parentElement:null;
         if(!form||!actions||actions.dataset.atdDelete==="1")return;
         var serverId=id?id.value:"";if(!serverId)return;
         var del=document.createElement("form");del.method="post";del.onsubmit=function(){return confirm("Delete this MikroTik server?");};
-        var csrf=(document.querySelector('input[name="csrf_token"]')||{}).value||"";del.appendChild(hidden("csrf_token",csrf));del.appendChild(hidden("action","delete_server"));del.appendChild(hidden("id",serverId));
+        var csrf=(document.querySelector("input[name=\"csrf_token\"]")||{}).value||"";del.appendChild(hidden("csrf_token",csrf));del.appendChild(hidden("action","delete_server"));del.appendChild(hidden("id",serverId));
         var b=document.createElement("button");b.type="submit";b.className="btn atd-unified-action atd-unified-danger";b.textContent="× Delete Server";del.appendChild(b);actions.appendChild(del);actions.dataset.atdDelete="1";
       });
     }
