@@ -25,3 +25,26 @@ if ($__atdRouteboxAlias) {
 }
 
 require __DIR__ . '/index.legacy.php';
+
+// Keep provider/server names compact in Persian mode. The legacy localization
+// helper translates these labels into longer Persian phrases; ATD keeps the
+// provider names in English to preserve the compact desktop sidebar baseline.
+echo <<<'HTML'
+<script>
+(function(){
+    const restoreProviderLabels = function(){
+        const labels = {
+            'سرورهای RouteBox': 'RouteBox Servers',
+            'سرورهای Routebox': 'Routebox Servers',
+            'سرورهای IBSng': 'IBSng Servers',
+            'سرورهای MikroTik WireGuard': 'MikroTik WireGuard'
+        };
+        document.querySelectorAll('.sidebar .nav span').forEach(function(el){
+            const text = (el.textContent || '').trim();
+            if (labels[text]) el.textContent = labels[text];
+        });
+    };
+    restoreProviderLabels();
+})();
+</script>
+HTML;
