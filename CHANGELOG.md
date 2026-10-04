@@ -6,6 +6,21 @@ Version source of truth: [`VERSION`](./VERSION)
 
 ## 0.1.0-beta.11.05 — Current milestone
 
+### 🎨 ATD Panel UI normalization — completed baseline
+
+- Unified RouteBox, IBSng and MikroTik provider/server status presentation.
+- Preserved server status, country flag/location and ping information instead of replacing it with generic Version cards.
+- Added and positioned the four Users summary cards directly below the Users page heading: RouteBox Users, IBSng Users, MikroTik Users and Telegram Bot Users.
+- Unified Connected / Running status-pill styling with the existing panel language.
+- Unified provider plan action rows so Edit Plan, Disable and Delete use the same button treatment.
+- Added explicit Close behavior and Escape-to-close for compact plan edit panels without changing the existing plan update logic.
+- Kept `Provider Plan Key` conditional: manual/required for IBSng because it represents the real IBSng group name; not a manual requirement for RouteBox/MikroTik provider-generated keys.
+- Moved IBSng and MikroTik server lists before their Add Server forms when servers already exist.
+- Added bounded MikroTik peer pagination at 50 peers per page so large peer sets do not become one unbounded visible list.
+- Removed UI-injected RouteBox/MikroTik Delete Server controls because those providers currently do not expose server deletion in the supported capability matrix.
+- Kept IBSng Edit Server + Delete Server and MikroTik Edit Server as visible provider-supported actions.
+- Fixed provider country-flag rendering for Chrome/Edge by using flag image assets with country-code fallback instead of relying on regional-indicator emoji fonts.
+
 ### 🔵 Completed IBSng modular-service milestone
 
 - Completed the modular IBSng provider integration without replacing the existing RouteBox/AWG provisioning path.
@@ -118,3 +133,4 @@ Version source of truth: [`VERSION`](./VERSION)
 - Existing RouteBox provisioning must remain backward-compatible.
 - Telegram Bot Admin permissions are independent from IBSng `owner` / `owner_name`.
 - Payment integration must remain provider-independent.
+- ATD Panel UI work must not rewrite provider APIs, provisioning functions, peer allocation logic or other protected provider behavior.
