@@ -1,0 +1,51 @@
+name: Integrate ATD Telegram Admin
+
+on:
+  push:
+    branches: [ATD-Panel]
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch existing Worker integration point
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('worker.php')
+          s = p.read_text()
+          require = "require __DIR__ . '/src/Telegram/AdminBot.php';"
+          marker = "require __DIR__ . '/src/Services/ServiceProvisioner.php';"
+          if require not in s:
+              if marker not in s:
+                  raise SystemExit('Worker integration marker not found; refusing to rewrite worker.php')
+              s = s.replace(marker, marker + "\n" + require, 1)
+          hook = "            if (RouteBox\\Telegram\\AdminBot::handle($token, $chat, $from, $uid, $m, $cb)) continue;"
+          anchor = "            $uid = upsertUser($from);"
+          if hook not in s:
+              if anchor not in s:
+                  raise SystemExit('Worker user/update anchor not found; refusing to rewrite worker.php')
+              s = s.replace(anchor, anchor + "\n" + hook, 1)
+          p.write_text(s)
+          PY
+
+      - name: Validate
+        run: |
+          php -l worker.php
+          php -l src/Telegram/AdminBot.php
+          git diff --check
+
+      - name: Commit and remove one-time integration workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/atd-admin-integrate.yml
+          git add worker.php src/Telegram/AdminBot.php database/migrations/003_telegram_bot_admin.sql public/telegram-admins.php
+          git commit -m 'feat(admin): integrate Telegram Bot Admin into existing worker'
+          git push
