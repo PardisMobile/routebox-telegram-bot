@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main, ATD-Panel]
+  pull_request:
+    branches: [main, ATD-Panel]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate PHP files
+        run: |
+          set -e
+          find . -type f -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -r -n1 php -l
+
+      - name: Validate shell scripts
+        run: |
+          set -e
+          for file in install.sh installer-core.sh install-dev.sh install-dev-full.sh; do
+            if [ -f "$file" ]; then
+              bash -n "$file"
+            else
+              echo "ERROR: expected installer file missing: $file"
+              exit 1
+            fi
+          done
+
+      - name: Validate installer references
+        run: |
+          set -e
+          if grep -R --line-number --exclude-dir=.git --exclude='ci.yml' 'install-v2\.sh' .; then
+            echo 'ERROR: stale install-v2.sh reference found'
+            exit 1
+          fi
+
+      - name: Validate Git diff whitespace
+        run: git diff --check
