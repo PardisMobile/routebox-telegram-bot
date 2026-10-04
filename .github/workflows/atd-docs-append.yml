@@ -1,0 +1,26 @@
+name: ATD docs append
+on:
+  push:
+    branches: [ATD-Panel]
+permissions:
+  contents: write
+jobs:
+  append:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Append handoff note
+        run: |
+          python3 -c "from pathlib import Path; p=Path('ATD_PANEL_WORKING_NOTES.md'); s=p.read_text(); marker='## Telegram Bot Admin — implementation slice completed'; section='## Telegram Bot Admin — implementation slice completed\\n\\n- Independent Telegram Numeric ID authorization is implemented in src/Telegram/AdminBot.php.\\n- Multiple Admins and future-ready roles are supported.\\n- Web management is available at public/telegram-admins.php.\\n- The dedicated Admin menu is integrated into the existing worker.php; no second Worker was created.\\n- RouteBox and IBSng admin service creation without customer payment uses the existing ServiceProvisioner.\\n- Successful Admin provisioning callbacks cannot provision the same action twice.\\n- Admin provisioning actions are audit logged without credentials.\\n- Card-to-card Order/Payment/Receipt approval remains the next slice.\\n'; p.write_text(s.rstrip()+'\\n\\n'+section) if marker not in s else None"
+      - name: Commit and remove workflow
+        run: |
+          php -l src/Telegram/AdminBot.php
+          php -l public/telegram-admins.php
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/atd-docs-append.yml
+          git add ATD_PANEL_WORKING_NOTES.md
+          git commit -m 'docs(admin): record Telegram Bot Admin foundation'
+          git push
