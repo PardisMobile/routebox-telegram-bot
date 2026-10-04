@@ -76,12 +76,6 @@ input:focus,textarea:focus,select:focus{border-color:var(--atd-accent)!important
 .sidebar-foot .mini-link + .mini-link{display:none!important}
 .atd-mobile-menu-btn,.atd-mobile-overlay,.atd-mobile-close{display:none}
 
-/* Stable desktop geometry: keep the previously approved compact sidebar size in every browser. */
-@media(min-width:801px){
-  .sidebar{box-sizing:border-box!important;width:300px!important;min-width:300px!important;max-width:300px!important;flex:0 0 300px!important;overflow-y:auto!important;overflow-x:hidden!important}
-  .main{min-width:0!important}
-}
-
 @media(max-width:800px){
   body.atd-menu-open{overflow:hidden}
   .sidebar{display:none}
