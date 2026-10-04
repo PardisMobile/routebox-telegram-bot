@@ -6,6 +6,7 @@ require __DIR__ . '/src/bootstrap.php';
 require __DIR__ . '/src/RouteBoxClient.php';
 require __DIR__ . '/src/Services/ServiceCatalog.php';
 require __DIR__ . '/src/Services/ServiceProvisioner.php';
+require __DIR__ . '/src/Telegram/AdminBot.php';
 
 use RouteBox\Services\ServiceCatalog;
 use RouteBox\Services\ServiceProvisioner;
@@ -421,6 +422,7 @@ while (true) {
             $from = $m['from'] ?? $cb['from'] ?? null;
             if ($chat === null || !is_array($from)) continue;
             $uid = upsertUser($from);
+            if (RouteBox\Telegram\AdminBot::handle($token, $chat, $from, $uid, $m, $cb)) continue;
             $text = (string)($m['text'] ?? '');
             if ($m && ($text === '/start' || str_starts_with($text, '/start '))) { menu($token, $chat, $uid); continue; }
             if ($m && $text === '/menu') { menu($token, $chat, $uid); continue; }
