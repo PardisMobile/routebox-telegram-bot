@@ -1,0 +1,25 @@
+name: Verify installer alignment
+
+on:
+  push:
+    branches: [ATD-Panel]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate current installer files
+        run: |
+          set -e
+          for file in install.sh installer-core.sh install-dev.sh install-dev-full.sh; do
+            test -f "$file"
+            bash -n "$file"
+          done
+      - name: Reject retired installer reference
+        run: |
+          set -e
+          ! grep -R --line-number --exclude-dir=.git --exclude='verify-installer-alignment.yml' 'install-v2\.sh' .
