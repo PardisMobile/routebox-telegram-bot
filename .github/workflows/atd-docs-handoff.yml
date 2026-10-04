@@ -1,0 +1,83 @@
+name: Record ATD Telegram Admin handoff
+
+on:
+  push:
+    branches: [ATD-Panel]
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update handoff documents
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          notes = Path('ATD_PANEL_WORKING_NOTES.md')
+          text = notes.read_text()
+          marker = '## Telegram Bot Admin — implementation slice completed'
+          section = '''## Telegram Bot Admin — implementation slice completed
+
+- Independent Telegram Numeric ID authorization is implemented in `src/Telegram/AdminBot.php`.
+- Multiple Admins and future-ready roles are supported through `telegram_bot_admins`.
+- Web management is available at `public/telegram-admins.php` with add/enable/disable/remove controls.
+- The Admin menu is integrated into the existing `worker.php`; no second Worker, polling loop or lock was created.
+- RouteBox and IBSng admin service creation without customer payment routes through the existing `ServiceProvisioner` and existing Provider integrations.
+- Provider Plans are read from the existing `ServiceCatalog`; no Bot-local plan catalog was created.
+- Sensitive provisioning callbacks use short-lived Admin-bound action records and a success state to prevent repeat provisioning.
+- Admin provisioning operations are audit logged without storing credentials in audit payloads.
+- Full card-to-card Order/Payment/Receipt approval remains the next implementation slice.
+
+'''
+          if marker not in text:
+              notes.write_text(text.rstrip() + '\n\n' + section)
+          
+          roadmap = Path('ROADMAP.md')
+          r = roadmap.read_text()
+          marker2 = '## Telegram Bot Admin — implementation checkpoint'
+          section2 = '''## Telegram Bot Admin — implementation checkpoint
+
+- [x] Independent Telegram Numeric ID authorization.
+- [x] Multiple Admin records with future-ready roles.
+- [x] Web management page for add/enable/disable/remove.
+- [x] Dedicated Admin menu integrated into the existing Worker.
+- [x] RouteBox/IBSng admin provisioning without customer payment through existing `ServiceProvisioner`.
+- [x] Short-lived Admin-bound action records prevent successful callback replay from provisioning twice.
+- [x] Admin provisioning audit log without credentials in audit payloads.
+- [ ] Card-to-card Order/Payment/Receipt approval workflow.
+
+'''
+          if marker2 not in r:
+              roadmap.write_text(r.rstrip() + '\n\n' + section2)
+          
+          changelog = Path('CHANGELOG.md')
+          c = changelog.read_text()
+          marker3 = '### 🛡️ Telegram Bot Admin foundation'
+          section3 = '''### 🛡️ Telegram Bot Admin foundation
+
+- Added independent Telegram Numeric ID authorization with multiple Admin records and future-ready roles.
+- Integrated the Admin menu into the existing Telegram Worker without creating a second polling Worker.
+- Added RouteBox/IBSng admin provisioning through the existing ServiceProvisioner path.
+- Added one-time Admin action records and audit logging without credential payloads.
+- Added Web Panel Telegram Admin management at `public/telegram-admins.php`.
+- Card-to-card payment/receipt approval remains the next slice.
+
+'''
+          if marker3 not in c:
+              changelog.write_text(c.rstrip() + '\n\n' + section3)
+          PY
+      - name: Validate and commit
+        run: |
+          php -l src/Telegram/AdminBot.php
+          php -l public/telegram-admins.php
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/atd-docs-handoff.yml
+          git add ATD_PANEL_WORKING_NOTES.md ROADMAP.md CHANGELOG.md
+          git commit -m 'docs(admin): record Telegram Bot Admin foundation'
+          git push
