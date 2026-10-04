@@ -1,281 +1,159 @@
-# ATD Panel — Working Memory / UI Contract
+# ATD Panel — Working Notes
 
-> Durable working memory for ATD Panel development. Read this file first when continuing in a new chat.
+Durable handoff for the ATD Panel. Read this before further UI work.
 
-## 1. Scope and environment
+## Golden rule
 
-- Repository: `PardisMobile/routebox-telegram-bot`
-- Branch: `ATD-Panel`
-- Dev deployment path: `/opt/routebox-telegram-bot-dev`
-- Dev web service: `routebox-telegram-bot-dev-web@8092.service`
-- Current phase: Admin Panel UI/UX normalization.
+**UI/presentation changes only unless explicitly requested otherwise.** Do not rewrite provider APIs, provisioning, repositories, allocation, authentication, payment, IBSng group mapping, MikroTik peer creation, or other tested provider logic merely to change appearance.
 
-### Critical rule
+`df05c42` is the read-only historical backup/reference.
 
-**UI changes only unless the user explicitly asks for a functional/provider change.**
+## Providers and important files
 
-Do not rewrite, refactor, move or alter the working RouteBox, IBSng or MikroTik provider implementations, APIs, provisioning functions, peer allocation logic, authentication/session logic or service-dispatching logic merely to make the UI consistent.
+- RouteBox
+- IBSng
+- MikroTik WireGuard
+- `public/index.php` — public ATD routing wrapper.
+- `public/index.legacy.php` — preserved original ATD front controller; do not casually edit.
+- `public/index.core.php` — original RouteBox admin shell/content.
+- `src/Admin/ATDStats.php` — sensitive four-card/status/system presentation.
+- `src/Admin/ATDPanelSections.php` — ATD extra sections such as Users.
+- `src/Admin/Plans/ProviderPlansSection.php` — provider plan UI.
+- `src/Integrations/IBSng/IBSngSection.php` — IBSng UI.
+- `src/Integrations/MikroTik/MikroTikSection.php` — MikroTik UI.
+- `src/Integrations/MikroTik/MikroTikAdmin.php` — MikroTik logic; avoid for UI tasks.
+- `public/routebox-server-action.php` — existing RouteBox edit/delete endpoint.
+- `src/Admin/ATDUICompatibility.php` — presentation-only compatibility layer.
 
-## 2. Provider capability matrix
+## Four cards / Stats
 
-| Provider | Edit Server | Delete Server |
-|---|---:|---:|
-| IBSng | ✅ | ✅ |
-| RouteBox | ❌ | ❌ |
-| MikroTik | ✅ | ❌ |
+The four cards at the top are already working and must not be duplicated or rebuilt.
 
-This is the current supported UI/behavior contract.
+- Dashboard: global stats + Version/system card.
+- Telegram Bot: Bot Server, Worker Status, Server IP, flag, Reload Worker.
+- RouteBox Servers: Server Status, Connection, Server IP, Ping, flag, Refresh/Test Connection.
+- IBSng Servers: Server Status, Connection, Server IP, Ping, flag, Refresh using the existing IBSng test-connection method.
+- MikroTik WireGuard: Server Status, Connection, Server IP, Ping, flag, Refresh/Test Connection.
 
-- Do not invent RouteBox Delete Server.
-- Do not invent MikroTik Delete Server.
-- IBSng Edit/Delete are real supported actions.
-- MikroTik Edit is real supported action.
+Dashboard Version card also shows CPU, RAM and Disk. Preserve it.
 
-## 3. Server-page layout contract
+## Flags
 
-When servers exist, every provider page should visually follow:
+Do not rely on Unicode regional-indicator emoji for legacy server flags. Firefox can render them as flags while Chrome/Edge may show `FR`, `IR`, etc.
 
-1. Page heading / description
-2. Top summary/stat cards
-3. Existing server list/cards
-4. Add Server section
+`ATDStats` already uses real flag images. `ATDUICompatibility` converts legacy `.flag` elements to FlagCDN images with ISO codes and falls back to the code if the image fails.
 
-If there are no servers, Add Server may be the primary content.
+## Branding
 
-### Current state
+Visible panel UI branding is:
 
-- RouteBox list already appears before Add Server.
-- IBSng list was moved before Add Server.
-- MikroTik list was moved before Add Server.
+`ATD Panel, server and telegram bot control center`
 
-Server cards must retain meaningful provider-specific information such as status, flag/location, IP/host and ping where available. Do not replace those with generic Version cards.
+Do not change user-editable bot messages/textareas merely for branding.
 
-## 4. Top summary cards
+## RouteBox public section
 
-### Users page
+The historical RouteBox section was `section=servers`. The public UI is now intended to use:
 
-`section=users` has four page-level cards directly below the `USERS` heading:
+`section=routebox`
 
-1. RouteBox Users
-2. IBSng Users
-3. MikroTik Users
-4. Telegram Bot Users
+The legacy implementation can continue using `servers` internally for its existing POST/action contract. `public/index.php` maps the public alias to the legacy implementation without changing provider logic.
 
-The first three use the existing provider subscription/user counts; Telegram Bot Users uses the total registered Telegram users.
+The original controller is preserved as `public/index.legacy.php`.
 
-Do not move these cards into the table/list.
+## Dashboard Servers button
 
-### Provider pages
+It is reserved for the future project website URL. Until the real URL is supplied, it is shown as `Project Website` and does not navigate. Replace only that URL/text once the project URL is provided.
 
-The provider pages use the shared ATD status/stat card area. The server-health card must retain:
+## Server pages
 
-- server status
-- country flag/location
-- connected/offline state
-- server IP/host
-- ping
-- refresh/test control where supported
+Visual order for all providers:
 
-## 5. Cross-browser flag rule
+1. Server list/cards
+2. Add Server
 
-The previous flag implementation relied on regional-indicator emoji characters. Firefox rendered the flags, but Chrome/Edge could show only `FR`, `IR`, etc. because emoji-font rendering is not guaranteed.
+RouteBox:
+- Existing `public/routebox-server-action.php` already supports `delete_server` and `update_server`.
+- The UI exposes the existing Delete action; no second backend implementation is created.
+- RouteBox server list is paginated at 10 when needed.
 
-Current implementation:
+IBSng:
+- Existing Test Connection remains the source of truth for Refresh.
+- Existing Test Create User remains functional.
+- Existing Edit/Delete remain functional.
+- IBSng Group Name is required and must exactly match the real IBSng group for user creation.
 
-- `ATDStats` resolves a two-letter country code.
-- The UI renders a small flag image from FlagCDN.
-- The image `alt` contains the country code, so the code remains a safe fallback if the image cannot load.
-- Do not revert to emoji-only flags.
+MikroTik:
+- Existing Delete Server action is preserved.
+- Peer lists must remain paginated; never render thousands of peers into one huge page.
+- Do not touch peer creation/IP allocation/API logic for UI work.
 
-## 6. Connected / Running status
+## Provider plans
 
-Use the established panel pill language:
+All three provider plan pages share the same visual structure.
 
-- small status dot
-- rounded pill
-- consistent border/background
-- consistent typography/spacing
+Actions stay on one row:
+- Edit Plan
+- Enable/Disable
+- Delete
 
-Do not introduce a second style for the same state.
+Provider Plan Key:
+- IBSng: required/manual because it maps to the real IBSng group name.
+- RouteBox: do not require manual entry.
+- MikroTik: do not require manual entry.
+- Preserve existing internal/provider-generated values during Edit.
 
-## 7. Server action buttons
+Edit Plan uses a compact panel and must have Save Changes + Close; ESC-to-close is desirable.
 
-All visible actions should look like normal panel buttons, not disclosure arrows.
+## Users
 
-Current supported presentation:
+Users page cards are at the top, below the USERS heading/subtitle and before the list:
+- RouteBox Users — real service user count.
+- IBSng Users — real service user count.
+- MikroTik Users — real service user count.
+- Telegram Bot Users — total Telegram bot users.
 
-- IBSng: visible `Test Connection`, `Test Create User`, `Edit Server`, `Delete Server` buttons.
-- MikroTik: visible `Test Connection` and `Edit Server` buttons.
-- RouteBox: existing provider actions only; no UI-injected Edit/Delete controls.
+## Bot worker
 
-Destructive actions use the existing red destructive button language.
+Bot Server card shows Worker Status, Server IP, country flag and Reload.
 
-## 8. Provider Plans
+Observed DEV server:
+- `routebox-telegram-bot-dev.service` runs `/usr/bin/php /opt/routebox-telegram-bot-dev/worker.php`.
+- `routebox-worker.service` exists but is disabled.
+- Actual running worker was the DEV service process as `www-data`.
 
-RouteBox, IBSng and MikroTik use the shared `ProviderPlansSection` visual design.
+Do not display the long service name in the UI.
 
-### Action row
+## Status cards
 
-Every plan card should use:
+Status labels must use the same visual style as the rest of the panel. Flags should be clearly visible.
 
-`Edit Plan` | `Disable/Enable` | `Delete`
+## Safety / docs
 
-All actions must remain aligned on the same row when the viewport allows it.
+Major ATD UI changes should update:
+- `README.md`
+- `CHANGELOG.md`
+- `ROADMAP.md`
+- this file
 
-### Edit interaction
+Never write to the old `df05c42` backup.
 
-The edit panel is a compact floating/inline `<details>` panel.
+## Recent incident
 
-Current improvements:
+`af48f2a` temporarily introduced a PHP parse error into `ATDStats.php`; `1fd7ace` restored a syntax-safe baseline. Do not casually rebuild or replace ATDStats.
 
-- explicit `Close` button inside the editor
-- Escape closes open plan editors
-- native Edit summary still toggles open/closed
-- existing save/update backend logic is untouched
+## Current compatibility layer
 
-Do not replace this with a provider-specific plan implementation.
+`src/Admin/ATDUICompatibility.php` is presentation-only and currently handles:
+- public `section=routebox` aliasing compatibility,
+- cross-browser flag images for legacy `.flag` elements,
+- branding normalization without touching textarea/script/style content,
+- removal of accidental literal `\\n` UI fragments,
+- moving Add Server cards after server lists,
+- RouteBox server pagination at 10 items,
+- exposing the existing RouteBox Delete Server endpoint as a UI button.
 
-## 9. Provider Plan Key — critical semantic rule
-
-`Provider Plan Key` is **not** a universal manual field.
-
-### IBSng
-
-This field is operationally important and must remain manual/required.
-
-It represents the real IBSng group name used by the configured IBSng server. If it does not match the actual IBSng group, user creation cannot target the intended group.
-
-The existing working IBSng plan/group mapping must not be changed during UI cleanup.
-
-### RouteBox / MikroTik
-
-Their keys may be generated/populated by existing backend logic. Examples observed:
-
-- RouteBox: `routebox1`
-- MikroTik: values beginning with `mt`
-
-The UI must not force administrators to type these values manually when the provider does not require it.
-
-Current `ProviderPlansSection` behavior:
-
-- IBSng: show required Provider Plan Key field.
-- RouteBox: do not show a manual Provider Plan Key field.
-- MikroTik: do not show a manual Provider Plan Key field.
-- Preserve existing provider-generated/internal key values.
-
-Never regenerate, rename or rewrite provider keys as part of UI work.
-
-## 10. Plan-page architecture
-
-The intended UX is one clear provider-scoped plan-management view through:
-
-`section=provider-plans&provider=<provider>`
-
-Provider pages may expose a `Manage Plans` navigation affordance, but should not duplicate the same editable plan catalog in another provider page.
-
-Keep the existing plan data model and working create/update/toggle/delete functions intact.
-
-## 11. IBSng test-user UI
-
-A working IBSng test-user creation path already exists and has been tested.
-
-The IBSng Admin UI exposes `Test Create User`.
-
-Important:
-
-- Reuse the existing tested path.
-- Do not rewrite `IBSngClient`, authentication/session handling, provisioning, group mapping or service creation.
-- UI orchestration only.
-
-## 12. Large lists / scalability
-
-Do not present potentially thousands of records as one huge visible page.
-
-Current implementation:
-
-- MikroTik peers are displayed 50 per page with UI pagination.
-- The underlying provider data/API is unchanged.
-- Server lists are expected to be small enough for normal card display.
-- Users page remains bounded by its existing 100-user query limit.
-
-If a future provider can return very large server/user sets, prefer bounded/paginated UI without rewriting provider APIs unless explicitly requested.
-
-## 13. Protected provider logic
-
-### IBSng — protected
-
-- A1.24 authentication/session handling
-- Web Panel/API communication
-- server configuration
-- group mapping/listing
-- user lookup
-- test-user creation
-- Telegram IBSng account provisioning
-- Internet Username + password assignment
-- `service_subscriptions` persistence
-- provider/server/group-aware provisioning
-- isolated `IBSngClient`
-- one-account model for OpenVPN/Cisco/L2TP
-
-### RouteBox — protected
-
-- RouteBox/AWG API integration
-- authentication/health/status handling
-- peers/config export
-- provisioning
-- expiry/traffic operations
-- existing server behavior
-
-### MikroTik — protected
-
-- MikroTik connection/provider functions
-- peer/user creation and allocation logic
-- WireGuard peer provisioning
-- IP-pool/peer addressing behavior
-- previously fixed WireGuard first-peer allocation behavior
-
-## 14. Completed ATD UI work
-
-- [x] Four Users summary cards created and placed below Users heading.
-- [x] Provider server status cards restored/normalized.
-- [x] Flag + status + ping presentation normalized.
-- [x] Connected / Running pills normalized.
-- [x] Server action buttons normalized.
-- [x] IBSng Edit/Delete and Test Create User UI exposed.
-- [x] RouteBox/MikroTik unsupported Delete Server UI injections removed.
-- [x] Provider plan action rows unified.
-- [x] Edit Plan moved onto the same action row as Disable/Delete.
-- [x] Plan editor Close + Escape behavior added.
-- [x] Provider Plan Key made conditional/manual only for IBSng.
-- [x] IBSng server list moved before Add Server.
-- [x] MikroTik server list moved before Add Server.
-- [x] MikroTik peer pagination added at 50/page.
-- [x] Chrome/Edge flag rendering fixed with image assets + code fallback.
-- [x] README / CHANGELOG / ROADMAP updated for the ATD UI baseline.
-
-## 15. Current remaining work
-
-### High priority
-
-- [ ] Visual QA on the live dev panel in Firefox, Chrome and Edge.
-- [ ] Verify desktop and narrow/mobile layouts for all three provider pages.
-- [ ] Verify all plan action rows stay aligned at common desktop widths.
-- [ ] Verify the external flag image fallback behaves acceptably if FlagCDN is unreachable.
-- [ ] Verify MikroTik pagination with 0, 1, 50, 51 and 100+ peers.
-- [ ] Verify IBSng Test Create User still reaches the existing tested provisioning path.
-
-### Functional roadmap (not UI cleanup)
-
-- [ ] Telegram Bot Admin authentication/authorization.
-- [ ] Multiple Telegram Bot Admin IDs.
-- [ ] Dedicated Bot Admin Telegram menu.
-- [ ] Admin payment bypass.
-- [ ] IBSng user search/management/renewal through Bot Admin.
-- [ ] Configurable generated IBSng username prefix.
-- [ ] Worker status/restart/health/logs.
-- [ ] Payment callbacks, ZarinPal, crypto gateway, verified-payment-only provisioning and invoice history.
-
-## 16. Safe deployment/check commands
+## DEV deployment
 
 ```bash
 cd /opt/routebox-telegram-bot-dev
@@ -283,26 +161,7 @@ cd /opt/routebox-telegram-bot-dev
 git fetch origin '+refs/heads/ATD-Panel:refs/remotes/origin/ATD-Panel'
 git reset --hard origin/ATD-Panel
 
-# Run syntax checks for the files changed in the current pass.
-php -l src/Admin/Plans/ProviderPlansSection.php
-php -l src/Integrations/IBSng/IBSngSection.php
-php -l src/Integrations/MikroTik/MikroTikSection.php
-php -l src/Admin/ATDStats.php
-
 systemctl restart routebox-telegram-bot-dev-web@8092.service
 ```
 
-## 17. Golden rule for the next chat
-
-1. Read this file first.
-2. Treat existing provider logic as working/protected.
-3. Prefer HTML/CSS/view composition for UI problems.
-4. Do not change provider APIs/provisioning functions to solve visual issues.
-5. Check RouteBox + IBSng + MikroTik together before changing shared UI.
-6. Do not reintroduce manual Provider Plan Key for RouteBox/MikroTik.
-7. Do not replace status/flag/ping cards with Version cards.
-8. Do not put Add Server above an existing server list.
-9. Do not invent RouteBox/MikroTik Delete Server.
-10. Do not render thousands of peers as one unbounded visible list.
-
-**This document is the ATD Panel guardrail and project memory.**
+Run `php -l` on changed PHP files before restart.
