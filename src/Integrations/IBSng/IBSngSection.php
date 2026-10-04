@@ -32,7 +32,7 @@ final class IBSngSection
             'none' => 'هنوز سرور IBSng اضافه نشده است.',
             'ok' => 'متصل', 'err' => 'خطا', 'untested' => 'تست نشده',
             'groups' => 'پلن‌های IBSng', 'no_groups' => 'هنوز پلنی تعریف نشده است.',
-            'test' => 'تست اتصال', 'delete_server' => 'حذف سرور', 'edit' => 'ویرایش سرور',
+            'test' => 'تست اتصال', 'test_user' => 'تست ساخت یوزر', 'delete_server' => 'حذف سرور', 'edit' => 'ویرایش سرور',
             'new_user' => 'Admin Username جدید', 'new_pass' => 'Admin Password جدید',
             'unchanged' => 'خالی = بدون تغییر', 'save' => 'تست و ذخیره تغییرات',
             'stored' => 'اطلاعات ورود به‌صورت امن ذخیره می‌شوند.',
@@ -51,7 +51,7 @@ final class IBSngSection
             'none' => 'No IBSng servers have been added yet.',
             'ok' => 'Connected', 'err' => 'Error', 'untested' => 'Not tested',
             'groups' => 'IBSng Plans', 'no_groups' => 'No plans have been defined yet.',
-            'test' => 'Test connection', 'delete_server' => 'Delete Server', 'edit' => 'Edit server',
+            'test' => 'Test connection', 'test_user' => 'Test Create User', 'delete_server' => 'Delete Server', 'edit' => 'Edit server',
             'new_user' => 'New Admin Username', 'new_pass' => 'New Admin Password',
             'unchanged' => 'blank = unchanged', 'save' => 'Test & save changes',
             'stored' => 'Credentials are stored securely.',
@@ -113,6 +113,7 @@ final class IBSngSection
                 . '</div>' . $error
                 . '<div class="form-actions atd-ibsng-server-actions">'
                 . '<form method="post"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="id" value="' . $id . '"><button class="btn btn-secondary atd-ibsng-action" type="submit">↻ ' . $h($T['test']) . '</button></form>'
+                . '<form method="post" onsubmit="return confirm(' . htmlspecialchars(json_encode($fa ? 'یک یوزر تستی روی این سرور IBSng ساخته شود؟' : 'Create a test user on this IBSng server?', JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') . ')"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="test_create_user"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="id" value="' . $id . '"><button class="btn btn-primary atd-ibsng-action" type="submit">✓ ' . $h($T['test_user']) . '</button></form>'
                 . '<form method="post" onsubmit="return confirm(' . htmlspecialchars(json_encode($fa ? 'سرور IBSng حذف شود؟' : 'Delete this IBSng server?', JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') . ')"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="delete_server"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="id" value="' . $id . '"><button class="btn btn-danger atd-ibsng-action" type="submit">× ' . $h($T['delete_server']) . '</button></form>'
                 . '</div>'
                 . '<details class="atd-ibsng-edit" style="margin-top:14px"><summary class="btn btn-secondary atd-ibsng-action">✎ ' . $h($T['edit']) . '</summary>'
