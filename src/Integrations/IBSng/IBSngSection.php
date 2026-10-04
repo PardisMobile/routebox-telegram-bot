@@ -136,8 +136,7 @@ final class IBSngSection
             $cards = '<div class="empty">' . $h($T['none']) . '</div>';
         }
 
-        return $flash
-            . '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">+</div><div><h2>' . $h($T['add_title']) . '</h2><p>' . $h($T['add_hint']) . '</p></div></div></div>'
+        $addServer = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">+</div><div><h2>' . $h($T['add_title']) . '</h2><p>' . $h($T['add_hint']) . '</p></div></div></div>'
             . '<form method="post"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="add_server"><input type="hidden" name="section" value="ibsng"><div class="grid">'
             . '<div class="field"><label>' . $h($T['name']) . '</label><input name="name" required maxlength="80"></div>'
             . '<div class="field"><label>' . $h($T['host']) . '</label><input name="host" required placeholder="185.18.x.x"></div>'
@@ -145,8 +144,11 @@ final class IBSngSection
             . '<div class="field"><label>' . $h($T['isp']) . '</label><input name="isp_name" value="Main" required></div>'
             . '<div class="field"><label>' . $h($T['user']) . '</label><input name="username" required autocomplete="off"></div>'
             . '<div class="field"><label>' . $h($T['pass']) . '</label><input type="password" name="password" required autocomplete="new-password"></div>'
-            . '</div><div class="form-actions"><button class="btn btn-primary" type="submit">+ ' . $h($T['add']) . '</button></div></form></section>'
-            . '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">▤</div><div><h2>' . $h($T['servers']) . '</h2><p>' . $h($T['servers_hint']) . '</p></div></div></div>' . $cards . '</section>'
+            . '</div><div class="form-actions"><button class="btn btn-primary" type="submit">+ ' . $h($T['add']) . '</button></div></form></section>';
+
+        $serverList = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">▤</div><div><h2>' . $h($T['servers']) . '</h2><p>' . $h($T['servers_hint']) . '</p></div></div></div>' . $cards . '</section>';
+
+        return $flash . $serverList . $addServer
             . '<style>.atd-ibsng-server-actions{display:flex;gap:8px;flex-wrap:wrap}.atd-ibsng-action{min-height:40px!important;padding:10px 14px!important;border-radius:11px!important;font-weight:750!important;cursor:pointer;list-style:none!important}.atd-ibsng-action::-webkit-details-marker{display:none}.atd-ibsng-edit>summary{display:inline-flex}.atd-ibsng-small-action{min-height:36px!important;padding:8px 11px!important;border-radius:10px!important;font-size:12px!important;cursor:pointer;list-style:none!important}.atd-ibsng-small-action::-webkit-details-marker{display:none}.atd-ibsng-danger{color:var(--red)!important;border-color:rgba(255,80,80,.35)!important}@media(max-width:700px){.atd-ibsng-server-actions{justify-content:flex-start}}</style>';
     }
 
