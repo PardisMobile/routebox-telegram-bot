@@ -143,3 +143,12 @@ Version source of truth: [`VERSION`](./VERSION)
 - The existing RouteBox `routebox-server-action.php` delete endpoint is now exposed by the UI; no new provider delete logic was created.
 - Dashboard branding now uses `ATD Panel, server and telegram bot control center` and the project-site button is reserved for the future real URL.
 - The existing four-card/status/system ATD layout remains protected.
+
+### 🛡️ Telegram Bot Admin foundation
+
+- Added independent Telegram Numeric ID authorization with multiple Admin records and future-ready roles.
+- Integrated the Admin menu into the existing Telegram Worker without creating a second polling Worker.
+- Added RouteBox/IBSng admin provisioning through the existing ServiceProvisioner path.
+- Added one-time Admin action records and audit logging without credential payloads.
+- Added Web Panel Telegram Admin management at public/telegram-admins.php.
+- Card-to-card payment/receipt approval remains the next slice.
