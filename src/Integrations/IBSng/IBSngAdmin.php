@@ -114,6 +114,29 @@ final class IBSngAdmin
                 $this->service->test($id);
                 $_SESSION['ibsng_flash'] = '✓ اتصال موفق است. IBSng A1.24 Web Panel احراز هویت شد.';
                 $_SESSION['ibsng_error'] = false;
+            } elseif ($action === 'test_create_user') {
+                $serverId = (int)($post['id'] ?? 0);
+                $server = $this->service->server($serverId);
+                $q = $this->db->prepare('SELECT group_name FROM ibsng_groups WHERE ibsng_server_id=? AND enabled=1 ORDER BY id LIMIT 1');
+                $q->execute([$serverId]);
+                $groupName = trim((string)$q->fetchColumn());
+                if ($groupName === '') {
+                    throw new RuntimeException('ابتدا حداقل یک گروه IBSng فعال برای این سرور تعریف کنید.');
+                }
+
+                $testUsername = 'rbtest_' . date('ymdHis');
+                $testPassword = 'Rb!' . bin2hex(random_bytes(6));
+                $result = $this->service->createAccount(
+                    $serverId,
+                    (string)($server['isp_name'] ?? 'Main'),
+                    $groupName,
+                    $testUsername,
+                    $testPassword,
+                    0
+                );
+
+                $_SESSION['ibsng_flash'] = '✓ Test user created: ' . (string)$result['username'] . ' / ' . (string)$result['password'] . ' · Group: ' . $groupName;
+                $_SESSION['ibsng_error'] = false;
             } elseif ($action === 'delete_server') {
                 $this->service->deleteServer((int)($post['id'] ?? 0));
                 $_SESSION['ibsng_flash'] = '✓ سرور IBSng حذف شد.';
