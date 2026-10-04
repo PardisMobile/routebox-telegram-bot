@@ -85,7 +85,7 @@ final class IBSngSection
                     . '<div><div class="help">' . $h($T['plan_name']) . '</div><strong>' . $h($planName) . '</strong></div>'
                     . '<div><div class="help">' . $h($T['group_name']) . '</div><code>' . $h($groupName) . '</code></div>'
                     . '<div style="display:flex;gap:6px;justify-content:flex-end">'
-                    . '<details><summary class="btn btn-secondary" style="cursor:pointer;list-style:none">✎</summary>'
+                    . '<details><summary class="btn btn-secondary atd-ibsng-small-action">✎ ' . $h($fa ? 'ویرایش' : 'Edit') . '</summary>'
                     . '<form method="post" style="margin-top:8px;min-width:300px;background:var(--panel);padding:12px;border-radius:12px">'
                     . '<input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="update_group"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="id" value="' . $gid . '">'
                     . '<div class="field"><label>' . $h($T['plan_name']) . '</label><input name="plan_name" required value="' . $h($planName) . '"></div>'
@@ -94,7 +94,7 @@ final class IBSngSection
                     . '</form></details>'
                     . '<form method="post" onsubmit="return confirm(' . htmlspecialchars(json_encode($fa ? 'این پلن و نگاشت گروه حذف شود؟' : 'Delete this plan and group mapping?', JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') . ')">'
                     . '<input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="delete_group"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="id" value="' . $gid . '">'
-                    . '<button class="btn btn-secondary" style="color:var(--red);border-color:rgba(255,80,80,.35)" type="submit">× ' . $h($T['delete_group']) . '</button></form>'
+                    . '<button class="btn btn-secondary atd-ibsng-small-action atd-ibsng-danger" type="submit">× ' . $h($T['delete_group']) . '</button></form>'
                     . '</div></div>';
             }
             if ($groupHtml === '') {
@@ -111,11 +111,11 @@ final class IBSngSection
                 . '<div><div class="help">Credentials</div><p class="help">••••••••<br>' . $T['stored'] . '</p></div>'
                 . '<div><div class="help">' . $h($T['groups']) . ' (' . count($groups) . ')</div>' . $groupHtml . '</div>'
                 . '</div>' . $error
-                . '<div class="form-actions">'
-                . '<form method="post"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="id" value="' . $id . '"><button class="btn btn-secondary" type="submit">↻ ' . $h($T['test']) . '</button></form>'
-                . '<form method="post" onsubmit="return confirm(' . htmlspecialchars(json_encode($fa ? 'سرور IBSng حذف شود؟' : 'Delete this IBSng server?', JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') . ')"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="delete_server"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="id" value="' . $id . '"><button class="btn btn-secondary" style="color:var(--red);border-color:rgba(255,80,80,.35)" type="submit">× ' . $h($T['delete_server']) . '</button></form>'
+                . '<div class="form-actions atd-ibsng-server-actions">'
+                . '<form method="post"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="test_server"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="id" value="' . $id . '"><button class="btn btn-secondary atd-ibsng-action" type="submit">↻ ' . $h($T['test']) . '</button></form>'
+                . '<form method="post" onsubmit="return confirm(' . htmlspecialchars(json_encode($fa ? 'سرور IBSng حذف شود؟' : 'Delete this IBSng server?', JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') . ')"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="delete_server"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="id" value="' . $id . '"><button class="btn btn-danger atd-ibsng-action" type="submit">× ' . $h($T['delete_server']) . '</button></form>'
                 . '</div>'
-                . '<details style="margin-top:14px"><summary style="cursor:pointer;font-weight:750">' . $h($T['edit']) . '</summary>'
+                . '<details class="atd-ibsng-edit" style="margin-top:14px"><summary class="btn btn-secondary atd-ibsng-action">✎ ' . $h($T['edit']) . '</summary>'
                 . '<form method="post" style="margin-top:14px"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="update_server"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="id" value="' . $id . '"><div class="grid">'
                 . '<div class="field"><label>' . $h($T['name']) . '</label><input name="name" required value="' . $h((string)($s['name'] ?? '')) . '"></div>'
                 . '<div class="field"><label>' . $h($T['host']) . '</label><input name="host" required value="' . $h((string)($s['host'] ?? '')) . '"></div>'
@@ -124,7 +124,7 @@ final class IBSngSection
                 . '<div class="field"><label>' . $h($T['new_user']) . '</label><input name="username" autocomplete="off" placeholder="' . $h($T['unchanged']) . '"></div>'
                 . '<div class="field"><label>' . $h($T['new_pass']) . '</label><input type="password" name="password" autocomplete="new-password" placeholder="' . $h($T['unchanged']) . '"></div>'
                 . '</div><div class="form-actions"><button class="btn btn-primary" type="submit">✓ ' . $h($T['save']) . '</button></div></form></details>'
-                . '<details style="margin-top:14px"><summary style="cursor:pointer;font-weight:750">+ ' . $h($T['add_group']) . '</summary>'
+                . '<details class="atd-ibsng-edit" style="margin-top:14px"><summary class="btn btn-secondary atd-ibsng-action">+ ' . $h($T['add_group']) . '</summary>'
                 . '<form method="post" style="margin-top:14px"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="add_group"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="server_id" value="' . $id . '"><div class="grid">'
                 . '<div class="field"><label>' . $h($T['plan_name']) . '</label><input name="plan_name" required placeholder="' . $h($fa ? 'یک ماهه' : 'One month') . '"></div>'
                 . '<div class="field"><label>' . $h($T['group_name']) . '</label><input name="group_name" required placeholder="Enter IBSng group name"></div>'
@@ -145,7 +145,8 @@ final class IBSngSection
             . '<div class="field"><label>' . $h($T['user']) . '</label><input name="username" required autocomplete="off"></div>'
             . '<div class="field"><label>' . $h($T['pass']) . '</label><input type="password" name="password" required autocomplete="new-password"></div>'
             . '</div><div class="form-actions"><button class="btn btn-primary" type="submit">+ ' . $h($T['add']) . '</button></div></form></section>'
-            . '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">▤</div><div><h2>' . $h($T['servers']) . '</h2><p>' . $h($T['servers_hint']) . '</p></div></div></div>' . $cards . '</section>';
+            . '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">▤</div><div><h2>' . $h($T['servers']) . '</h2><p>' . $h($T['servers_hint']) . '</p></div></div></div>' . $cards . '</section>'
+            . '<style>.atd-ibsng-server-actions{display:flex;gap:8px;flex-wrap:wrap}.atd-ibsng-action{min-height:40px!important;padding:10px 14px!important;border-radius:11px!important;font-weight:750!important;cursor:pointer;list-style:none!important}.atd-ibsng-action::-webkit-details-marker{display:none}.atd-ibsng-edit>summary{display:inline-flex}.atd-ibsng-small-action{min-height:36px!important;padding:8px 11px!important;border-radius:10px!important;font-size:12px!important;cursor:pointer;list-style:none!important}.atd-ibsng-small-action::-webkit-details-marker{display:none}.atd-ibsng-danger{color:var(--red)!important;border-color:rgba(255,80,80,.35)!important}@media(max-width:700px){.atd-ibsng-server-actions{justify-content:flex-start}}</style>';
     }
 
     public static function navLabel(string $lang): string
