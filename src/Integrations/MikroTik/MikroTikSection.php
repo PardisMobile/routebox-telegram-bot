@@ -103,25 +103,6 @@ final class MikroTikSection
         }
         if ($serversHtml === '') $serversHtml = '<div class="empty">No MikroTik servers configured yet.</div>';
 
-        $planRows = '';
-        foreach (($data['plans'] ?? []) as $p) {
-            $id = (int)$p['id'];
-            $planEditId = 'mikrotik-plan-edit-'.$id;
-            $planRows .= '<tr>'
-                .'<td>'.$h((string)$p['display_name_fa']).'</td>'
-                .'<td>'.$h((string)$p['display_name_en']).'</td>'
-                .'<td>'.$h((string)($p['server_name'] ?? '—')).'</td>'
-                .'<td>'.$h((string)$p['duration_days']).' d</td>'
-                .'<td>'.$h((string)$p['price_minor']).'</td>'
-                .'<td>'.(!empty($p['enabled']) ? 'Active' : 'Disabled').'</td>'
-                .'<td><div class="form-actions">'
-                    .'<details id="'.$h($planEditId).'" style="display:inline"><summary class="btn btn-secondary" style="cursor:pointer;list-style:none">✎ Edit</summary><div style="margin-top:10px">'.self::planForm($p, $data['servers'] ?? [], $csrf, true).'</div></details>'
-                    .'<form method="post" onsubmit="return confirm(\'Delete this plan? Existing subscription history will be preserved.\')"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="delete_plan"><input type="hidden" name="id" value="'.$id.'"><button class="btn btn-secondary" style="color:var(--red);border-color:rgba(255,80,80,.35)" type="submit">× Delete</button></form>'
-                .'</div></td>'
-            .'</tr>';
-        }
-        if ($planRows === '') $planRows = '<tr><td colspan="7" class="help">No MikroTik WireGuard plans yet.</td></tr>';
-
         $peerRows = '';
         foreach (($data['peers'] ?? []) as $p) {
             $action = $p['status'] === 'active' ? 'disable_peer' : 'enable_peer';
@@ -139,9 +120,7 @@ final class MikroTikSection
 
         $addServer = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">+</div><div><h2>Add MikroTik Server</h2><p>RouterOS REST API connection. No container is required on the MikroTik device.</p></div></div></div>'.self::serverForm([], $csrf, false).'</section>';
 
-        $planForm = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◫</div><div><h2>WireGuard Plans</h2><p>Create, edit, disable or delete plans without touching existing RouterOS peers.</p></div></div></div>'
-            .self::planForm([], $data['servers'] ?? [], $csrf, false)
-            .'<div style="overflow:auto;margin-top:18px"><table style="width:100%"><thead><tr><th>Persian</th><th>English</th><th>Server</th><th>Duration</th><th>Price</th><th>Status</th><th>Actions</th></tr></thead><tbody>'.$planRows.'</tbody></table></div></section>';
+        $plansLink = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◫</div><div><h2>WireGuard Plans</h2><p>Plans are managed centrally in the shared Provider Plans section.</p></div></div><a class="btn btn-primary" href="/?section=provider-plans&amp;provider=mikrotik_wireguard">✎ Manage Plans</a></div></section>';
 
         $peerTable = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◌</div><div><h2>WireGuard Peers</h2><p>Each peer is a RouteBox account. Disable keeps the peer; Delete removes it from RouterOS and RouteBox.</p></div></div></div><div style="overflow:auto"><table style="width:100%"><thead><tr><th>Username</th><th>IP</th><th>Server</th><th>Interface</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody>'.$peerRows.'</tbody></table></div></section>';
 
@@ -149,33 +128,7 @@ final class MikroTikSection
 
         return $flashHtml.$addServer.$guide
             .'<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>MikroTik Servers</h2><p>RouterOS version, uptime, CPU, memory, REST latency, WireGuard interfaces, IP pools and DNS are discovered from the router.</p></div></div></div>'.$serversHtml.'</section>'
-            .$planForm.$peerTable;
-    }
-
-    private static function planForm(array $p, array $servers, string $csrf, bool $edit): string
-    {
-        $h = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $meta = json_decode((string)($p['metadata_json'] ?? '{}'), true);
-        $meta = is_array($meta) ? $meta : [];
-        $action = $edit ? 'update_plan' : 'add_plan';
-        $id = $edit ? (int)($p['id'] ?? 0) : 0;
-        $serverId = (int)($p['provider_server_id'] ?? 0);
-        $options = '';
-        foreach ($servers as $s) {
-            $selected = $serverId === (int)$s['id'] ? ' selected' : '';
-            $options .= '<option value="'.(int)$s['id'].'"'.$selected.'>'.$h((string)$s['name']).'</option>';
-        }
-        return '<form method="post" style="margin-top:14px"><input type="hidden" name="csrf_token" value="'.$h($csrf).'"><input type="hidden" name="action" value="'.$action.'"><input type="hidden" name="id" value="'.$id.'"><div class="grid">'
-            .'<div class="field"><label>Server</label><select name="server_id" required>'.$options.'</select></div>'
-            .'<div class="field"><label>Persian name</label><input name="display_name_fa" required value="'.$h((string)($p['display_name_fa'] ?? '')).'" placeholder="یک ماهه"></div>'
-            .'<div class="field"><label>English name</label><input name="display_name_en" required value="'.$h((string)($p['display_name_en'] ?? '')).'" placeholder="One Month"></div>'
-            .'<div class="field"><label>Price (minor currency)</label><input type="number" name="price_minor" min="0" value="'.(int)($p['price_minor'] ?? 0).'"></div>'
-            .'<div class="field"><label>Duration days</label><input type="number" name="duration_days" min="0" value="'.(int)($p['duration_days'] ?? 30).'"></div>'
-            .'<div class="field"><label>Quota GB</label><input type="number" step="0.01" name="quota_gb" min="0" value="'.(float)($p['quota_gb'] ?? 0).'"></div>'
-            .'<div class="field"><label>Upload limit</label><input name="upload_limit" value="'.$h((string)($meta['upload_limit'] ?? '')).'" placeholder="10M"></div>'
-            .'<div class="field"><label>Download limit</label><input name="download_limit" value="'.$h((string)($meta['download_limit'] ?? '')).'" placeholder="50M"></div>'
-            .'<div class="field"><label>Sort order</label><input type="number" name="sort_order" min="0" value="'.(int)($p['sort_order'] ?? 0).'"></div>'
-            .'</div><div class="form-actions"><button class="btn btn-primary" type="submit">'.($edit ? 'Save Plan' : '+ Add plan').'</button></div></form>';
+            .$plansLink.$peerTable;
     }
 
     private static function serverForm(array $s, string $csrf, bool $edit): string
