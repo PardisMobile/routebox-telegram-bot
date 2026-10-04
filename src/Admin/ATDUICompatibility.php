@@ -96,7 +96,9 @@ function localizeSidebar(){
  if(root.getAttribute('lang')!=='fa')return;
  const labels={
   'Dashboard':'داشبورد','Telegram Bot':'ربات تلگرام','Routebox Servers':'Routebox Servers','RouteBox Servers':'RouteBox Servers',
-  'IBSng Servers':'IBSng Servers','MikroTik WireGuard':'MikroTik WireGuard','MikroTik WireGuard Servers':'MikroTik WireGuard',
+  'سرورهای Routebox':'Routebox Servers','سرورهای RouteBox':'RouteBox Servers',
+  'IBSng Servers':'IBSng Servers','سرورهای IBSng':'IBSng Servers',
+  'MikroTik WireGuard':'MikroTik WireGuard','MikroTik WireGuard Servers':'MikroTik WireGuard','سرورهای MikroTik WireGuard':'MikroTik WireGuard',
   'Usage Guides':'راهنمای استفاده','Plans':'پلن‌ها','Provider Guide':'راهنمای سرویس','Users':'کاربران',
   'Payment Settings':'تنظیمات پرداخت','Security':'امنیت','Updates':'به‌روزرسانی'
  };
