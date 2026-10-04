@@ -73,6 +73,42 @@ input:focus,textarea:focus,select:focus{border-color:var(--atd-accent)!important
 .atd-color.active{border-color:var(--card2);box-shadow:0 0 0 2px var(--swatch),0 5px 14px color-mix(in srgb,var(--swatch) 28%,transparent)}
 .atd-project-placeholder{opacity:.72;cursor:default!important}
 .atd-server-delete{margin:0}
+.sidebar-foot .mini-link + .mini-link{display:none!important}
+.atd-mobile-menu-btn,.atd-mobile-overlay,.atd-mobile-close{display:none}
+@media(max-width:800px){
+  body.atd-menu-open{overflow:hidden}
+  .sidebar{display:none}
+  .sidebar.atd-mobile-open{display:block;position:fixed;top:12px;bottom:12px;inset-inline-start:12px;width:min(86vw,330px);height:auto;max-height:calc(100vh - 24px);overflow-y:auto;padding:16px;background:var(--card2);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);backdrop-filter:blur(24px);z-index:10001}
+  .sidebar.atd-mobile-open .brand{display:flex;padding:2px 4px 18px}
+  .sidebar.atd-mobile-open .sidebar-foot{display:grid;position:static;margin-top:16px;gap:8px}
+  .sidebar.atd-mobile-open .nav{display:grid;grid-template-columns:1fr;gap:4px}
+  .sidebar.atd-mobile-open .nav a{font-size:13px;justify-content:flex-start;padding:11px 12px}
+  .sidebar.atd-mobile-open .nav svg{width:19px;height:19px}
+  .sidebar.atd-mobile-open .atd-nav-sub{display:block}
+  .sidebar.atd-mobile-open .atd-nav-subitem{font-size:12px;padding:7px 8px}
+  .sidebar.atd-mobile-open .nav-chevron{display:inline-flex}
+  .atd-mobile-close{display:grid;place-items:center;position:absolute;top:12px;inset-inline-end:12px;width:34px;height:34px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-size:22px;line-height:1;cursor:pointer;z-index:2}
+  .atd-mobile-overlay{display:block;position:fixed;inset:0;background:rgba(3,7,18,.48);backdrop-filter:blur(2px);z-index:10000}
+  .atd-mobile-overlay[hidden]{display:none}
+  .atd-mobile-menu-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:40px;padding:0 11px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);cursor:pointer;font:700 12px inherit}
+  .atd-mobile-menu-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .main{padding:18px 14px 34px}
+  .topbar{align-items:flex-start;gap:10px;margin-bottom:18px}
+  .topbar h1{font-size:24px}
+  .top-actions{gap:6px}
+  .top-actions .chip.keep{display:none}
+  .atd-ui-control{height:38px;min-width:38px}
+}
+@media(max-width:420px){
+  .topbar{flex-wrap:wrap}
+  .topbar>div:first-child{min-width:0;flex:1}
+  .top-actions{margin-inline-start:auto}
+  .atd-mobile-menu-btn{width:40px;padding:0;font-size:0}
+  .atd-mobile-menu-btn svg{width:19px;height:19px}
+  .hero{padding:18px}
+  .hero-row{align-items:flex-start;flex-direction:column}
+  .grid,.plans,.preview-grid{grid-template-columns:1fr}
+}
 @media(max-width:720px){.atd-ui-tools{margin-inline-start:0}.atd-color-menu{inset-inline-start:0;inset-inline-end:auto}}
 </style>
 <script>
@@ -112,14 +148,24 @@ function flagCode(value){
  if(chars.length===2){const a=chars[0].codePointAt(0),b=chars[1].codePointAt(0);if(a>=127462&&a<=127487&&b>=127462&&b<=127487)return String.fromCharCode(a-127397,b-127397).toLowerCase();}
  return/^[A-Za-z]{2}$/.test((value||'').trim())?(value||'').trim().toLowerCase():'';
 }
+function localizeSidebar(){
+ if(root.getAttribute('lang')!=='fa')return;
+ const labels={
+  'Dashboard':'داشبورد','Telegram Bot':'ربات تلگرام','Routebox Servers':'سرورهای RouteBox','RouteBox Servers':'سرورهای RouteBox',
+  'IBSng Servers':'سرورهای IBSng','MikroTik WireGuard':'سرورهای MikroTik WireGuard','MikroTik WireGuard Servers':'سرورهای MikroTik WireGuard',
+  'Usage Guides':'راهنمای استفاده','Plans':'پلن‌ها','Provider Guide':'راهنمای سرویس','Users':'کاربران',
+  'Payment Settings':'تنظیمات پرداخت','Security':'امنیت','Updates':'به‌روزرسانی'
+ };
+ document.querySelectorAll('.sidebar .nav span').forEach(el=>{const text=(el.textContent||'').trim();if(labels[text])el.textContent=labels[text];});
+}
 function addTopTools(){
  const actions=document.querySelector('.top-actions');
  if(!actions||actions.querySelector('.atd-ui-tools'))return;
  const tools=document.createElement('div');tools.className='atd-ui-tools';
- const lang=document.createElement('button');lang.type='button';lang.className='atd-ui-control';lang.textContent=root.getAttribute('lang')==='fa'?'EN':'FA';lang.title=root.getAttribute('lang')==='fa'?'English':'فارسی';lang.addEventListener('click',languageSwitch);
+ const lang=document.createElement('button');lang.type='button';lang.className='atd-ui-control';lang.textContent=root.getAttribute('lang')==='fa'?'EN':'FA';lang.title=root.getAttribute('lang')==='fa'?'English':'فارسی';lang.setAttribute('aria-label',lang.title);lang.addEventListener('click',languageSwitch);
  tools.appendChild(lang);
  const wrap=document.createElement('div');wrap.className='atd-color-wrap';
- const color=document.createElement('button');color.type='button';color.className='atd-ui-control';color.textContent='🎨';color.title='Accent color';
+ const color=document.createElement('button');color.type='button';color.className='atd-ui-control';color.textContent='🎨';color.title='Accent color';color.setAttribute('aria-label','Accent color');
  const menu=document.createElement('div');menu.className='atd-color-menu';menu.hidden=true;
  Object.entries(accents).forEach(([key,a])=>{const b=document.createElement('button');b.type='button';b.className='atd-color';b.dataset.accent=key;b.style.setProperty('--swatch',a.value);b.setAttribute('aria-label',a.name);b.title=a.name;b.innerHTML='<i aria-hidden="true"></i>';b.addEventListener('click',()=>{applyAccent(key);menu.hidden=true;});menu.appendChild(b);});
  color.addEventListener('click',e=>{e.stopPropagation();menu.hidden=!menu.hidden;});wrap.append(color,menu);tools.appendChild(wrap);
@@ -127,6 +173,25 @@ function addTopTools(){
  const theme=actions.querySelector('#themeBtn');
  if(theme)actions.insertBefore(tools,theme);else actions.appendChild(tools);
  document.addEventListener('click',e=>{if(!wrap.contains(e.target))menu.hidden=true;});
+}
+function addMobileMenu(){
+ const topbar=document.querySelector('.topbar');
+ const sidebar=document.querySelector('.sidebar');
+ if(!topbar||!sidebar||topbar.querySelector('.atd-mobile-menu-btn'))return;
+ const button=document.createElement('button');
+ button.type='button';button.className='atd-mobile-menu-btn';
+ const fa=root.getAttribute('lang')==='fa';
+ button.setAttribute('aria-label',fa?'باز کردن منو':'Open menu');
+ button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>'+(fa?'منو':'Menu')+'</span>';
+ const close=document.createElement('button');
+ close.type='button';close.className='atd-mobile-close';close.setAttribute('aria-label',fa?'بستن منو':'Close menu');close.textContent='×';
+ sidebar.insertBefore(close,sidebar.firstChild);
+ const overlay=document.createElement('div');overlay.className='atd-mobile-overlay';overlay.hidden=true;
+ document.body.appendChild(overlay);
+ const openMenu=()=>{sidebar.classList.add('atd-mobile-open');overlay.hidden=false;document.body.classList.add('atd-menu-open');button.setAttribute('aria-expanded','true');};
+ const closeMenu=()=>{sidebar.classList.remove('atd-mobile-open');overlay.hidden=true;document.body.classList.remove('atd-menu-open');button.setAttribute('aria-expanded','false');};
+ button.setAttribute('aria-expanded','false');button.addEventListener('click',openMenu);close.addEventListener('click',closeMenu);overlay.addEventListener('click',closeMenu);document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});
+ topbar.insertBefore(button,topbar.firstChild);
 }
 
 document.querySelectorAll('.flag').forEach(el=>{const code=flagCode(el.textContent);if(!code)return;const img=document.createElement('img');img.className='atd-country-flag';img.width=30;img.height=20;img.loading='lazy';img.alt=code.toUpperCase()+' flag';img.src='https://flagcdn.com/w40/'+code+'.png';img.onerror=()=>{el.textContent=code.toUpperCase();el.style.fontSize='12px';};el.replaceChildren(img);});
@@ -144,7 +209,7 @@ if(section==='ibsng'||section==='mikrotik'){const cards=Array.from(document.quer
 
 /* Keep the real panel theme switch as the single source of truth. */
 const savedTheme=localStorage.getItem('rbt-theme');if(savedTheme==='light')root.classList.add('light');
-const savedAccent=localStorage.getItem('atd-accent')||'blue';applyAccent(savedAccent);addTopTools();
+const savedAccent=localStorage.getItem('atd-accent')||'blue';applyAccent(savedAccent);localizeSidebar();addTopTools();addMobileMenu();
 })();
 </script>
 HTML;
