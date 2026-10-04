@@ -22,6 +22,48 @@
 
 > **Architecture note:** IBSng `owner` / `owner_name` is an IBSng-specific concept. It is separate from Telegram Bot Admin permissions.
 
+## 🎨 Completed — ATD Panel UI normalization
+
+### Provider server pages
+
+- [x] Unified RouteBox / IBSng / MikroTik server status-card visual language.
+- [x] Preserved server status, country flag/location and ping information.
+- [x] Unified Connected / Running status-pill presentation.
+- [x] Moved IBSng and MikroTik server lists above Add Server when servers exist.
+- [x] Kept provider server actions aligned with the actual capability matrix:
+  - IBSng: Edit Server + Delete Server
+  - RouteBox: no Edit Server / no Delete Server
+  - MikroTik: Edit Server / no Delete Server
+- [x] Added IBSng Test Create User UI while keeping the tested provider flow intact.
+
+### Users summary
+
+- [x] Added four page-level Users cards directly under the Users heading.
+- [x] RouteBox Users count uses provider subscriptions/users.
+- [x] IBSng Users count uses provider subscriptions/users.
+- [x] MikroTik Users count uses provider subscriptions/users.
+- [x] Telegram Bot Users count uses total registered Telegram users.
+
+### Provider Plans
+
+- [x] Unified RouteBox / IBSng / MikroTik plan-card action styling.
+- [x] `Edit Plan`, `Disable`, and `Delete` are aligned in the same action row.
+- [x] Added explicit Close and Escape-to-close behavior for plan edit panels.
+- [x] `Provider Plan Key` is manually required only for IBSng, where it represents the real IBSng group name.
+- [x] RouteBox/MikroTik provider-generated/internal plan keys remain untouched.
+- [x] Provider plan management remains separate from provider protocol/provisioning logic.
+
+### Scalability and compatibility
+
+- [x] Added bounded MikroTik peer pagination at 50 peers per page.
+- [x] Avoided an unbounded visible 1000-row peer list.
+- [x] Fixed Chrome/Edge flag rendering with flag images and country-code fallback instead of regional-indicator emoji rendering.
+
+### Protected implementation rule
+
+- [x] ATD Panel UI work is isolated from the working RouteBox, IBSng and MikroTik provider implementations.
+- [x] Existing provisioning, authentication, peer allocation, IP-pool behavior and provider APIs remain protected from UI-only refactors.
+
 ## 🔜 Upcoming Phase 1 — Telegram Bot Admin
 
 ### Independent permission system
@@ -71,9 +113,10 @@
 
 ### IBSng test-user UI
 
-- [ ] Add IBSng test-user creation to the IBSng section of the Admin Panel.
-- [ ] Move the capability currently exposed by `test-ibsng-account.php` into a safe Admin Panel UI.
-- [ ] Keep the existing working IBSng test/provisioning code intact while adding the UI orchestration layer.
+- [x] Add IBSng test-user creation to the IBSng section of the Admin Panel.
+- [x] Reuse the previously working test/provisioning path through the UI.
+- [ ] Move the standalone `test-ibsng-account.php` workflow out of the normal user workflow if still exposed.
+- [ ] Keep the existing working IBSng test/provisioning code intact while adding future UI orchestration.
 
 ## 🔧 Upcoming Phase 4 — Telegram Worker operations
 
@@ -118,3 +161,7 @@
 6. IBSng renewal must consume the plans configured in the RouteBox Admin Panel.
 7. New Admin UI features should orchestrate the existing provider modules rather than moving provider protocol logic into the UI.
 8. Future development for Telegram Bot Admin should start on `feature/telegram-bot-admin`.
+9. ATD Panel UI work must remain UI-only unless a functional/provider change is explicitly requested.
+10. Do not reintroduce manual Provider Plan Key requirements for RouteBox or MikroTik.
+11. Do not invent RouteBox or MikroTik server delete actions unless their backend capabilities are explicitly implemented in a separate task.
+12. Do not render potentially thousands of MikroTik peers as one unbounded visible page.
