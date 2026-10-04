@@ -157,7 +157,7 @@ $style = <<<'CSS'
 .atd-nav-item .nav-icon{display:inline-flex;align-items:center;justify-content:center}
 .atd-nav-item .nav-icon svg{display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .atd-nav-item>span:nth-child(2){flex:1;min-width:0;white-space:nowrap;overflow:visible;text-overflow:clip}
-.provider-item .nav-chevron{margin-inline-start:auto;opacity:.55;line-height:1;transition:transform .16s ease}
+.provider-item .nav-chevron{margin-inline-start:auto;opacity:.55;line-height:1;transition:transform .16s ease;direction:ltr;unicode-bidi:isolate}
 .atd-nav-group.expanded .nav-chevron{transform:rotate(90deg);opacity:.8}
 .atd-nav-sub{display:none;margin:0 0 2px 34px;padding-left:9px;border-left:1px solid rgba(127,127,127,.22)}
 .atd-nav-group.expanded .atd-nav-sub{display:block}
