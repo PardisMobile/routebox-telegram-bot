@@ -1,0 +1,24 @@
+name: ATD changelog append
+on:
+  push:
+    branches: [ATD-Panel]
+permissions:
+  contents: write
+jobs:
+  append:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Append changelog entry
+        run: |
+          python3 -c "from pathlib import Path; p=Path('CHANGELOG.md'); s=p.read_text(); marker='### 🛡️ Telegram Bot Admin foundation'; section='### 🛡️ Telegram Bot Admin foundation\\n\\n- Added independent Telegram Numeric ID authorization with multiple Admin records and future-ready roles.\\n- Integrated the Admin menu into the existing Telegram Worker without creating a second polling Worker.\\n- Added RouteBox/IBSng admin provisioning through the existing ServiceProvisioner path.\\n- Added one-time Admin action records and audit logging without credential payloads.\\n- Added Web Panel Telegram Admin management at public/telegram-admins.php.\\n- Card-to-card payment/receipt approval remains the next slice.\\n'; p.write_text(s.rstrip()+'\\n\\n'+section) if marker not in s else None"
+      - name: Commit and remove workflow
+        run: |
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/atd-changelog-append.yml
+          git add CHANGELOG.md
+          git commit -m 'docs(admin): update changelog for Telegram Admin'
+          git push
