@@ -75,10 +75,17 @@ input:focus,textarea:focus,select:focus{border-color:var(--atd-accent)!important
 .atd-server-delete{margin:0}
 .sidebar-foot .mini-link + .mini-link{display:none!important}
 .atd-mobile-menu-btn,.atd-mobile-overlay,.atd-mobile-close{display:none}
+
+/* Stable desktop geometry: keep the previously approved compact sidebar size in every browser. */
+@media(min-width:801px){
+  .sidebar{box-sizing:border-box!important;width:300px!important;min-width:300px!important;max-width:300px!important;flex:0 0 300px!important;overflow-y:auto!important;overflow-x:hidden!important}
+  .main{min-width:0!important}
+}
+
 @media(max-width:800px){
   body.atd-menu-open{overflow:hidden}
   .sidebar{display:none}
-  .sidebar.atd-mobile-open{display:block;position:fixed;top:12px;bottom:12px;inset-inline-start:12px;width:min(86vw,330px);height:auto;max-height:calc(100vh - 24px);overflow-y:auto;padding:16px;background:var(--card2);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);backdrop-filter:blur(24px);z-index:10001}
+  .sidebar.atd-mobile-open{display:block;position:fixed;top:12px;bottom:12px;inset-inline-start:12px;width:min(80vw,320px);max-width:320px;height:auto;max-height:calc(100vh - 24px);overflow-y:auto;overflow-x:hidden;padding:16px;background:var(--card2);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);backdrop-filter:blur(24px);z-index:10001;box-sizing:border-box}
   .sidebar.atd-mobile-open .brand{display:flex;padding:2px 4px 18px}
   .sidebar.atd-mobile-open .sidebar-foot{display:grid;position:static;margin-top:16px;gap:8px}
   .sidebar.atd-mobile-open .nav{display:grid;grid-template-columns:1fr;gap:4px}
