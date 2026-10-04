@@ -45,6 +45,24 @@ The production installer also performs a real temporary RouteBox/AWG smoke test 
 - Optional HTTP + HTTPS on the same panel port by reusing the existing RouteBox panel certificate
 - Does not require taking over existing Apache/Nginx ports 80/443
 
+### 🎨 ATD Panel UI baseline
+
+The `ATD-Panel` branch contains the current Admin Panel visual-normalization work for RouteBox, IBSng and MikroTik.
+
+- Consistent provider/server status cards with connection state, country flag, IP and ping where available
+- Four Users summary cards: RouteBox Users, IBSng Users, MikroTik Users and Telegram Bot Users
+- Consistent server action-button styling while preserving provider capabilities
+- Consistent plan-card actions: `Edit Plan` / `Disable` / `Delete`
+- Compact plan edit panels with an explicit Close action and Escape-to-close behavior
+- IBSng Provider Plan Key is shown as the meaningful/manual group-name field; RouteBox and MikroTik do not require manual entry of provider-generated/internal keys
+- Server lists are shown before Add Server when servers already exist
+- MikroTik peer lists are bounded to 50 visible peers per page with pagination
+- Cross-browser country flags use image assets with country-code fallback instead of relying on emoji font rendering
+
+**Provider capability contract:** IBSng supports Edit Server + Delete Server; MikroTik supports Edit Server but not Delete Server; RouteBox currently exposes neither as a provider capability. UI normalization must not invent backend actions.
+
+> **Important:** ATD Panel UI work is intentionally isolated from the working provider implementations. RouteBox, IBSng and MikroTik provisioning/API logic, peer allocation and tested business functions are treated as protected unless a separate functional task explicitly requests a change.
+
 ## 🔵 IBSng integration — completed and tested
 
 IBSng A1.24 is implemented as an additional modular service provider. The existing RouteBox/AWG provisioning path remains separate and is not replaced by IBSng.
@@ -198,6 +216,21 @@ The Admin Panel also contains the update workflow. The repository includes backu
 - [x] Worker integration with the isolated IBSng client
 - [x] Real IBSng A1.24 provisioning flow tested successfully
 
+### 🎨 ATD Panel UI normalization — completed baseline
+
+- [x] Unified RouteBox / IBSng / MikroTik server status-card presentation
+- [x] Restored status, flag and ping information in the provider summary area
+- [x] Added the four Users summary cards and placed them directly under the Users heading
+- [x] Unified Connected / Running status-pill styling
+- [x] Unified provider plan action-row styling
+- [x] Added explicit plan-editor close behavior without changing plan update logic
+- [x] Made Provider Plan Key manual/required only for IBSng where it represents the IBSng group name
+- [x] Preserved RouteBox/MikroTik provider-generated/internal plan-key behavior
+- [x] Moved IBSng and MikroTik server lists before Add Server when servers exist
+- [x] Added bounded MikroTik peer pagination at 50 peers per page
+- [x] Removed UI-injected RouteBox/MikroTik Delete Server actions that were not supported by the provider capability contract
+- [x] Fixed country-flag rendering so Chrome/Edge do not depend on regional-indicator emoji fonts
+
 ### 🔜 Upcoming: Telegram Bot Admin
 
 Telegram Bot Admin is a **new, independent permission layer**. It is not the same thing as the IBSng `owner` / `owner_name` concept.
@@ -260,6 +293,7 @@ Telegram Bot Admin is a **new, independent permission layer**. It is not the sam
 - [Roadmap](./ROADMAP.md)
 - [Changelog](./CHANGELOG.md)
 - [Modular Architecture](./docs/MODULAR_ARCHITECTURE.md)
+- [ATD Panel Working Notes](./docs/ATD_PANEL_WORKING_NOTES.md)
 - [IBSng tools](./tools/)
 - [Troubleshooting](./TROUBLESHOOTING.md)
 
