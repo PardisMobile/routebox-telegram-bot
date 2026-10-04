@@ -123,7 +123,7 @@ final class ProviderPlansSection
 
         $db->beginTransaction();
         try {
-            $planId = $repo->create($data);
+            $repo->create($data);
             $now = time();
             $st = $db->prepare('INSERT INTO ibsng_groups(ibsng_server_id,group_name,group_id,group_info_json,enabled,synced_at,plan_name) VALUES(?,?,?,?,1,?,?)');
             $st->execute([(int)$data['provider_server_id'], (string)$data['provider_plan_key'], null, '{}', $now, (string)$data['display_name_fa']]);
@@ -195,7 +195,8 @@ final class ProviderPlansSection
         $servers = $serverTable ? $db->query('SELECT id,name FROM ' . $serverTable . ' ORDER BY id')->fetchAll(PDO::FETCH_ASSOC) : [];
         $fa = $lang === 'fa';
         $providerLabel = ['routebox'=>'RouteBox','ibsng'=>'IBSng','mikrotik_wireguard'=>'MikroTik WireGuard'][$provider] ?? $provider;
-        $keyLabel = $provider === 'ibsng' ? ($fa ? 'نام گروه IBSng' : 'IBSng Group Name') : 'Provider Plan Key';
+        $isIbsng = $provider === 'ibsng';
+        $keyLabel = $fa ? 'نام گروه IBSng' : 'IBSng Group Name';
 
         $out = '<section class="provider-plans-page card"><div class="section-head"><div class="section-title"><div class="section-icon">◈</div><div><h2>' . h($providerLabel) . ' — Plans</h2><p>' . ($fa ? 'مدیریت متمرکز پلن‌ها برای این Provider.' : 'Centralized plan management for this provider.') . '</p></div></div><a class="btn btn-secondary" href="/?section=' . rawurlencode(self::providerSection($provider)) . '">← ' . ($fa ? 'بازگشت به Provider' : 'Back to provider') . '</a></div>';
 
@@ -203,8 +204,8 @@ final class ProviderPlansSection
             . self::field('display_name_fa',$fa?'نام فارسی':'Persian name','',true)
             . self::field('display_name_en','English name','',true)
             . '<div class="field"><label>' . ($fa?'دسته سرویس':'Service category') . '</label><select name="category_id" required>' . self::categoryOptions($categories,null,$fa) . '</select></div>'
-            . '<div class="field"><label>' . ($fa?'سرور':'Server') . '</label><select name="provider_server_id"'.($provider==='ibsng'?' required':'').'><option value="">' . ($fa?'خودکار / بدون سرور':'Auto / no server') . '</option>' . self::serverOptions($servers) . '</select></div>'
-            . self::field('provider_plan_key',$keyLabel,'',$provider==='ibsng')
+            . '<div class="field"><label>' . ($fa?'سرور':'Server') . '</label><select name="provider_server_id"'.($isIbsng?' required':'').'><option value="">' . ($fa?'خودکار / بدون سرور':'Auto / no server') . '</option>' . self::serverOptions($servers) . '</select></div>'
+            . ($isIbsng ? self::field('provider_plan_key',$keyLabel,'',true) : '')
             . self::field('price_minor',$fa?'قیمت':'Price','0',false,'number','min="0" step="1"')
             . self::field('duration_days',$fa?'مدت (روز)':'Duration (days)','30',true,'number','min="1" max="3650"')
             . self::field('quota_gb',$fa?'حجم (GB)':'Quota (GB)','0',false,'number','min="0" step="0.1"')
@@ -220,26 +221,29 @@ final class ProviderPlansSection
             $keyValue = (string)($plan['provider_plan_key'] ?? '');
             $meta = h((string)$plan['category_name_en']) . ' · ' . (int)$plan['duration_days'] . ' days · ' . h((string)$plan['quota_gb']) . ' GB · ' . number_format((int)$plan['price_minor']);
             if ($serverName !== '—') $meta .= ' · ' . h($serverName);
-            if ($provider === 'ibsng' && $keyValue !== '') $meta .= ' · ' . h($keyValue);
+            if ($isIbsng && $keyValue !== '') $meta .= ' · ' . h($keyValue);
 
-            $out .= '<article class="provider-plan-card ' . ($status?'':'is-disabled') . '"><div class="plan-main"><div class="plan-name">' . h($name) . '</div><div class="plan-meta">' . $meta . '</div></div><div class="plan-actions">'
-                . '<details class="provider-plan-edit" id="'.$h($editId).'" style="display:inline-block"><summary class="btn btn-secondary">✎ ' . ($fa?'ویرایش پلن':'Edit plan') . '</summary><div class="provider-plan-edit-panel">'
-                . '<form method="post"><input type="hidden" name="csrf_token" value="' . $csrf . '"><input type="hidden" name="plan_action" value="update"><input type="hidden" name="id" value="' . (int)$plan['id'] . '"><input type="hidden" name="provider_key" value="' . h($provider) . '"><div class="grid">'
+            $editFields = '<div class="grid">'
                 . self::field('display_name_fa',$fa?'نام فارسی':'Persian name',(string)$plan['display_name_fa'],true)
                 . self::field('display_name_en','English name',(string)$plan['display_name_en'],true)
                 . '<div class="field"><label>' . ($fa?'دسته سرویس':'Service category') . '</label><select name="category_id" required>' . self::categoryOptions($categories,(int)$plan['category_id'],$fa) . '</select></div>'
-                . '<div class="field"><label>' . ($fa?'سرور':'Server') . '</label><select name="provider_server_id"'.($provider==='ibsng'?' required':'').'><option value="">' . ($fa?'خودکار / بدون سرور':'Auto / no server') . '</option>' . self::serverOptionsSelected($servers,$plan['provider_server_id']) . '</select></div>'
-                . self::field('provider_plan_key',$keyLabel,(string)($plan['provider_plan_key']??''),$provider==='ibsng')
+                . '<div class="field"><label>' . ($fa?'سرور':'Server') . '</label><select name="provider_server_id"'.($isIbsng?' required':'').'><option value="">' . ($fa?'خودکار / بدون سرور':'Auto / no server') . '</option>' . self::serverOptionsSelected($servers,$plan['provider_server_id']) . '</select></div>'
+                . ($isIbsng ? self::field('provider_plan_key',$keyLabel,$keyValue,true) : '<input type="hidden" name="provider_plan_key" value="'.h($keyValue).'">')
                 . self::field('price_minor',$fa?'قیمت':'Price',(string)$plan['price_minor'],false,'number','min="0" step="1"')
                 . self::field('duration_days',$fa?'مدت (روز)':'Duration (days)',(string)$plan['duration_days'],true,'number','min="1" max="3650"')
                 . self::field('quota_gb',$fa?'حجم (GB)':'Quota (GB)',(string)$plan['quota_gb'],false,'number','min="0" step="0.1"')
-                . '</div><div class="form-actions"><button class="btn btn-primary" type="submit">' . ($fa?'ذخیره تغییرات':'Save changes') . '</button></div></form></div></details>'
+                . '</div>';
+
+            $out .= '<article class="provider-plan-card ' . ($status?'':'is-disabled') . '"><div class="plan-main"><div class="plan-name">' . h($name) . '</div><div class="plan-meta">' . $meta . '</div></div><div class="plan-actions">'
+                . '<details class="provider-plan-edit" id="'.h($editId).'" style="display:inline-block"><summary class="btn btn-secondary">✎ ' . ($fa?'ویرایش پلن':'Edit plan') . '</summary><div class="provider-plan-edit-panel">'
+                . '<form method="post"><input type="hidden" name="csrf_token" value="' . $csrf . '"><input type="hidden" name="plan_action" value="update"><input type="hidden" name="id" value="' . (int)$plan['id'] . '"><input type="hidden" name="provider_key" value="' . h($provider) . '">' . $editFields
+                . '<div class="form-actions"><button class="btn btn-primary" type="submit">' . ($fa?'ذخیره تغییرات':'Save changes') . '</button></div></form></div></details>'
                 . self::miniForm($csrf,'toggle',(int)$plan['id'],$status?'Disable':'Enable','btn btn-secondary')
                 . self::miniForm($csrf,'delete',(int)$plan['id'],$fa?'حذف':'Delete','btn btn-danger',true)
                 . '</div></article>';
         }
         $out .= '</div></section>';
-        return '<style>.provider-plans-page{margin-top:8px}.provider-plan-form{margin:18px 0 24px;padding:20px;border:1px solid var(--line);border-radius:18px;background:var(--card2)}.provider-plan-list{display:grid;gap:12px}.provider-plan-card{display:flex;justify-content:space-between;gap:18px;align-items:center;padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--card2)}.provider-plan-card.is-disabled{opacity:.62}.plan-name{font-weight:800;font-size:16px}.plan-meta{color:var(--muted);font-size:12px;margin-top:6px}.plan-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end}.provider-plan-edit{position:relative}.provider-plan-edit>summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;list-style:none!important}.provider-plan-edit>summary::-webkit-details-marker{display:none}.provider-plan-edit>summary::marker{content:""}.provider-plan-edit-panel{position:absolute;z-index:20;right:0;top:calc(100% + 8px);width:min(680px,calc(100vw - 48px));padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--card2);box-shadow:0 18px 50px rgba(0,0,0,.28)}.provider-plan-edit-panel .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.btn-danger{border-color:rgba(255,100,124,.35)!important;color:var(--red)!important}.empty-state{padding:30px;text-align:center;border:1px dashed var(--line);border-radius:16px;color:var(--muted)}@media(max-width:760px){.provider-plan-card{align-items:flex-start;flex-direction:column}.plan-actions{width:100%;justify-content:flex-start}.provider-plan-edit-panel{position:fixed;left:16px;right:16px;top:90px;width:auto;max-height:calc(100vh - 110px);overflow:auto}.provider-plan-edit-panel .grid{grid-template-columns:1fr}}</style>' . $out;
+        return '<style>.provider-plans-page{margin-top:8px}.provider-plan-form{margin:18px 0 24px;padding:20px;border:1px solid var(--line);border-radius:18px;background:var(--card2)}.provider-plan-list{display:grid;gap:12px}.provider-plan-card{display:flex;justify-content:space-between;gap:18px;align-items:center;padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--card2)}.provider-plan-card.is-disabled{opacity:.62}.plan-main{min-width:0;flex:1}.plan-name{font-weight:800;font-size:16px}.plan-meta{color:var(--muted);font-size:12px;margin-top:6px}.plan-actions{display:flex;gap:8px;flex:0 0 auto;flex-wrap:nowrap;align-items:center;justify-content:flex-end}.plan-actions>form,.plan-actions>.provider-plan-edit{flex:0 0 auto;margin:0}.provider-plan-edit{position:relative}.provider-plan-edit>summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;list-style:none!important;white-space:nowrap}.provider-plan-edit>summary::-webkit-details-marker{display:none}.provider-plan-edit>summary::marker{content:""}.provider-plan-edit-panel{position:absolute;z-index:20;right:0;top:calc(100% + 8px);width:min(680px,calc(100vw - 48px));padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--card2);box-shadow:0 18px 50px rgba(0,0,0,.28)}.provider-plan-edit-panel .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.btn-danger{border-color:rgba(255,100,124,.35)!important;color:var(--red)!important}.empty-state{padding:30px;text-align:center;border:1px dashed var(--line);border-radius:16px;color:var(--muted)}@media(max-width:900px){.provider-plan-card{align-items:flex-start}.plan-actions{flex-wrap:wrap}}@media(max-width:760px){.provider-plan-card{align-items:flex-start;flex-direction:column}.plan-actions{width:100%;justify-content:flex-start;flex-wrap:wrap}.provider-plan-edit-panel{position:fixed;left:16px;right:16px;top:90px;width:auto;max-height:calc(100vh - 110px);overflow:auto}.provider-plan-edit-panel .grid{grid-template-columns:1fr}}</style>' . $out;
     }
 
     private static function field(string $name,string $label,string $value='',bool $required=false,string $type='text',string $extra=''): string
