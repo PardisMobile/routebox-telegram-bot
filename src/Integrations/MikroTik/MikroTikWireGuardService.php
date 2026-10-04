@@ -189,7 +189,7 @@ final class MikroTikWireGuardService
                     continue;
                 }
                 $size = 2 ** (32 - $bits);
-                $first = $base;
+                $first = $base + 1;
                 $last = $base + $size - 1;
                 for ($n = $first; $n <= $last; $n++) {
                     $ip = long2ip($n);
