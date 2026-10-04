@@ -92,20 +92,20 @@
 
 ### Independent permission system
 
-- [ ] Create an independent Telegram Bot Admin authentication / authorization layer.
-- [ ] Configure Telegram Bot Admin users from the Web/Admin Panel.
-- [ ] Support **multiple Telegram numeric IDs**; do not limit the system to one administrator ID.
-- [ ] Provide a dedicated/admin Telegram menu for authorized Bot Admin users.
-- [ ] Keep Telegram Bot Admin permissions completely separate from IBSng `owner` / `owner_name`.
+- [x] Create an independent Telegram Bot Admin authentication / authorization layer.
+- [x] Configure Telegram Bot Admin users from the Web/Admin Panel through `public/telegram-admins.php`.
+- [x] Support **multiple Telegram numeric IDs**; do not limit the system to one administrator ID.
+- [x] Provide a dedicated/admin Telegram menu for authorized Bot Admin users.
+- [x] Keep Telegram Bot Admin permissions completely separate from IBSng `owner` / `owner_name`.
 
 ### Admin service management
 
-- [ ] Allow authorized Telegram Bot Admin users to manage services through Telegram.
-- [ ] Allow Bot Admin to create a new RouteBox service without customer payment.
-- [ ] Allow Bot Admin to create a new IBSng service without customer payment.
-- [ ] Design the payment bypass as provider-neutral so future service providers can use the same authorization path.
-- [ ] Keep the normal customer payment flow unchanged.
-- [ ] Record admin-created orders/provisioning actions for auditability.
+- [x] Allow authorized Telegram Bot Admin users to manage services through Telegram.
+- [x] Allow Bot Admin to create a new RouteBox service without customer payment.
+- [x] Allow Bot Admin to create a new IBSng service without customer payment.
+- [x] Design the payment bypass as provider-neutral by routing through the existing `ServiceProvisioner` dispatch.
+- [x] Keep the normal customer payment flow unchanged.
+- [x] Record admin provisioning actions and results in a dedicated audit log.
 
 ### Manual / card-to-card payment workflow
 
@@ -120,9 +120,9 @@
 
 ### Reference feature research
 
-- [ ] Compare ATD Panel capabilities against the user-provided `mahdiMGF2/mirzabot` source and the separate WireGuard-only bot screenshot.
-- [ ] Treat both as feature references only; do not copy code or architecture blindly.
-- [ ] Produce a feature-gap list and get user approval before implementing the approved features.
+- [x] Compare ATD Panel capabilities against the user-provided `mahdiMGF2/mirzabot` source and the separate WireGuard-only bot screenshot.
+- [x] Treat both as feature references only; do not copy code or architecture blindly.
+- [x] Produce the feature-gap list before implementation.
 
 ## 🔵 Upcoming Phase 2 — IBSng user management through Bot Admin
 
@@ -251,3 +251,16 @@
 13. Do not render potentially thousands of MikroTik peers as one unbounded visible page.
 14. Treat `6026a16` as the last confirmed healthy application/UI checkpoint until a newer commit is explicitly tested and confirmed.
 15. Documentation-only commits do not change the tested application checkpoint.
+
+## Telegram Bot Admin — implementation checkpoint
+
+- [x] Added additive schema: `database/migrations/003_telegram_bot_admin.sql`.
+- [x] Added independent authorization/orchestration: `src/Telegram/AdminBot.php`.
+- [x] Integrated AdminBot into the existing `worker.php`; no second Worker or polling loop was created.
+- [x] Added Web Panel management page: `public/telegram-admins.php`.
+- [x] Admin IDs are numeric Telegram IDs; usernames/names/IBSng owner identity are not used for authorization.
+- [x] Multiple Admins and future roles (`owner`, `admin`, `support`, `finance`, `operator`) are supported at the data-model level.
+- [x] Admin service creation uses the existing `ServiceProvisioner` and existing provider integrations for RouteBox/IBSng.
+- [x] Admin provisioning callbacks use short-lived, Admin-bound, one-time action records and do not repeat a successful provisioning action.
+- [x] Admin provisioning actions are audit logged without storing credentials in the audit payload.
+- [ ] Full card-to-card Order/Payment/Receipt approval workflow remains the next implementation slice.
