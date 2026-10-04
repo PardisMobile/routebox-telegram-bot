@@ -75,142 +75,42 @@ input:focus,textarea:focus,select:focus{border-color:var(--atd-accent)!important
 .atd-server-delete{margin:0}
 .sidebar-foot .mini-link + .mini-link{display:none!important}
 .atd-mobile-menu-btn,.atd-mobile-overlay,.atd-mobile-close{display:none}
-
 @media(max-width:800px){
-  body.atd-menu-open{overflow:hidden}
-  .sidebar{display:none}
+  body.atd-menu-open{overflow:hidden}.sidebar{display:none}
   .sidebar.atd-mobile-open{display:block;position:fixed;top:12px;bottom:12px;inset-inline-start:12px;width:min(80vw,320px);max-width:320px;height:auto;max-height:calc(100vh - 24px);overflow-y:auto;overflow-x:hidden;padding:16px;background:var(--card2);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);backdrop-filter:blur(24px);z-index:10001;box-sizing:border-box}
-  .sidebar.atd-mobile-open .brand{display:flex;padding:2px 4px 18px}
-  .sidebar.atd-mobile-open .sidebar-foot{display:grid;position:static;margin-top:16px;gap:8px}
-  .sidebar.atd-mobile-open .nav{display:grid;grid-template-columns:1fr;gap:4px}
-  .sidebar.atd-mobile-open .nav a{font-size:13px;justify-content:flex-start;padding:11px 12px}
-  .sidebar.atd-mobile-open .nav svg{width:19px;height:19px}
-  .sidebar.atd-mobile-open .atd-nav-sub{display:block}
-  .sidebar.atd-mobile-open .atd-nav-subitem{font-size:12px;padding:7px 8px}
-  .sidebar.atd-mobile-open .nav-chevron{display:inline-flex}
-  .atd-mobile-close{display:grid;place-items:center;position:absolute;top:12px;inset-inline-end:12px;width:34px;height:34px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-size:22px;line-height:1;cursor:pointer;z-index:2}
-  .atd-mobile-overlay{display:block;position:fixed;inset:0;background:rgba(3,7,18,.48);backdrop-filter:blur(2px);z-index:10000}
-  .atd-mobile-overlay[hidden]{display:none}
-  .atd-mobile-menu-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:40px;padding:0 11px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);cursor:pointer;font:700 12px inherit}
-  .atd-mobile-menu-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-  .main{padding:18px 14px 34px}
-  .topbar{align-items:flex-start;gap:10px;margin-bottom:18px}
-  .topbar h1{font-size:24px}
-  .top-actions{gap:6px}
-  .top-actions .chip.keep{display:none}
-  .atd-ui-control{height:38px;min-width:38px}
+  .sidebar.atd-mobile-open .brand{display:flex;padding:2px 4px 18px}.sidebar.atd-mobile-open .sidebar-foot{display:grid;position:static;margin-top:16px;gap:8px}.sidebar.atd-mobile-open .nav{display:grid;grid-template-columns:1fr;gap:4px}.sidebar.atd-mobile-open .nav a{font-size:13px;justify-content:flex-start;padding:11px 12px}.sidebar.atd-mobile-open .nav svg{width:19px;height:19px}.sidebar.atd-mobile-open .atd-nav-sub{display:block}.sidebar.atd-mobile-open .atd-nav-subitem{font-size:12px;padding:7px 8px}.sidebar.atd-mobile-open .nav-chevron{display:inline-flex}
+  .atd-mobile-close{display:grid;place-items:center;position:absolute;top:12px;inset-inline-end:12px;width:34px;height:34px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-size:22px;line-height:1;cursor:pointer;z-index:2}.atd-mobile-overlay{display:block;position:fixed;inset:0;background:rgba(3,7,18,.48);backdrop-filter:blur(2px);z-index:10000}.atd-mobile-overlay[hidden]{display:none}.atd-mobile-menu-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:40px;padding:0 11px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);cursor:pointer;font:700 12px inherit}.atd-mobile-menu-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.main{padding:18px 14px 34px}.topbar{align-items:flex-start;gap:10px;margin-bottom:18px}.topbar h1{font-size:24px}.top-actions{gap:6px}.top-actions .chip.keep{display:none}.atd-ui-control{height:38px;min-width:38px}
 }
-@media(max-width:420px){
-  .topbar{flex-wrap:wrap}
-  .topbar>div:first-child{min-width:0;flex:1}
-  .top-actions{margin-inline-start:auto}
-  .atd-mobile-menu-btn{width:40px;padding:0;font-size:0}
-  .atd-mobile-menu-btn svg{width:19px;height:19px}
-  .hero{padding:18px}
-  .hero-row{align-items:flex-start;flex-direction:column}
-  .grid,.plans,.preview-grid{grid-template-columns:1fr}
-}
+@media(max-width:420px){.topbar{flex-wrap:wrap}.topbar>div:first-child{min-width:0;flex:1}.top-actions{margin-inline-start:auto}.atd-mobile-menu-btn{width:40px;padding:0;font-size:0}.atd-mobile-menu-btn svg{width:19px;height:19px}.hero{padding:18px}.hero-row{align-items:flex-start;flex-direction:column}.grid,.plans,.preview-grid{grid-template-columns:1fr}}
 @media(max-width:720px){.atd-ui-tools{margin-inline-start:0}.atd-color-menu{inset-inline-start:0;inset-inline-end:auto}}
 </style>
 <script>
 (function(){
 'use strict';
 const root=document.documentElement;
-const accents={
- blue:{name:'Blue',value:'#4f7cff',strong:'#3d68e8'},
- indigo:{name:'Indigo',value:'#6657d9',strong:'#5547c3'},
- emerald:{name:'Emerald',value:'#2f9e78',strong:'#238361'},
- cyan:{name:'Cyan',value:'#258fb8',strong:'#19779d'},
- amber:{name:'Amber',value:'#c38a2b',strong:'#a8731f'},
- rose:{name:'Rose',value:'#c85b72',strong:'#ad465e'}
-};
-function applyAccent(key){
- const a=accents[key]||accents.blue;
- root.style.setProperty('--atd-accent',a.value);
- root.style.setProperty('--atd-accent-strong',a.strong);
- /* The legacy panel uses these variables everywhere. This is the missing link that made the previous palette only affect a few controls. */
- root.style.setProperty('--primary',a.value);
- root.style.setProperty('--primary2',a.strong);
- root.style.setProperty('--cyan',a.value);
- root.style.setProperty('--atd-accent-soft',a.value+'22');
- root.style.setProperty('--atd-focus',a.value+'55');
- localStorage.setItem('atd-accent',key);
- document.querySelectorAll('.atd-color').forEach(x=>x.classList.toggle('active',x.dataset.accent===key));
-}
-function languageSwitch(){
- const next=root.getAttribute('lang')==='fa'?'en':'fa';
- const url=new URL(location.href);
- url.searchParams.set('lang',next);
- /* Use the same server-side language mechanism as the existing sidebar switch. */
- location.href=url.pathname+'?'+url.searchParams.toString();
-}
-function flagCode(value){
- const chars=Array.from((value||'').trim());
- if(chars.length===2){const a=chars[0].codePointAt(0),b=chars[1].codePointAt(0);if(a>=127462&&a<=127487&&b>=127462&&b<=127487)return String.fromCharCode(a-127397,b-127397).toLowerCase();}
- return/^[A-Za-z]{2}$/.test((value||'').trim())?(value||'').trim().toLowerCase():'';
-}
+const accents={blue:{name:'Blue',value:'#4f7cff',strong:'#3d68e8'},indigo:{name:'Indigo',value:'#6657d9',strong:'#5547c3'},emerald:{name:'Emerald',value:'#2f9e78',strong:'#238361'},cyan:{name:'Cyan',value:'#258fb8',strong:'#19779d'},amber:{name:'Amber',value:'#c38a2b',strong:'#a8731f'},rose:{name:'Rose',value:'#c85b72',strong:'#ad465e'}};
+function applyAccent(key){const a=accents[key]||accents.blue;root.style.setProperty('--atd-accent',a.value);root.style.setProperty('--atd-accent-strong',a.strong);root.style.setProperty('--primary',a.value);root.style.setProperty('--primary2',a.strong);root.style.setProperty('--cyan',a.value);root.style.setProperty('--atd-accent-soft',a.value+'22');root.style.setProperty('--atd-focus',a.value+'55');localStorage.setItem('atd-accent',key);document.querySelectorAll('.atd-color').forEach(x=>x.classList.toggle('active',x.dataset.accent===key));}
+function languageSwitch(){const next=root.getAttribute('lang')==='fa'?'en':'fa';const url=new URL(location.href);url.searchParams.set('lang',next);location.href=url.pathname+'?'+url.searchParams.toString();}
+function flagCode(value){const chars=Array.from((value||'').trim());if(chars.length===2){const a=chars[0].codePointAt(0),b=chars[1].codePointAt(0);if(a>=127462&&a<=127487&&b>=127462&&b<=127487)return String.fromCharCode(a-127397,b-127397).toLowerCase();}return/^[A-Za-z]{2}$/.test((value||'').trim())?(value||'').trim().toLowerCase():'';}
 function localizeSidebar(){
  if(root.getAttribute('lang')!=='fa')return;
  const labels={
-  'Dashboard':'داشبورد','Telegram Bot':'ربات تلگرام','Routebox Servers':'سرورهای RouteBox','RouteBox Servers':'سرورهای RouteBox',
-  'IBSng Servers':'سرورهای IBSng','MikroTik WireGuard':'سرورهای MikroTik WireGuard','MikroTik WireGuard Servers':'سرورهای MikroTik WireGuard',
+  'Dashboard':'داشبورد','Telegram Bot':'ربات تلگرام','Routebox Servers':'Routebox Servers','RouteBox Servers':'RouteBox Servers',
+  'IBSng Servers':'IBSng Servers','MikroTik WireGuard':'MikroTik WireGuard','MikroTik WireGuard Servers':'MikroTik WireGuard',
   'Usage Guides':'راهنمای استفاده','Plans':'پلن‌ها','Provider Guide':'راهنمای سرویس','Users':'کاربران',
   'Payment Settings':'تنظیمات پرداخت','Security':'امنیت','Updates':'به‌روزرسانی'
  };
  document.querySelectorAll('.sidebar .nav span').forEach(el=>{const text=(el.textContent||'').trim();if(labels[text])el.textContent=labels[text];});
 }
-function addTopTools(){
- const actions=document.querySelector('.top-actions');
- if(!actions||actions.querySelector('.atd-ui-tools'))return;
- const tools=document.createElement('div');tools.className='atd-ui-tools';
- const lang=document.createElement('button');lang.type='button';lang.className='atd-ui-control';lang.textContent=root.getAttribute('lang')==='fa'?'EN':'FA';lang.title=root.getAttribute('lang')==='fa'?'English':'فارسی';lang.setAttribute('aria-label',lang.title);lang.addEventListener('click',languageSwitch);
- tools.appendChild(lang);
- const wrap=document.createElement('div');wrap.className='atd-color-wrap';
- const color=document.createElement('button');color.type='button';color.className='atd-ui-control';color.textContent='🎨';color.title='Accent color';color.setAttribute('aria-label','Accent color');
- const menu=document.createElement('div');menu.className='atd-color-menu';menu.hidden=true;
- Object.entries(accents).forEach(([key,a])=>{const b=document.createElement('button');b.type='button';b.className='atd-color';b.dataset.accent=key;b.style.setProperty('--swatch',a.value);b.setAttribute('aria-label',a.name);b.title=a.name;b.innerHTML='<i aria-hidden="true"></i>';b.addEventListener('click',()=>{applyAccent(key);menu.hidden=true;});menu.appendChild(b);});
- color.addEventListener('click',e=>{e.stopPropagation();menu.hidden=!menu.hidden;});wrap.append(color,menu);tools.appendChild(wrap);
- /* Put language + palette immediately beside the existing, working theme button. */
- const theme=actions.querySelector('#themeBtn');
- if(theme)actions.insertBefore(tools,theme);else actions.appendChild(tools);
- document.addEventListener('click',e=>{if(!wrap.contains(e.target))menu.hidden=true;});
-}
-function addMobileMenu(){
- const topbar=document.querySelector('.topbar');
- const sidebar=document.querySelector('.sidebar');
- if(!topbar||!sidebar||topbar.querySelector('.atd-mobile-menu-btn'))return;
- const button=document.createElement('button');
- button.type='button';button.className='atd-mobile-menu-btn';
- const fa=root.getAttribute('lang')==='fa';
- button.setAttribute('aria-label',fa?'باز کردن منو':'Open menu');
- button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>'+(fa?'منو':'Menu')+'</span>';
- const close=document.createElement('button');
- close.type='button';close.className='atd-mobile-close';close.setAttribute('aria-label',fa?'بستن منو':'Close menu');close.textContent='×';
- sidebar.insertBefore(close,sidebar.firstChild);
- const overlay=document.createElement('div');overlay.className='atd-mobile-overlay';overlay.hidden=true;
- document.body.appendChild(overlay);
- const openMenu=()=>{sidebar.classList.add('atd-mobile-open');overlay.hidden=false;document.body.classList.add('atd-menu-open');button.setAttribute('aria-expanded','true');};
- const closeMenu=()=>{sidebar.classList.remove('atd-mobile-open');overlay.hidden=true;document.body.classList.remove('atd-menu-open');button.setAttribute('aria-expanded','false');};
- button.setAttribute('aria-expanded','false');button.addEventListener('click',openMenu);close.addEventListener('click',closeMenu);overlay.addEventListener('click',closeMenu);document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});
- topbar.insertBefore(button,topbar.firstChild);
-}
-
+function addTopTools(){const actions=document.querySelector('.top-actions');if(!actions||actions.querySelector('.atd-ui-tools'))return;const tools=document.createElement('div');tools.className='atd-ui-tools';const lang=document.createElement('button');lang.type='button';lang.className='atd-ui-control';lang.textContent=root.getAttribute('lang')==='fa'?'EN':'FA';lang.title=root.getAttribute('lang')==='fa'?'English':'فارسی';lang.setAttribute('aria-label',lang.title);lang.addEventListener('click',languageSwitch);tools.appendChild(lang);const wrap=document.createElement('div');wrap.className='atd-color-wrap';const color=document.createElement('button');color.type='button';color.className='atd-ui-control';color.textContent='🎨';color.title='Accent color';color.setAttribute('aria-label','Accent color');const menu=document.createElement('div');menu.className='atd-color-menu';menu.hidden=true;Object.entries(accents).forEach(([key,a])=>{const b=document.createElement('button');b.type='button';b.className='atd-color';b.dataset.accent=key;b.style.setProperty('--swatch',a.value);b.setAttribute('aria-label',a.name);b.title=a.name;b.innerHTML='<i aria-hidden="true"></i>';b.addEventListener('click',()=>{applyAccent(key);menu.hidden=true;});menu.appendChild(b);});color.addEventListener('click',e=>{e.stopPropagation();menu.hidden=!menu.hidden;});wrap.append(color,menu);tools.appendChild(wrap);const theme=actions.querySelector('#themeBtn');if(theme)actions.insertBefore(tools,theme);else actions.appendChild(tools);document.addEventListener('click',e=>{if(!wrap.contains(e.target))menu.hidden=true;});}
+function addMobileMenu(){const topbar=document.querySelector('.topbar');const sidebar=document.querySelector('.sidebar');if(!topbar||!sidebar||topbar.querySelector('.atd-mobile-menu-btn'))return;const button=document.createElement('button');button.type='button';button.className='atd-mobile-menu-btn';const fa=root.getAttribute('lang')==='fa';button.setAttribute('aria-label',fa?'باز کردن منو':'Open menu');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>'+(fa?'منو':'Menu')+'</span>';const close=document.createElement('button');close.type='button';close.className='atd-mobile-close';close.setAttribute('aria-label',fa?'بستن منو':'Close menu');close.textContent='×';sidebar.insertBefore(close,sidebar.firstChild);const overlay=document.createElement('div');overlay.className='atd-mobile-overlay';overlay.hidden=true;document.body.appendChild(overlay);const openMenu=()=>{sidebar.classList.add('atd-mobile-open');overlay.hidden=false;document.body.classList.add('atd-menu-open');button.setAttribute('aria-expanded','true');};const closeMenu=()=>{sidebar.classList.remove('atd-mobile-open');overlay.hidden=true;document.body.classList.remove('atd-menu-open');button.setAttribute('aria-expanded','false');};button.setAttribute('aria-expanded','false');button.addEventListener('click',openMenu);close.addEventListener('click',closeMenu);overlay.addEventListener('click',closeMenu);document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});topbar.insertBefore(button,topbar.firstChild);}
 document.querySelectorAll('.flag').forEach(el=>{const code=flagCode(el.textContent);if(!code)return;const img=document.createElement('img');img.className='atd-country-flag';img.width=30;img.height=20;img.loading='lazy';img.alt=code.toUpperCase()+' flag';img.src='https://flagcdn.com/w40/'+code+'.png';img.onerror=()=>{el.textContent=code.toUpperCase();el.style.fontSize='12px';};el.replaceChildren(img);});
-
 document.querySelectorAll('.hero-actions a').forEach(a=>{if((a.getAttribute('href')||'').includes('section=routebox')){a.textContent='Project Website';a.href='#';a.classList.add('atd-project-placeholder');a.setAttribute('aria-disabled','true');a.addEventListener('click',e=>e.preventDefault());}});
-
 document.querySelectorAll('form').forEach(form=>{const action=form.querySelector('input[name="action"][value="add_server"]');if(!action)return;const addCard=form.closest('.card');if(!addCard||!addCard.parentElement)return;const cards=Array.from(addCard.parentElement.children).filter(n=>n.classList&&n.classList.contains('card'));const listCard=cards.find(card=>{if(card===addCard)return false;if(card.querySelector('.server-list'))return true;const h=card.querySelector('h2');return h&&/server|سرور/i.test(h.textContent||'');});if(listCard)addCard.parentElement.insertBefore(addCard,listCard.nextSibling);});
-
 document.querySelectorAll('.server-list > .server').forEach(row=>{const idInput=row.querySelector('input[name="id"]');const btns=row.querySelector('.btnrow');if(!idInput||!btns||btns.querySelector('.atd-server-delete'))return;const id=idInput.value;const form=document.createElement('form');form.method='post';form.action='/routebox-server-action.php';form.className='atd-server-delete';form.innerHTML='<input type="hidden" name="csrf_token" value="'+(document.querySelector('input[name="csrf_token"]')?.value||'')+'"><input type="hidden" name="action" value="delete_server"><input type="hidden" name="id" value="'+id+'"><button class="btn btn-danger" type="submit">× Delete</button>';form.addEventListener('submit',e=>{if(!confirm('Delete this RouteBox server?'))e.preventDefault();});btns.appendChild(form);});
-
 function renderPagination(items,perPage,anchor){if(!items.length||items.length<=perPage||!anchor)return;const old=anchor.parentElement?.querySelector('.atd-pagination');if(old)old.remove();const controls=document.createElement('div');controls.className='atd-pagination';const pages=Math.ceil(items.length/perPage);let current=1;const render=()=>{items.forEach((item,i)=>{item.style.display=Math.floor(i/perPage)+1===current?'':'none';});controls.replaceChildren();for(let p=1;p<=pages;p++){const b=document.createElement('button');b.type='button';b.textContent=String(p);if(p===current)b.classList.add('active');b.addEventListener('click',()=>{current=p;render();anchor.scrollIntoView({behavior:'smooth',block:'start'});});controls.appendChild(b);}const info=document.createElement('span');info.className='atd-page-info';info.textContent=current+' / '+pages;controls.appendChild(info);};anchor.after(controls);render();}
-renderPagination(Array.from(document.querySelectorAll('.server-list > .server')),5,document.querySelector('.server-list'));
-const section=new URLSearchParams(location.search).get('section')||'';
-if(section==='ibsng'||section==='mikrotik'){const cards=Array.from(document.querySelectorAll('.card')).filter(card=>card.querySelector('input[name="action"][value="update_server"]')||card.querySelector('input[name="action"][value="delete_server"]'));if(cards.length>5)renderPagination(cards,5,cards[0].parentElement);}
-
-/* Keep the real panel theme switch as the single source of truth. */
-const savedTheme=localStorage.getItem('rbt-theme');if(savedTheme==='light')root.classList.add('light');
-const savedAccent=localStorage.getItem('atd-accent')||'blue';applyAccent(savedAccent);localizeSidebar();addTopTools();addMobileMenu();
+renderPagination(Array.from(document.querySelectorAll('.server-list > .server')),5,document.querySelector('.server-list'));const section=new URLSearchParams(location.search).get('section')||'';if(section==='ibsng'||section==='mikrotik'){const cards=Array.from(document.querySelectorAll('.card')).filter(card=>card.querySelector('input[name="action"][value="update_server"]')||card.querySelector('input[name="action"][value="delete_server"]'));if(cards.length>5)renderPagination(cards,5,cards[0].parentElement);}
+const savedTheme=localStorage.getItem('rbt-theme');if(savedTheme==='light')root.classList.add('light');const savedAccent=localStorage.getItem('atd-accent')||'blue';applyAccent(savedAccent);localizeSidebar();addTopTools();addMobileMenu();
 })();
 </script>
 HTML;
