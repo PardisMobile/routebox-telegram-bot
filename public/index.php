@@ -13,8 +13,14 @@ if ($__atdRouteboxAlias) {
     $_GET['section'] = 'servers';
     $_POST['section'] = $_POST['section'] ?? 'servers';
     header_register_callback(static function (): void {
-        header_remove('Location');
-        header('Location: /?section=routebox');
+        $hasLocation = false;
+        foreach (headers_list() as $header) {
+            if (stripos($header, 'Location:') === 0) { $hasLocation = true; break; }
+        }
+        if ($hasLocation) {
+            header_remove('Location');
+            header('Location: /?section=routebox');
+        }
     });
 }
 
