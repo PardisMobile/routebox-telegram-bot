@@ -235,3 +235,14 @@ For SQL Injection specifically: before changing anything, report whether a real 
 ## New-chat handoff
 
 Read this file and `ROADMAP.md` first. Treat `6026a16` as the last known-good application checkpoint unless a newer commit has been explicitly tested and confirmed by the user. Do not ask the user to re-explain the project; ask only for the missing decision needed for the next task.
+
+## Telegram Bot Admin — implementation slice completed
+
+- Independent Telegram Numeric ID authorization is implemented in src/Telegram/AdminBot.php.
+- Multiple Admins and future-ready roles are supported.
+- Web management is available at public/telegram-admins.php.
+- The dedicated Admin menu is integrated into the existing worker.php; no second Worker was created.
+- RouteBox and IBSng admin service creation without customer payment uses the existing ServiceProvisioner.
+- Successful Admin provisioning callbacks cannot provision the same action twice.
+- Admin provisioning actions are audit logged without credentials.
+- Card-to-card Order/Payment/Receipt approval remains the next slice.
