@@ -103,8 +103,15 @@ final class MikroTikSection
         }
         if ($serversHtml === '') $serversHtml = '<div class="empty">No MikroTik servers configured yet.</div>';
 
+        $allPeers = is_array($data['peers'] ?? null) ? $data['peers'] : [];
+        $peerPerPage = 50;
+        $peerTotal = count($allPeers);
+        $peerPages = max(1, (int)ceil($peerTotal / $peerPerPage));
+        $peerPage = max(1, min($peerPages, (int)($_GET['peer_page'] ?? 1)));
+        $peerRowsData = array_slice($allPeers, ($peerPage - 1) * $peerPerPage, $peerPerPage);
+
         $peerRows = '';
-        foreach (($data['peers'] ?? []) as $p) {
+        foreach ($peerRowsData as $p) {
             $action = $p['status'] === 'active' ? 'disable_peer' : 'enable_peer';
             $label = $p['status'] === 'active' ? 'Disable' : 'Enable';
             $peerId = (int)$p['id'];
@@ -118,17 +125,29 @@ final class MikroTikSection
         }
         if ($peerRows === '') $peerRows = '<tr><td colspan="7" class="help">No RouteBox MikroTik peers yet.</td></tr>';
 
+        $peerPagination = '';
+        if ($peerPages > 1) {
+            $peerPagination .= '<div class="atd-peer-pagination"><span class="help">Showing '.(($peerPage - 1) * $peerPerPage + 1).'–'.min($peerPage * $peerPerPage, $peerTotal).' of '.$peerTotal.' peers</span><div class="form-actions">';
+            $start = max(1, $peerPage - 2);
+            $end = min($peerPages, $peerPage + 2);
+            if ($peerPage > 1) $peerPagination .= '<a class="btn btn-secondary" href="/?section=mikrotik&amp;peer_page='.($peerPage - 1).'">← Prev</a>';
+            for ($i = $start; $i <= $end; $i++) $peerPagination .= '<a class="btn '.($i === $peerPage ? 'btn-primary' : 'btn-secondary').'" href="/?section=mikrotik&amp;peer_page='.$i.'">'.$i.'</a>';
+            if ($peerPage < $peerPages) $peerPagination .= '<a class="btn btn-secondary" href="/?section=mikrotik&amp;peer_page='.($peerPage + 1).'">Next →</a>';
+            $peerPagination .= '</div></div>';
+        }
+
         $addServer = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">+</div><div><h2>Add MikroTik Server</h2><p>RouterOS REST API connection. No container is required on the MikroTik device.</p></div></div></div>'.self::serverForm([], $csrf, false).'</section>';
 
         $plansLink = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◫</div><div><h2>WireGuard Plans</h2><p>Plans are managed centrally in the shared Provider Plans section.</p></div></div><a class="btn btn-primary" href="/?section=provider-plans&amp;provider=mikrotik_wireguard">✎ Manage Plans</a></div></section>';
 
-        $peerTable = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◌</div><div><h2>WireGuard Peers</h2><p>Each peer is a RouteBox account. Disable keeps the peer; Delete removes it from RouterOS and RouteBox.</p></div></div></div><div style="overflow:auto"><table style="width:100%"><thead><tr><th>Username</th><th>IP</th><th>Server</th><th>Interface</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody>'.$peerRows.'</tbody></table></div></section>';
+        $peerTable = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◌</div><div><h2>WireGuard Peers</h2><p>Each peer is a RouteBox account. Disable keeps the peer; Delete removes it from RouterOS and RouteBox.</p></div></div></div><div style="overflow:auto"><table style="width:100%"><thead><tr><th>Username</th><th>IP</th><th>Server</th><th>Interface</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody>'.$peerRows.'</tbody></table></div>'.$peerPagination.'</section>';
 
         $guide = '<section class="card"><details><summary style="cursor:pointer;font-weight:800">⚙ MikroTik Setup Guide</summary><div style="margin-top:14px"><p class="help">Configure RouterOS REST access, create the RouteBox user and verify the connection before adding the server.</p><ol style="line-height:1.9;padding-inline-start:22px"><li>Enable <code>www</code> for temporary HTTP testing, or preferably <code>www-ssl</code> with a valid certificate for production.</li><li>Create a dedicated RouterOS user with <code>rest-api</code> plus only the permissions RouteBox needs.</li><li>Allow the REST port from the RouteBox server IP in the firewall.</li><li>In RouteBox enter the router IP/hostname, REST port, username and password. For temporary HTTP testing disable the TLS checkbox and use port 80.</li><li>VPN Endpoint is the public hostname/IP used by WireGuard clients. Leave <strong>WireGuard Port</strong> blank and RouteBox will automatically read the WireGuard interface <code>listen-port</code> from RouterOS.</li><li>Use <strong>Test Connection</strong>. The panel will display RouterOS version, uptime, CPU, memory and REST latency.</li></ol><p class="help">HTTP REST sends credentials without transport encryption. Use it only for controlled testing; production should use HTTPS/TLS.</p></div></details></section>';
 
-        return $flashHtml.$addServer.$guide
-            .'<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>MikroTik Servers</h2><p>RouterOS version, uptime, CPU, memory, REST latency, WireGuard interfaces, IP pools and DNS are discovered from the router.</p></div></div></div>'.$serversHtml.'</section>'
-            .$plansLink.$peerTable;
+        $serverList = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">◉</div><div><h2>MikroTik Servers</h2><p>RouterOS version, uptime, CPU, memory, REST latency, WireGuard interfaces, IP pools and DNS are discovered from the router.</p></div></div></div>'.$serversHtml.'</section>';
+
+        return $flashHtml.$serverList.$addServer.$guide.$plansLink.$peerTable
+            .'<style>.atd-peer-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}@media(max-width:700px){.atd-peer-pagination{align-items:flex-start;flex-direction:column}}</style>';
     }
 
     private static function serverForm(array $s, string $csrf, bool $edit): string
