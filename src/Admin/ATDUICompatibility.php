@@ -65,11 +65,12 @@ input:focus,textarea:focus,select:focus{border-color:var(--atd-accent)!important
 .atd-ui-control{height:40px;min-width:40px;padding:0 10px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;font:600 12px inherit;box-shadow:0 3px 12px rgba(31,45,65,.045)}
 .atd-ui-control:hover{border-color:color-mix(in srgb,var(--atd-accent) 40%,var(--line));background:var(--atd-accent-soft)}
 .atd-color-wrap{position:relative}
-.atd-color-menu{position:absolute;top:46px;inset-inline-end:0;z-index:9999;width:232px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--card2);box-shadow:0 18px 45px rgba(20,30,50,.18);display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.atd-color-menu{position:absolute;top:46px;inset-inline-end:0;z-index:9999;width:166px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--card2);box-shadow:0 18px 45px rgba(20,30,50,.18);display:grid;grid-template-columns:repeat(3,38px);justify-content:center;gap:10px}
 .atd-color-menu[hidden]{display:none}
-.atd-color{height:42px;border:1px solid var(--line);border-radius:10px;background:var(--card);display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;font:600 10px inherit;color:var(--text)}
-.atd-color i{width:15px;height:15px;border-radius:50%;background:var(--swatch);box-shadow:0 0 0 3px color-mix(in srgb,var(--swatch) 15%,transparent)}
-.atd-color.active{border-color:var(--swatch);box-shadow:0 0 0 2px color-mix(in srgb,var(--swatch) 18%,transparent)}
+.atd-color{width:38px;height:38px;padding:0;border:2px solid transparent;border-radius:50%;background:var(--swatch);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}
+.atd-color:hover{transform:scale(1.08);box-shadow:0 5px 14px color-mix(in srgb,var(--swatch) 30%,transparent)}
+.atd-color i{display:none}
+.atd-color.active{border-color:var(--card2);box-shadow:0 0 0 2px var(--swatch),0 5px 14px color-mix(in srgb,var(--swatch) 28%,transparent)}
 .atd-project-placeholder{opacity:.72;cursor:default!important}
 .atd-server-delete{margin:0}
 @media(max-width:720px){.atd-ui-tools{margin-inline-start:0}.atd-color-menu{inset-inline-start:0;inset-inline-end:auto}}
@@ -120,7 +121,7 @@ function addTopTools(){
  const wrap=document.createElement('div');wrap.className='atd-color-wrap';
  const color=document.createElement('button');color.type='button';color.className='atd-ui-control';color.textContent='🎨';color.title='Accent color';
  const menu=document.createElement('div');menu.className='atd-color-menu';menu.hidden=true;
- Object.entries(accents).forEach(([key,a])=>{const b=document.createElement('button');b.type='button';b.className='atd-color';b.dataset.accent=key;b.style.setProperty('--swatch',a.value);b.innerHTML='<i aria-hidden="true"></i><span>'+a.name+'</span>';b.addEventListener('click',()=>{applyAccent(key);menu.hidden=true;});menu.appendChild(b);});
+ Object.entries(accents).forEach(([key,a])=>{const b=document.createElement('button');b.type='button';b.className='atd-color';b.dataset.accent=key;b.style.setProperty('--swatch',a.value);b.setAttribute('aria-label',a.name);b.title=a.name;b.innerHTML='<i aria-hidden="true"></i>';b.addEventListener('click',()=>{applyAccent(key);menu.hidden=true;});menu.appendChild(b);});
  color.addEventListener('click',e=>{e.stopPropagation();menu.hidden=!menu.hidden;});wrap.append(color,menu);tools.appendChild(wrap);
  /* Put language + palette immediately beside the existing, working theme button. */
  const theme=actions.querySelector('#themeBtn');
