@@ -6,11 +6,9 @@ require __DIR__ . '/src/bootstrap.php';
 require __DIR__ . '/src/RouteBoxClient.php';
 require __DIR__ . '/src/Services/ServiceCatalog.php';
 require __DIR__ . '/src/Services/ServiceProvisioner.php';
-require __DIR__ . '/src/Services/TrialService.php';
 
 use RouteBox\Services\ServiceCatalog;
 use RouteBox\Services\ServiceProvisioner;
-use RouteBox\Services\TrialService;
 
 function sget(string $key, ?string $default = null): ?string
 {
@@ -183,11 +181,7 @@ function sendCategoryPlans(string $token, $chat, int $uid, int $categoryId): voi
         $label .= ' • ' . $quota . $priceText;
         $k[] = [['text' => '🛒 ' . $label, 'callback_data' => 'svcplan:' . (int)$p['id']]];
     }
-    $trialPlan = TrialService::planForCategory(db(), $categoryId);
-    if ($trialPlan !== null) {
-        $k[] = [['text' => $l === 'fa' ? '🎁 دریافت تست رایگان' : '🎁 Get free trial', 'callback_data' => 'trialcat:' . $categoryId]];
-    } elseif ((string)$category['service_key'] === 'routebox') {
-        // Preserve the already-working RouteBox legacy trial until its Trial Plan is configured.
+    if ((string)$category['service_key'] === 'routebox') {
         $k[] = [['text' => $l === 'fa' ? '🎁 دریافت تست رایگان' : '🎁 Get free trial', 'callback_data' => 'trial']];
     }
     $k[] = [['text' => $l === 'fa' ? '↩️ بازگشت' : '↩️ Back', 'callback_data' => 'menu']];
@@ -213,47 +207,6 @@ function sendServicePurchase(string $token, $chat, int $uid, string $tgid, int $
         throw new RuntimeException('ارائه‌دهنده این سرویس هنوز برای ربات فعال نشده است.');
     }
     tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '📋 سرویس‌های من' : '📋 My services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
-}
-
-function sendTrialSuccess(string $token, $chat, int $uid, array $r): void
-{
-    $l = langFor($uid);
-    $provider = (string)($r['provider'] ?? '');
-    if ($provider === 'ibsng') {
-        $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : ($l === 'fa' ? 'طبق قوانین گروه IBSng' : 'According to IBSng group rules');
-        $text = $l === 'fa'
-            ? "✅ تست رایگان IBSng فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n🖥️ سرور: {$r['server_name']}\n👥 گروه: {$r['group_name']}\n🔐 نام کاربری: {$r['username']}\n🔑 رمز عبور: {$r['password']}\n⏱️ اعتبار: {$expiry}"
-            : "✅ IBSng free trial activated.\n\n📦 Plan: {$r['plan_name_en']}\n🖥️ Server: {$r['server_name']}\n👥 Group: {$r['group_name']}\n🔐 Username: {$r['username']}\n🔑 Password: {$r['password']}\n⏱️ Validity: {$expiry}";
-    } elseif ($provider === 'routebox') {
-        $expiry = date('Y-m-d H:i', (int)($r['expires_at'] ?? time()));
-        $text = $l === 'fa'
-            ? "✅ تست رایگان RouteBox فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n⏱️ اعتبار تا: {$expiry}\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید."
-            : "✅ RouteBox free trial activated.\n\n📦 Plan: {$r['plan_name_en']}\n⏱️ Valid until: {$expiry}\n\n📋 Use My services to get your Config or QR.";
-    } elseif ($provider === 'mikrotik_wireguard') {
-        $expiry = !empty($r['expires_at']) ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
-        $text = $l === 'fa'
-            ? "✅ تست رایگان MikroTik WireGuard فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n🖥️ سرور: {$r['server_name']}\n⏱️ اعتبار: {$expiry}\n\n📋 برای دریافت Config از «سرویس‌های من» استفاده کنید."
-            : "✅ MikroTik WireGuard free trial activated.\n\n📦 Plan: {$r['plan_name_en']}\n🖥️ Server: {$r['server_name']}\n⏱️ Validity: {$expiry}\n\n📋 Use My services to get your Config.";
-    } else {
-        throw new RuntimeException('ارائه‌دهنده این Trial برای ربات فعال نشده است.');
-    }
-    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '📋 سرویس‌های من' : '📋 My services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
-}
-
-function cleanupExpiredTrials(): void
-{
-    $db = db();
-    $now = time();
-    foreach (TrialService::listTrials($db, 200) as $trial) {
-        if ((string)$trial['status'] !== 'active') continue;
-        if ($trial['expires_at'] === null || (int)$trial['expires_at'] > $now) continue;
-        try {
-            TrialService::deleteExpired($db, (int)$trial['id']);
-            log_event('info', 'Trial cleanup completed: #' . (int)$trial['id']);
-        } catch (Throwable $e) {
-            log_event('error', 'Trial cleanup failed #' . (int)$trial['id'] . ': ' . $e->getMessage());
-        }
-    }
 }
 
 function sendServices(string $token, $chat, int $uid): void
@@ -358,27 +311,13 @@ function guide(string $token, $chat, int $uid): void
     tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => $links ? json_encode(['inline_keyboard' => $links], JSON_UNESCAPED_UNICODE) : '']);
 }
 
-function cleanupExpiredTrials(): void
-{
-    $db = db();
-    $now = time();
-    foreach (TrialService::listTrials($db, 200) as $trial) {
-        if ((string)$trial['status'] !== 'active') continue;
-        if ($trial['expires_at'] === null || (int)$trial['expires_at'] > $now) continue;
-        try {
-            TrialService::deleteExpired($db, (int)$trial['id']);
-            log_event('info', 'Trial cleanup completed: #' . (int)$trial['id']);
-        } catch (Throwable $e) {
-            log_event('error', 'Trial cleanup failed #' . (int)$trial['id'] . ': ' . $e->getMessage());
-        }
-    }
-}
-
 $stored = sget('telegram_token');
 if (!$stored) exit("Telegram token is not configured\n");
 $token = dec($stored);
 @mkdir(__DIR__ . '/storage', 0700, true);
 
+// Telegram getUpdates must have exactly one active consumer. This process lock
+// prevents accidental duplicate workers from processing the same callback.
 $workerLock = fopen(__DIR__ . '/storage/worker.lock', 'c');
 if ($workerLock === false || !flock($workerLock, LOCK_EX | LOCK_NB)) {
     fwrite(STDERR, "Another worker is already running.\n");
@@ -386,14 +325,9 @@ if ($workerLock === false || !flock($workerLock, LOCK_EX | LOCK_NB)) {
 }
 
 $offset = (int)(@file_get_contents(__DIR__ . '/storage/update.offset') ?: 0);
-$lastTrialCleanup = 0;
 
 while (true) {
     try {
-        if (time() - $lastTrialCleanup >= 60) {
-            cleanupExpiredTrials();
-            $lastTrialCleanup = time();
-        }
         $updates = tg($token, 'getUpdates', ['offset' => $offset, 'timeout' => 25, 'allowed_updates' => json_encode(['message', 'callback_query'])]);
         foreach ($updates as $u) {
             $offset = (int)$u['update_id'] + 1;
@@ -424,13 +358,8 @@ while (true) {
                 } elseif ($a === 'guide') {
                     guide($token, $chat, $uid);
                 } elseif ($a === 'trial') {
-                    $result = provision($uid, (string)$from['id']);
-                    TrialService::recordLegacyRoutebox(db(), $uid, (int)(db()->query("SELECT id FROM service_categories WHERE service_key='routebox' LIMIT 1")->fetchColumn()), $result);
+                    provision($uid, (string)$from['id']);
                     tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => langFor($uid) === 'fa' ? '✅ تست رایگان شما فعال شد.' : '✅ Your free trial is active.']);
-                } elseif (str_starts_with($a, 'trialcat:')) {
-                    $categoryId = (int)substr($a, 9);
-                    $result = TrialService::provision(db(), $uid, (string)$from['id'], $categoryId);
-                    sendTrialSuccess($token, $chat, $uid, $result);
                 } elseif (str_starts_with($a, 'servicecat:')) {
                     sendCategoryPlans($token, $chat, $uid, (int)substr($a, 11));
                 } elseif (str_starts_with($a, 'svcplan:')) {
