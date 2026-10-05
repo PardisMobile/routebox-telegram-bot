@@ -6,6 +6,20 @@ declare(strict_types=1);
 require_once __DIR__ . '/../src/Admin/ATDUICompatibility.php';
 \RouteBox\Admin\ATDUICompatibility::start();
 
+// Presentation-only cleanup for the unified ?section=users page.
+// The global ATD Panel header already renders the Users title, so the
+// users section must not render a second section header or Back button.
+ob_start(static function (string $html): string {
+    if ((string)($_GET['section'] ?? '') === 'users') {
+        $html = str_replace(
+            '</head>',
+            '<style id="atd-users-header-cleanup">.atd-user-page > .section-head{display:none!important}</style></head>',
+            $html
+        );
+    }
+    return $html;
+});
+
 $__atdRouteboxAlias = ((string)($_GET['section'] ?? 'dashboard')) === 'routebox';
 if ($__atdRouteboxAlias) {
     // The original RouteBox section is still internally named `servers`.
