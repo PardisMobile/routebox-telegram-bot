@@ -61,12 +61,6 @@ final class TrialAdminPanel
             exit;
         }
 
-        /*
-         * public/index.php starts the existing ATDUICompatibility output
-         * buffer after bootstrap. Do not create a second UI buffer here.
-         * Instead, at PHP shutdown we modify the still-open outer buffer;
-         * the normal ATDUICompatibility callback then runs unchanged.
-         */
         if (!self::$shutdownRegistered) {
             self::$shutdownRegistered = true;
             register_shutdown_function(static function () use ($db): void {
@@ -83,24 +77,25 @@ final class TrialAdminPanel
 
         $html = ob_get_contents();
         if (!is_string($html) || $html === '') return;
-
-        // The compatibility callback has not run yet at shutdown, so its
-        // own injected <style> marker is not present. Identify the actual
-        // existing unified shell by its stable <main class="main"> markup.
         if (stripos($html, '<main class="main">') === false) return;
-        if (stripos($html, '</main>') === false) return;
 
         $lang = (string)($_GET['lang'] ?? ($_SESSION['panel_lang'] ?? 'fa')) === 'en' ? 'en' : 'fa';
         $panel = $section === 'bot'
             ? self::botSettings($db, $lang)
             : self::userTrials($db, $lang);
 
-        $marker = '</main>';
+        // Keep the existing section layout intact. Trials belong directly
+        // below the Bot Settings card, and on Users they belong before the
+        // existing footer (not below the copyright/footer area).
+        $marker = $section === 'bot'
+            ? '<section class="card" id="bot">'
+            : '<div class="footer">';
         $pos = stripos($html, $marker);
         if ($pos === false) return;
 
         ob_clean();
-        echo substr($html, 0, $pos) . $panel . substr($html, $pos);
+        echo substr($html, 0, $pos) . ($section === 'bot' ? $panel : '')
+            . ($section === 'users' ? $panel : '') . substr($html, $pos);
     }
 
     private static function styles(): string
@@ -177,9 +172,31 @@ final class TrialAdminPanel
     private static function userTrials(PDO $db, string $lang): string
     {
         $fa = $lang === 'fa';
-        $rows = TrialService::listTrials($db);
-        $body = '';
+        $search = trim((string)($_GET['q'] ?? ''));
+        $rows = TrialService::listTrials($db, 500);
 
+        // Reuse the exact `q` parameter of the existing Users search. The
+        // main Users table remains untouched; this only applies the same
+        // search term to the Trial list as well.
+        if ($search !== '') {
+            $needle = function_exists('mb_strtolower') ? mb_strtolower($search, 'UTF-8') : strtolower($search);
+            $rows = array_values(array_filter($rows, static function (array $row) use ($needle): bool {
+                $haystack = implode(' ', [
+                    (string)($row['telegram_id'] ?? ''),
+                    (string)($row['username'] ?? ''),
+                    (string)($row['first_name'] ?? ''),
+                    (string)($row['provider_key'] ?? ''),
+                    (string)($row['display_name_fa'] ?? ''),
+                    (string)($row['display_name_en'] ?? ''),
+                    (string)($row['name_fa'] ?? ''),
+                    (string)($row['name_en'] ?? ''),
+                ]);
+                $haystack = function_exists('mb_strtolower') ? mb_strtolower($haystack, 'UTF-8') : strtolower($haystack);
+                return str_contains($haystack, $needle);
+            }));
+        }
+
+        $body = '';
         foreach ($rows as $row) {
             $expired = $row['expires_at'] !== null
                 && (int)$row['expires_at'] <= time()
@@ -224,7 +241,9 @@ final class TrialAdminPanel
 
         if ($body === '') {
             $body = '<tr><td colspan="7" style="color:var(--muted)">'
-                . ($fa ? 'هنوز Trialی ثبت نشده است.' : 'No Trials recorded yet.')
+                . ($search !== ''
+                    ? ($fa ? 'Trialی با این جستجو پیدا نشد.' : 'No Trials matched this search.')
+                    : ($fa ? 'هنوز Trialی ثبت نشده است.' : 'No Trials recorded yet.'))
                 . '</td></tr>';
         }
 
