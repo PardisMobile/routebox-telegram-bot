@@ -6,43 +6,564 @@ require __DIR__ . '/src/bootstrap.php';
 require __DIR__ . '/src/RouteBoxClient.php';
 require __DIR__ . '/src/Services/ServiceCatalog.php';
 require __DIR__ . '/src/Services/ServiceProvisioner.php';
-require __DIR__ . '/src/Services/TrialService.php';
 require __DIR__ . '/src/Integrations/Payment/ManualPaymentService.php';
 require __DIR__ . '/src/Telegram/AdminBot.php';
-require __DIR__ . '/src/Telegram/AdminTrialBridge.php';
 
 use RouteBox\Integrations\Payment\ManualPaymentService;
 use RouteBox\Services\ServiceCatalog;
 use RouteBox\Services\ServiceProvisioner;
-use RouteBox\Services\TrialService;
 
 function sget(string $key, ?string $default = null): ?string
 {
-    $q = db()->prepare('SELECT value FROM settings WHERE key=?'); $q->execute([$key]); $v=$q->fetchColumn(); return $v===false?$default:(string)$v;
+    $q = db()->prepare('SELECT value FROM settings WHERE key=?');
+    $q->execute([$key]);
+    $v = $q->fetchColumn();
+    return $v === false ? $default : (string)$v;
 }
-function cleanT(string $t): string { do{$before=$t;$t=str_replace(["\\r\\n","\\n","/n"],"\n",$t);}while($t!==$before);return trim($t); }
-function tg(string $token,string $method,array $data=[]):array{ $c=curl_init('https://api.telegram.org/bot'.$token.'/'.$method);if($c===false)throw new RuntimeException('Telegram cURL init failed.');curl_setopt_array($c,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$data,CURLOPT_TIMEOUT=>35,CURLOPT_CONNECTTIMEOUT=>10]);$raw=curl_exec($c);$err=curl_error($c);curl_close($c);if($raw===false)throw new RuntimeException('Telegram connection failed: '.($err?:'unknown'));$j=json_decode($raw,true);if(!is_array($j)||empty($j['ok']))throw new RuntimeException($j['description']??'Telegram API error');return is_array($j['result']??null)?$j['result']:[]; }
-function setUserLang(int $id,string $lang):void{if(!in_array($lang,['fa','en'],true))$lang='en';db()->prepare('UPDATE telegram_users SET language=? WHERE id=?')->execute([$lang,$id]);}
-function langFor(int $id):string{$q=db()->prepare('SELECT language FROM telegram_users WHERE id=?');$q->execute([$id]);$v=(string)$q->fetchColumn();return in_array($v,['fa','en'],true)?$v:'en';}
-function upsertUser(array $u):int{$now=time();$q=db()->prepare('SELECT id,language FROM telegram_users WHERE telegram_id=?');$q->execute([(string)$u['id']]);$old=$q->fetch(PDO::FETCH_ASSOC);$lang=(is_array($old)&&in_array(($old['language']??''),['fa','en'],true))?$old['language']:(str_starts_with(strtolower((string)($u['language_code']??'')),'fa')?'fa':'en');db()->prepare('INSERT INTO telegram_users(telegram_id,username,first_name,created_at,last_seen,language) VALUES(?,?,?,?,?,?) ON CONFLICT(telegram_id) DO UPDATE SET username=excluded.username,first_name=excluded.first_name,last_seen=excluded.last_seen,language=excluded.language')->execute([(string)$u['id'],$u['username']??null,$u['first_name']??null,$now,$now,$lang]);if(is_array($old))return(int)$old['id'];$q->execute([(string)$u['id']]);return(int)$q->fetchColumn();}
-function buttons(string $lang):array{$r=db()->query('SELECT action_key,text_fa,text_en FROM telegram_buttons WHERE enabled=1 ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);$o=[];foreach($r as $x)$o[$x['action_key']]=cleanT($lang==='fa'?$x['text_fa']:$x['text_en']);return$o;}
-function claimTrial(int $uid):void{$q=db()->prepare('INSERT OR IGNORE INTO telegram_trials(telegram_user_id,claimed_at) VALUES(?,?)');$q->execute([$uid,time()]);if($q->rowCount()!==1)throw new RuntimeException('این حساب قبلاً تست رایگان را دریافت کرده است.');}
-function provision(int $uid,string $tgid,?int $planId=null):array{$planName='Free trial';$seconds=0;$quota=null;if($planId===null){claimTrial($uid);$seconds=max(1,(int)sget('trial_hours','12'))*3600;}else{$q=db()->prepare('SELECT * FROM plans WHERE id=? AND enabled=1');$q->execute([$planId]);$p=$q->fetch(PDO::FETCH_ASSOC);if(!$p)throw new RuntimeException('این پلن دیگر فعال نیست.');$seconds=max(1,(int)$p['duration_days'])*86400;$gb=(float)$p['quota_gb'];if($gb>0)$quota=(int)round($gb*1024*1024*1024);$planName=(string)$p['name'];}$servers=db()->query('SELECT * FROM routebox_servers WHERE enabled=1 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);if(!$servers)throw new RuntimeException('هیچ RouteBox فعالی تنظیم نشده است.');$expires=time()+$seconds;$peer='user'.$tgid.'-'.bin2hex(random_bytes(3));$out=[];$created=[];try{foreach($servers as $s){$c=new RouteBoxClient((string)$s['base_url'],dec((string)$s['user_enc']),dec((string)$s['pass_enc']),(bool)$s['verify_tls']);$p=$c->createPeer($peer);$key=(string)($p['public_key']??$p['publicKey']??'');if($key==='')throw new RuntimeException('RouteBox public key was not returned.');$created[]=[$c,$key];$c->setExpiry($key,$expires,$quota);$conf=$c->config($key);$st=db()->prepare('INSERT INTO provisions(telegram_user_id,server_id,peer_name,public_key,expires_at,created_at) VALUES(?,?,?,?,?,?)');$st->execute([$uid,$s['id'],$peer,$key,$expires,time()]);$out[]=['provision_id'=>(int)db()->lastInsertId(),'server'=>(string)$s['name'],'conf'=>$conf,'expires'=>$expires,'plan'=>$planName,'public_key'=>$key];}}catch(Throwable $e){foreach($created as [$c,$key])try{$c->deletePeer($key);}catch(Throwable $x){log_event('error','Provision rollback failed: '.$x->getMessage());}throw$e;}log_event('info','Provisioned '.$tgid.' with '.$planName);return$out;}
-function modularCategoryButtons(string $lang):array{$catalog=new ServiceCatalog(db());$rows=$catalog->categories();$o=[];foreach($rows as $row){$name=$lang==='fa'?(string)$row['name_fa']:(string)$row['name_en'];$icon=trim((string)$row['icon']);$o[]=[['text'=>($icon!==''?$icon.' ':'').$name,'callback_data'=>'servicecat:'.(int)$row['id']]];}return$o;}
-function menu(string $token,$chat,int $uid):void{$l=langFor($uid);$b=buttons($l);$k=modularCategoryButtons($l);$k[]=[['text'=>'📋 '.($l==='fa'?'سرویس‌های من':'My services'),'callback_data'=>'services'],['text'=>$b['language']??'🌐 Language','callback_data'=>'language']];$k[]=[['text'=>'🧾 '.($l==='fa'?'سفارش جاری':'Current order'),'callback_data'=>'payment:current']];$k[]=[['text'=>'📚 '.($l==='fa'?'راهنمای استفاده':'Usage guide'),'callback_data'=>'guide']];$w=cleanT((string)sget($l==='fa'?'welcome_fa':'welcome_en',$l==='fa'?'🚀 RouteBox Telegram Bot\n\nسلام 👋':'🚀 RouteBox Telegram Bot\n\nHello 👋'));tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$w,'reply_markup'=>json_encode(['inline_keyboard'=>$k],JSON_UNESCAPED_UNICODE)]);}
-function sendCategoryPlans(string $token,$chat,int $uid,int $categoryId):void{$l=langFor($uid);$catalog=new ServiceCatalog(db());$category=$catalog->category($categoryId);$plans=$catalog->plans($categoryId);if(!$plans)throw new RuntimeException('برای این سرویس هنوز پلنی تعریف نشده است.');$name=$l==='fa'?(string)$category['name_fa']:(string)$category['name_en'];$icon=trim((string)($category['icon']??''));$text=($icon!==''?$icon.' ':'').$name."\n\n".($l==='fa'?'پلن موردنظر را انتخاب کنید:':'Choose a plan:');$k=[];foreach($plans as $p){$days=(int)$p['duration_days'];$quota=(float)$p['quota_gb']>0?rtrim(rtrim(number_format((float)$p['quota_gb'],1,'.',''),'0'),'.').'GB':'∞';$price=(int)$p['price_minor'];$priceText=$price>0?' • '.number_format($price).' IRR':'';$duration=$days>0?$days.($l==='fa'?' روز':' days'):'';$label=$l==='fa'?(string)$p['display_name_fa']:(string)$p['display_name_en'];if($duration!=='')$label.=' • '.$duration;$label.=' • '.$quota.$priceText;$k[]=[['text'=>'🛒 '.$label,'callback_data'=>'svcplan:'.(int)$p['id']]];}$trial=TrialService::planForCategory(db(),$categoryId);if($trial)$k[]=[['text'=>$l==='fa'?'🎁 دریافت تست رایگان':'🎁 Get free trial','callback_data'=>'trial:'.$categoryId]];elseif((string)$category['service_key']==='routebox')$k[]=[['text'=>$l==='fa'?'🎁 دریافت تست رایگان':'🎁 Get free trial','callback_data'=>'trial']];$k[]=[['text'=>$l==='fa'?'↩️ بازگشت':'↩️ Back','callback_data'=>'menu']];tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$text,'reply_markup'=>json_encode(['inline_keyboard'=>$k],JSON_UNESCAPED_UNICODE)]);}
-function sendServicePurchase(string $token,$chat,int $uid,string $tgid,int $planId):void{$payments=new ManualPaymentService(db());if(!$payments->enabled()){$provisioner=new ServiceProvisioner(db());$r=$provisioner->provision($uid,$tgid,$planId);$l=langFor($uid);if(($r['provider']??'')==='ibsng'){$text=$l==='fa'?"✅ سرویس IBSng فعال شد.\n\n🔐 نام کاربری: {$r['username']}\n🔑 رمز عبور: {$r['password']}":"✅ IBSng service activated.\n\n🔐 Username: {$r['username']}\n🔑 Password: {$r['password']}";}elseif(($r['provider']??'')==='routebox')$text=$l==='fa'?'✅ سرویس RouteBox فعال شد.':'✅ RouteBox service activated.';elseif(($r['provider']??'')==='mikrotik_wireguard')$text=$l==='fa'?"✅ سرویس MikroTik فعال شد.\n🌐 IP: {$r['assigned_ip']}":"✅ MikroTik service activated.\n🌐 IP: {$r['assigned_ip']}";else throw new RuntimeException('ارائه‌دهنده این سرویس هنوز برای ربات فعال نشده است.');tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$text]);return;}$order=$payments->createOrder($uid,$planId);$s=$payments->settings();$l=langFor($uid);$price=number_format((int)$order['amount']);$currency=(string)$order['currency'];$planName=$l==='fa'?(string)$order['plan']['display_name_fa']:(string)$order['plan']['display_name_en'];$text=$l==='fa'?"🧾 سفارش #{$order['order_id']}\n\n📦 سرویس: {$planName}\n🔌 Provider: {$order['plan']['provider_key']}\n💰 مبلغ: {$price} {$currency}\n\n💳 لطفاً مبلغ را به کارت زیر واریز کنید:\n🏦 بانک: {$s['bank']}\n💳 شماره کارت: {$s['card_number']}\n👤 صاحب کارت: {$s['card_holder']}":"🧾 Order #{$order['order_id']}\n\n📦 Service: {$planName}\n🔌 Provider: {$order['plan']['provider_key']}\n💰 Amount: {$price} {$currency}\n\n💳 Please transfer the amount to:\n🏦 Bank: {$s['bank']}\n💳 Card: {$s['card_number']}\n👤 Holder: {$s['card_holder']}";if(trim((string)$s['instructions'])!=='')$text.="\n\n📌 ".(string)$s['instructions'];$text.=$l==='fa'?"\n\n📷 بعد از پرداخت، عکس رسید را همینجا ارسال کنید. سرویس فقط پس از تأیید Admin فعال می‌شود.":"\n\n📷 After payment, send the receipt image here. The service is activated only after Admin approval.";$k=[[['text'=>$l==='fa'?'🧾 وضعیت سفارش':'🧾 Order status','callback_data'=>'payment:current']],[['text'=>$l==='fa'?'❌ لغو سفارش':'❌ Cancel order','callback_data'=>'payment:cancel:'.(int)$order['order_id']]]];tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$text,'reply_markup'=>json_encode(['inline_keyboard'=>$k],JSON_UNESCAPED_UNICODE)]);}
-function sendCurrentPaymentOrder(string $token,$chat,int $uid):void{$order=(new ManualPaymentService(db()))->currentOrder($uid);$l=langFor($uid);if(!$order){tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$l==='fa'?'🧾 سفارش فعال ندارید.':'🧾 You have no active order.']);return;}$plan=$l==='fa'?(string)$order['display_name_fa']:(string)$order['display_name_en'];$status=match((string)$order['status']){'pending_payment'=>$l==='fa'?'در انتظار پرداخت و ارسال رسید':'Awaiting payment and receipt','receipt_pending'=>$l==='fa'?'رسید در انتظار بررسی Admin':'Receipt pending Admin review','approved'=>$l==='fa'?'پرداخت تأیید شد؛ در انتظار Provisioning':'Payment approved; provisioning pending','provisioning'=>$l==='fa'?'در حال فعال‌سازی سرویس':'Provisioning service','provision_failed'=>$l==='fa'?'Provisioning ناموفق؛ در حال بررسی Admin':'Provisioning failed; Admin action required',default=>(string)$order['status']};$text=$l==='fa'?"🧾 سفارش #{$order['id']}\n\n📦 {$plan}\n🔌 {$order['provider_key']}\n💰 ".number_format((int)$order['total_minor'])." {$order['currency']}\n📌 وضعیت: {$status}":"🧾 Order #{$order['id']}\n\n📦 {$plan}\n🔌 {$order['provider_key']}\n💰 ".number_format((int)$order['total_minor'])." {$order['currency']}\n📌 Status: {$status}";tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$text]);}
-function handleReceiptUpload(string $token,$chat,int $uid,array $message):void{$fileId='';$uniqueId='';$fileType='';$mime=null;if(!empty($message['photo'])&&is_array($message['photo'])){$photo=end($message['photo']);if(is_array($photo)){$fileId=(string)($photo['file_id']??'');$uniqueId=(string)($photo['file_unique_id']??'');$fileType='photo';$mime='image/jpeg';}}elseif(!empty($message['document'])&&is_array($message['document'])){$doc=$message['document'];$fileId=(string)($doc['file_id']??'');$uniqueId=(string)($doc['file_unique_id']??'');$fileType='document';$mime=isset($doc['mime_type'])?(string)$doc['mime_type']:null;if($mime!==null&&!str_starts_with($mime,'image/')&&$mime!=='application/pdf')throw new RuntimeException('لطفاً تصویر یا PDF رسید را ارسال کنید.');}if($fileId===''||$fileType==='')throw new RuntimeException('فایل رسید قابل تشخیص نیست.');$result=(new ManualPaymentService(db()))->attachReceipt($uid,$fileId,$uniqueId,$fileType,$mime,(string)($message['caption']??''));$order=$result['order'];$l=langFor($uid);tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$l==='fa'?"✅ رسید سفارش #{$order['id']} دریافت شد.\n\n⏳ رسید شما برای Admin ارسال شد.":"✅ Receipt for Order #{$order['id']} received.\n\n⏳ It is pending Admin review."]);}
-function sendServices(string $token,$chat,int $uid):void{$l=langFor($uid);$now=time();$q=db()->prepare('SELECT p.id,r.name server_name,p.peer_name,p.expires_at FROM provisions p JOIN routebox_servers r ON r.id=p.server_id WHERE p.telegram_user_id=? AND p.expires_at>? ORDER BY p.created_at DESC,p.id DESC');$q->execute([$uid,$now]);$routebox=$q->fetchAll(PDO::FETCH_ASSOC);$q=db()->prepare('SELECT s.id,s.username,s.expires_at,s.status,p.display_name_fa,p.display_name_en,r.name server_name,s.metadata_json FROM service_subscriptions s JOIN service_plans p ON p.id=s.plan_id JOIN ibsng_servers r ON r.id=s.provider_server_id WHERE s.telegram_user_id=? AND s.provider_key="ibsng" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?) ORDER BY s.created_at DESC,s.id DESC');$q->execute([$uid,$now]);$ibs=$q->fetchAll(PDO::FETCH_ASSOC);$q=db()->prepare('SELECT s.id,s.username,s.expires_at,s.status,p.display_name_fa,p.display_name_en,r.name server_name,s.metadata_json FROM service_subscriptions s JOIN service_plans p ON p.id=s.plan_id JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?) ORDER BY s.created_at DESC,s.id DESC');$q->execute([$uid,$now]);$mikrotik=$q->fetchAll(PDO::FETCH_ASSOC);if(!$routebox&&!$ibs&&!$mikrotik){tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$l==='fa'?'📋 سرویس فعال ندارید.':'📋 No active services.']);return;}$text=$l==='fa'?"📋 سرویس‌های فعال شما:\n\n":"📋 Your active services:\n\n";$k=[];foreach($routebox as $i=>$r){$text.='🟣 RouteBox — '.$r['server_name'].' — '.$r['peer_name'].' — '.date('Y-m-d H:i',(int)$r['expires_at'])."\n";$k[]=[['text'=>'⚙️ RouteBox · '.($i+1),'callback_data'=>'service:'.$r['id']]];}foreach($ibs as $i=>$r){$plan=$l==='fa'?$r['display_name_fa']:$r['display_name_en'];$expiry=$r['expires_at']?date('Y-m-d H:i',(int)$r['expires_at']):'—';$text.='🔵 IBSng — '.$plan.' — '.$r['username'].' — '.$expiry."\n";$k[]=[['text'=>'⚙️ IBSng · '.($i+1),'callback_data'=>'ibsservice:'.$r['id']]];}foreach($mikrotik as $i=>$r){$plan=$l==='fa'?$r['display_name_fa']:$r['display_name_en'];$meta=json_decode((string)$r['metadata_json'],true);if(!is_array($meta))$meta=[];$ip=(string)($meta['assigned_ip']??'—');$expiry=$r['expires_at']?date('Y-m-d H:i',(int)$r['expires_at']):'—';$text.='🟢 MikroTik — '.$r['server_name'].' — '.$ip.' — '.$expiry."\n";$k[]=[['text'=>'⚙️ MikroTik · '.($i+1),'callback_data'=>'mikrotikservice:'.$r['id']]];}$k[]=[['text'=>$l==='fa'?'🔙 منوی اصلی':'🔙 Main Menu','callback_data'=>'menu']];tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$text,'reply_markup'=>json_encode(['inline_keyboard'=>$k],JSON_UNESCAPED_UNICODE)]);}
-function serviceActions(string $token,$chat,int $uid,int $id):void{$l=langFor($uid);$q=db()->prepare('SELECT p.*,r.name server_name,r.base_url,r.user_enc,r.pass_enc,r.verify_tls FROM provisions p JOIN routebox_servers r ON r.id=p.server_id WHERE p.id=? AND p.telegram_user_id=? AND p.expires_at>?');$q->execute([$id,$uid,time()]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new RuntimeException('سرویس RouteBox پیدا نشد یا منقضی شده است.');$t=$l==='fa'?'⚙️ سرویس RouteBox\n\n🖥️ '.$r['server_name'].'\n🔑 '.$r['peer_name'].'\n⏱️ اعتبار تا: '.date('Y-m-d H:i',(int)$r['expires_at']):'⚙️ RouteBox service\n\n🖥️ '.$r['server_name'].'\n🔑 '.$r['peer_name'].'\n⏱️ Valid until: '.date('Y-m-d H:i',(int)$r['expires_at']);$k=[[['text'=>$l==='fa'?'📄 دریافت Config':'📄 Get Config','callback_data'=>'config:'.$id],['text'=>$l==='fa'?'📷 دریافت QR':'📷 Get QR','callback_data'=>'qr:'.$id]],[['text'=>$l==='fa'?'📋 سرویس‌ها':'📋 Services','callback_data'=>'services']]];tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$t,'reply_markup'=>json_encode(['inline_keyboard'=>$k],JSON_UNESCAPED_UNICODE)]);}
-function ibsngServiceActions(string $token,$chat,int $uid,int $id):void{$l=langFor($uid);$q=db()->prepare('SELECT s.*,p.display_name_fa,p.display_name_en,r.name server_name FROM service_subscriptions s JOIN service_plans p ON p.id=s.plan_id JOIN ibsng_servers r ON r.id=s.provider_server_id WHERE s.id=? AND s.telegram_user_id=? AND s.provider_key="ibsng" AND s.status="active"');$q->execute([$id,$uid]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new RuntimeException('سرویس IBSng پیدا نشد.');$password=dec((string)$r['password_enc']);$plan=$l==='fa'?$r['display_name_fa']:$r['display_name_en'];$expiry=$r['expires_at']?date('Y-m-d H:i',(int)$r['expires_at']):'—';$text=$l==='fa'?"🔵 سرویس IBSng\n\n📦 پلن: {$plan}\n🖥️ سرور: {$r['server_name']}\n🔐 نام کاربری: {$r['username']}\n🔑 رمز عبور: {$password}\n⏱️ اعتبار: {$expiry}\n\n🌐 OpenVPN / Cisco / L2TP":"🔵 IBSng service\n\n📦 Plan: {$plan}\n🖥️ Server: {$r['server_name']}\n🔐 Username: {$r['username']}\n🔑 Password: {$password}\n⏱️ Validity: {$expiry}\n\n🌐 OpenVPN / Cisco / L2TP";tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$text,'reply_markup'=>json_encode(['inline_keyboard'=>[[['text'=>$l==='fa'?'📋 سرویس‌ها':'📋 Services','callback_data'=>'services']]]],JSON_UNESCAPED_UNICODE)]);}
-function mikrotikServiceActions(string $token,$chat,int $uid,int $id):void{$l=langFor($uid);$q=db()->prepare('SELECT s.id,s.username,s.expires_at,s.status,p.display_name_fa,p.display_name_en,r.name server_name,s.metadata_json FROM service_subscriptions s JOIN service_plans p ON p.id=s.plan_id JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.id=? AND s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?)');$q->execute([$id,$uid,time()]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new RuntimeException('سرویس MikroTik WireGuard پیدا نشد یا منقضی شده است.');$meta=json_decode((string)$r['metadata_json'],true);if(!is_array($meta))$meta=[];$ip=(string)($meta['assigned_ip']??'—');$plan=$l==='fa'?$r['display_name_fa']:$r['display_name_en'];$expiry=$r['expires_at']?date('Y-m-d H:i',(int)$r['expires_at']):'—';$text=$l==='fa'?"🟢 سرویس MikroTik WireGuard\n\n📦 پلن: {$plan}\n🖥️ سرور: {$r['server_name']}\n👤 نام کاربری: {$r['username']}\n🌐 IP: {$ip}\n⏱️ اعتبار تا: {$expiry}":"🟢 MikroTik WireGuard service\n\n📦 Plan: {$plan}\n🖥️ Server: {$r['server_name']}\n👤 Username: {$r['username']}\n🌐 IP: {$ip}\n⏱️ Valid until: {$expiry}";$k=[[['text'=>$l==='fa'?'📄 دریافت Config':'📄 Get Config','callback_data'=>'mkconfig:'.$id],['text'=>$l==='fa'?'📷 دریافت QR':'📷 Get QR','callback_data'=>'mkqr:'.$id]],[['text'=>$l==='fa'?'📋 سرویس‌ها':'📋 Services','callback_data'=>'services']]];tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$text,'reply_markup'=>json_encode(['inline_keyboard'=>$k],JSON_UNESCAPED_UNICODE)]);}
-function sendMikroTikConfig(string $token,$chat,int $uid,int $id):void{$q=db()->prepare('SELECT s.*,r.name server_name FROM service_subscriptions s JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.id=? AND s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?)');$q->execute([$id,$uid,time()]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new RuntimeException('سرویس MikroTik WireGuard پیدا نشد یا منقضی شده است.');$meta=json_decode((string)$r['metadata_json'],true);if(!is_array($meta))$meta=[];$conf=trim((string)($meta['config']??''));if($conf==='')throw new RuntimeException('Config سرویس MikroTik در دیتابیس موجود نیست.');$tmp=tempnam(sys_get_temp_dir(),'mkconf');file_put_contents($tmp,$conf);try{tg($token,'sendDocument',['chat_id'=>$chat,'document'=>new CURLFile($tmp,'text/plain','MikroTik-WireGuard-'.$r['server_name'].'.conf'),'caption'=>'📄 '.$r['server_name'].' — WireGuard','reply_markup'=>json_encode(['inline_keyboard'=>[[['text'=>langFor($uid)==='fa'?'📋 سرویس‌ها':'📋 Services','callback_data'=>'services']]]],JSON_UNESCAPED_UNICODE)]);}finally{@unlink($tmp);}}
-function sendMikroTikQr(string $token,$chat,int $uid,int $id):void{$q=db()->prepare('SELECT s.*,r.name server_name FROM service_subscriptions s JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.id=? AND s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?)');$q->execute([$id,$uid,time()]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new RuntimeException('سرویس MikroTik WireGuard پیدا نشد یا منقضی شده است.');$meta=json_decode((string)$r['metadata_json'],true);if(!is_array($meta))$meta=[];$conf=trim((string)($meta['config']??''));if($conf==='')throw new RuntimeException('Config سرویس MikroTik در دیتابیس موجود نیست.');$bin=trim((string)shell_exec('command -v qrencode 2>/dev/null'));if($bin==='')throw new RuntimeException('qrencode نصب نیست.');$tmp=tempnam(sys_get_temp_dir(),'mkqr');@unlink($tmp);$proc=proc_open([$bin,'-l','L','-m','2','-s','8','-o',$tmp],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);if(!is_resource($proc))throw new RuntimeException('QR generation failed.');fwrite($pipes[0],$conf);fclose($pipes[0]);fclose($pipes[1]);fclose($pipes[2]);$code=proc_close($proc);if($code!==0||!is_file($tmp))throw new RuntimeException('QR generation failed.');try{tg($token,'sendPhoto',['chat_id'=>$chat,'photo'=>new CURLFile($tmp,'image/png','MikroTik-WireGuard-QR.png'),'caption'=>'📷 '.$r['server_name'].' — WireGuard','reply_markup'=>json_encode(['inline_keyboard'=>[[['text'=>langFor($uid)==='fa'?'📋 سرویس‌ها':'📋 Services','callback_data'=>'services']]]],JSON_UNESCAPED_UNICODE)]);}finally{@unlink($tmp);}}
-function sendConfig(string $token,$chat,int $uid,int $id):void{$q=db()->prepare('SELECT p.*,r.name server_name,r.base_url,r.user_enc,r.pass_enc,r.verify_tls FROM provisions p JOIN routebox_servers r ON r.id=p.server_id WHERE p.id=? AND p.telegram_user_id=? AND p.expires_at>?');$q->execute([$id,$uid,time()]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new RuntimeException('سرویس پیدا نشد یا منقضی شده است.');$c=new RouteBoxClient($r['base_url'],dec($r['user_enc']),dec($r['pass_enc']),(bool)$r['verify_tls']);$conf=$c->config($r['public_key']);$tmp=tempnam(sys_get_temp_dir(),'rbt');file_put_contents($tmp,$conf);try{tg($token,'sendDocument',['chat_id'=>$chat,'document'=>new CURLFile($tmp,'text/plain','RouteBox-'.$r['server_name'].'.conf'),'caption'=>'📄 '.$r['server_name'],'reply_markup'=>json_encode(['inline_keyboard'=>[[['text'=>langFor($uid)==='fa'?'📋 سرویس‌ها':'📋 Services','callback_data'=>'services']]]],JSON_UNESCAPED_UNICODE)]);}finally{@unlink($tmp);}}
-function sendQr(string $token,$chat,int $uid,int $id):void{$q=db()->prepare('SELECT p.*,r.name server_name,r.base_url,r.user_enc,r.pass_enc,r.verify_tls FROM provisions p JOIN routebox_servers r ON r.id=p.server_id WHERE p.id=? AND p.telegram_user_id=? AND p.expires_at>?');$q->execute([$id,$uid,time()]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new RuntimeException('سرویس پیدا نشد یا منقضی شده است.');$c=new RouteBoxClient($r['base_url'],dec($r['user_enc']),dec($r['pass_enc']),(bool)$r['verify_tls']);$conf=$c->config($r['public_key']);$bin=trim((string)shell_exec('command -v qrencode 2>/dev/null'));if($bin==='')throw new RuntimeException('qrencode نصب نیست.');$tmp=tempnam(sys_get_temp_dir(),'rbtqr');@unlink($tmp);$p=proc_open([$bin,'-l','L','-m','2','-s','8','-o',$tmp],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);if(!is_resource($p))throw new RuntimeException('QR generation failed.');fwrite($pipes[0],$conf);fclose($pipes[0]);fclose($pipes[1]);fclose($pipes[2]);$code=proc_close($p);if($code!==0||!is_file($tmp))throw new RuntimeException('QR generation failed.');try{tg($token,'sendPhoto',['chat_id'=>$chat,'photo'=>new CURLFile($tmp,'image/png','RouteBox-QR.png'),'caption'=>'📷 '.$r['server_name'].' — AmneziaWG','reply_markup'=>json_encode(['inline_keyboard'=>[[['text'=>langFor($uid)==='fa'?'📋 سرویس‌ها':'📋 Services','callback_data'=>'services']]]],JSON_UNESCAPED_UNICODE)]);}finally{@unlink($tmp);}}
-function guide(string $token,$chat,int $uid):void{$l=langFor($uid);$prefix=$l==='fa'?"📚 راهنمای استفاده\n\n":"📚 Usage guide\n\n";$text=cleanT($prefix.cleanT((string)sget($l==='fa'?'guide_fa':'guide_en')));$links=[];foreach([['android_url','Android'],['ios_url','iPhone/iPad'],['windows_url','Windows'],['macos_url','macOS']] as [$key,$label])if($u=trim((string)sget($key,'')))$links[]=[['text'=>$label,'url'=>$u]];tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$text,'reply_markup'=>$links?json_encode(['inline_keyboard'=>$links],JSON_UNESCAPED_UNICODE):'']);}
 
-$stored=sget('telegram_token');if(!$stored)exit("Telegram token is not configured\n");$token=dec($stored);@mkdir(__DIR__.'/storage',0700,true);$workerLock=fopen(__DIR__.'/storage/worker.lock','c');if($workerLock===false||!flock($workerLock,LOCK_EX|LOCK_NB)){fwrite(STDERR,"Another worker is already running.\n");exit(0);}$offset=(int)(@file_get_contents(__DIR__.'/storage/update.offset')?:0);
-while(true){try{$updates=tg($token,'getUpdates',['offset'=>$offset,'timeout'=>25,'allowed_updates'=>json_encode(['message','callback_query'])]);foreach($updates as $u){$offset=(int)$u['update_id']+1;file_put_contents(__DIR__.'/storage/update.offset',(string)$offset,LOCK_EX);$m=$u['message']??null;$cb=$u['callback_query']??null;$chat=$m['chat']['id']??$cb['message']['chat']['id']??null;$from=$m['from']??$cb['from']??null;if($chat===null||!is_array($from))continue;$uid=upsertUser($from);if($cb&&RouteBox\Telegram\AdminTrialBridge::handle($token,$chat,$from,$cb))continue;if(RouteBox\Telegram\AdminBot::handle($token,$chat,$from,$uid,$m,$cb))continue;if($m&&(!empty($m['photo'])||!empty($m['document']))){try{handleReceiptUpload($token,$chat,$uid,$m);}catch(Throwable $e){tg($token,'sendMessage',['chat_id'=>$chat,'text'=>'❌ '.$e->getMessage()]);}continue;}$text=(string)($m['text']??'');if($m&&($text==='/start'||str_starts_with($text,'/start '))){menu($token,$chat,$uid);continue;}if($m&&$text==='/menu'){menu($token,$chat,$uid);continue;}if($m&&$text==='/account'){sendServices($token,$chat,$uid);continue;}if($m&&$text==='/help'){guide($token,$chat,$uid);continue;}if(!$cb)continue;tg($token,'answerCallbackQuery',['callback_query_id'=>$cb['id']]);$a=(string)($cb['data']??'');try{if($a==='language'){tg($token,'sendMessage',['chat_id'=>$chat,'text'=>'🌐 Language / زبان','reply_markup'=>json_encode(['inline_keyboard'=>[[['text'=>'🇮🇷 فارسی','callback_data'=>'lang:fa'],['text'=>'🇬🇧 English','callback_data'=>'lang:en']]]],JSON_UNESCAPED_UNICODE)]);}elseif($a==='menu'){menu($token,$chat,$uid);}elseif(str_starts_with($a,'lang:')){setUserLang($uid,substr($a,5));menu($token,$chat,$uid);}elseif($a==='services'){sendServices($token,$chat,$uid);}elseif($a==='guide'){guide($token,$chat,$uid);}elseif($a==='payment:current'){sendCurrentPaymentOrder($token,$chat,$uid);}elseif(str_starts_with($a,'payment:cancel:')){$orderId=(int)substr($a,15);$ok=(new ManualPaymentService(db()))->cancel($orderId,$uid);tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$ok?(langFor($uid)==='fa'?'✅ سفارش لغو شد.':'✅ Order cancelled.'):(langFor($uid)==='fa'?'این سفارش دیگر قابل لغو نیست.':'This order cannot be cancelled.')]);}elseif($a==='trial'){$cat=(new ServiceCatalog(db()))->categories('routebox')[0]??null;$result=provision($uid,(string)$from['id']);if($cat)TrialService::recordLegacyRoutebox(db(),$uid,(int)$cat['id'],$result);tg($token,'sendMessage',['chat_id'=>$chat,'text'=>langFor($uid)==='fa'?'✅ تست رایگان RouteBox شما فعال شد.':'✅ Your RouteBox trial is active.']);}elseif(str_starts_with($a,'trial:')){$categoryId=(int)substr($a,6);TrialService::provision(db(),$uid,(string)$from['id'],$categoryId);$l=langFor($uid);tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$l==='fa'?'✅ تست رایگان سرویس شما فعال شد.':'✅ Your free trial is active.','reply_markup'=>json_encode(['inline_keyboard'=>[[['text'=>$l==='fa'?'📋 سرویس‌های من':'📋 My services','callback_data'=>'services']]]],JSON_UNESCAPED_UNICODE)]);}elseif(str_starts_with($a,'servicecat:')){sendCategoryPlans($token,$chat,$uid,(int)substr($a,11));}elseif(str_starts_with($a,'svcplan:')){sendServicePurchase($token,$chat,$uid,(string)$from['id'],(int)substr($a,8));}elseif(str_starts_with($a,'service:')){serviceActions($token,$chat,$uid,(int)substr($a,8));}elseif(str_starts_with($a,'ibsservice:')){ibsngServiceActions($token,$chat,$uid,(int)substr($a,11));}elseif(str_starts_with($a,'mikrotikservice:')){mikrotikServiceActions($token,$chat,$uid,(int)substr($a,16));}elseif(str_starts_with($a,'mkconfig:')){sendMikroTikConfig($token,$chat,$uid,(int)substr($a,9));}elseif(str_starts_with($a,'mkqr:')){sendMikroTikQr($token,$chat,$uid,(int)substr($a,5));}elseif(str_starts_with($a,'config:')){sendConfig($token,$chat,$uid,(int)substr($a,7));}elseif(str_starts_with($a,'qr:')){sendQr($token,$chat,$uid,(int)substr($a,3));}}catch(Throwable $e){tg($token,'sendMessage',['chat_id'=>$chat,'text'=>'❌ '.$e->getMessage()]);}}}catch(Throwable $e){log_event('error','Worker: '.$e->getMessage());sleep(2);}}
+function cleanT(string $t): string
+{
+    do {
+        $before = $t;
+        $t = str_replace(["\\r\\n", "\\n", "/n"], "\n", $t);
+    } while ($t !== $before);
+    return trim($t);
+}
+
+function tg(string $token, string $method, array $data = []): array
+{
+    $c = curl_init('https://api.telegram.org/bot' . $token . '/' . $method);
+    if ($c === false) throw new RuntimeException('Telegram cURL init failed.');
+    curl_setopt_array($c, [CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_POSTFIELDS => $data, CURLOPT_TIMEOUT => 35, CURLOPT_CONNECTTIMEOUT => 10]);
+    $raw = curl_exec($c);
+    $err = curl_error($c);
+    curl_close($c);
+    if ($raw === false) throw new RuntimeException('Telegram connection failed: ' . ($err ?: 'unknown'));
+    $j = json_decode($raw, true);
+    if (!is_array($j) || empty($j['ok'])) throw new RuntimeException($j['description'] ?? 'Telegram API error');
+    return is_array($j['result'] ?? null) ? $j['result'] : [];
+}
+
+function setUserLang(int $id, string $lang): void
+{
+    if (!in_array($lang, ['fa', 'en'], true)) $lang = 'en';
+    db()->prepare('UPDATE telegram_users SET language=? WHERE id=?')->execute([$lang, $id]);
+}
+
+function langFor(int $id): string
+{
+    $q = db()->prepare('SELECT language FROM telegram_users WHERE id=?');
+    $q->execute([$id]);
+    $v = (string)$q->fetchColumn();
+    return in_array($v, ['fa', 'en'], true) ? $v : 'en';
+}
+
+function upsertUser(array $u): int
+{
+    $now = time();
+    $q = db()->prepare('SELECT id,language FROM telegram_users WHERE telegram_id=?');
+    $q->execute([(string)$u['id']]);
+    $old = $q->fetch(PDO::FETCH_ASSOC);
+    $lang = (is_array($old) && in_array(($old['language'] ?? ''), ['fa', 'en'], true))
+        ? $old['language']
+        : (str_starts_with(strtolower((string)($u['language_code'] ?? '')), 'fa') ? 'fa' : 'en');
+    db()->prepare('INSERT INTO telegram_users(telegram_id,username,first_name,created_at,last_seen,language) VALUES(?,?,?,?,?,?) ON CONFLICT(telegram_id) DO UPDATE SET username=excluded.username,first_name=excluded.first_name,last_seen=excluded.last_seen,language=excluded.language')->execute([(string)$u['id'], $u['username'] ?? null, $u['first_name'] ?? null, $now, $now, $lang]);
+    if (is_array($old)) return (int)$old['id'];
+    $q->execute([(string)$u['id']]);
+    return (int)$q->fetchColumn();
+}
+
+function buttons(string $lang): array
+{
+    $r = db()->query('SELECT action_key,text_fa,text_en FROM telegram_buttons WHERE enabled=1 ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
+    $o = [];
+    foreach ($r as $x) $o[$x['action_key']] = cleanT($lang === 'fa' ? $x['text_fa'] : $x['text_en']);
+    return $o;
+}
+
+function claimTrial(int $uid): void
+{
+    $q = db()->prepare('INSERT OR IGNORE INTO telegram_trials(telegram_user_id,claimed_at) VALUES(?,?)');
+    $q->execute([$uid, time()]);
+    if ($q->rowCount() !== 1) throw new RuntimeException('این حساب قبلاً تست رایگان را دریافت کرده است.');
+}
+
+function provision(int $uid, string $tgid, ?int $planId = null): array
+{
+    $planName = 'Free trial';
+    $seconds = 0;
+    $quota = null;
+    if ($planId === null) {
+        claimTrial($uid);
+        $seconds = max(1, (int)sget('trial_hours', '12')) * 3600;
+    } else {
+        $q = db()->prepare('SELECT * FROM plans WHERE id=? AND enabled=1');
+        $q->execute([$planId]);
+        $p = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$p) throw new RuntimeException('این پلن دیگر فعال نیست.');
+        $seconds = max(1, (int)$p['duration_days']) * 86400;
+        $gb = (float)$p['quota_gb'];
+        if ($gb > 0) $quota = (int)round($gb * 1024 * 1024 * 1024);
+        $planName = (string)$p['name'];
+    }
+    $servers = db()->query('SELECT * FROM routebox_servers WHERE enabled=1 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+    if (!$servers) throw new RuntimeException('هیچ RouteBox فعالی تنظیم نشده است.');
+    $expires = time() + $seconds;
+    $peer = 'user' . $tgid . '-' . bin2hex(random_bytes(3));
+    $out = [];
+    $created = [];
+    try {
+        foreach ($servers as $s) {
+            $c = new RouteBoxClient((string)$s['base_url'], dec((string)$s['user_enc']), dec((string)$s['pass_enc']), (bool)$s['verify_tls']);
+            $p = $c->createPeer($peer);
+            $key = (string)($p['public_key'] ?? $p['publicKey'] ?? '');
+            if ($key === '') throw new RuntimeException('RouteBox public key was not returned.');
+            $created[] = [$c, $key];
+            $c->setExpiry($key, $expires, $quota);
+            $conf = $c->config($key);
+            $st = db()->prepare('INSERT INTO provisions(telegram_user_id,server_id,peer_name,public_key,expires_at,created_at) VALUES(?,?,?,?,?,?)');
+            $st->execute([$uid, $s['id'], $peer, $key, $expires, time()]);
+            $out[] = ['provision_id' => (int)db()->lastInsertId(), 'server' => (string)$s['name'], 'conf' => $conf, 'expires' => $expires, 'plan' => $planName, 'public_key' => $key];
+        }
+    } catch (Throwable $e) {
+        foreach ($created as [$c, $key]) try { $c->deletePeer($key); } catch (Throwable $x) { log_event('error', 'Provision rollback failed: ' . $x->getMessage()); }
+        throw $e;
+    }
+    log_event('info', 'Provisioned ' . $tgid . ' with ' . $planName);
+    return $out;
+}
+
+function modularCategoryButtons(string $lang): array
+{
+    $catalog = new ServiceCatalog(db());
+    $rows = $catalog->categories();
+    $o = [];
+    foreach ($rows as $row) {
+        $name = $lang === 'fa' ? (string)$row['name_fa'] : (string)$row['name_en'];
+        $icon = trim((string)$row['icon']);
+        $o[] = [['text' => ($icon !== '' ? $icon . ' ' : '') . $name, 'callback_data' => 'servicecat:' . (int)$row['id']]];
+    }
+    return $o;
+}
+
+function menu(string $token, $chat, int $uid): void
+{
+    $l = langFor($uid);
+    $b = buttons($l);
+    $k = modularCategoryButtons($l);
+    $k[] = [
+        ['text' => '📋 ' . ($l === 'fa' ? 'سرویس‌های من' : 'My services'), 'callback_data' => 'services'],
+        ['text' => $b['language'] ?? '🌐 Language', 'callback_data' => 'language'],
+    ];
+    $k[] = [['text' => '🧾 ' . ($l === 'fa' ? 'سفارش جاری' : 'Current order'), 'callback_data' => 'payment:current']];
+    $k[] = [['text' => '📚 ' . ($l === 'fa' ? 'راهنمای استفاده' : 'Usage guide'), 'callback_data' => 'guide']];
+    $w = cleanT((string)sget($l === 'fa' ? 'welcome_fa' : 'welcome_en', $l === 'fa' ? '🚀 RouteBox Telegram Bot\n\nسلام 👋' : '🚀 RouteBox Telegram Bot\n\nHello 👋'));
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $w, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
+}
+
+function sendCategoryPlans(string $token, $chat, int $uid, int $categoryId): void
+{
+    $l = langFor($uid);
+    $catalog = new ServiceCatalog(db());
+    $category = $catalog->category($categoryId);
+    $plans = $catalog->plans($categoryId);
+
+    if (!$plans && (string)$category['service_key'] !== 'routebox') {
+        throw new RuntimeException('برای این سرویس هنوز پلنی تعریف نشده است.');
+    }
+
+    $name = $l === 'fa' ? (string)$category['name_fa'] : (string)$category['name_en'];
+    $icon = trim((string)($category['icon'] ?? ''));
+    $text = ($icon !== '' ? $icon . ' ' : '') . $name . "\n\n" . ($l === 'fa' ? 'پلن موردنظر را انتخاب کنید:' : 'Choose a plan:');
+    $k = [];
+    foreach ($plans as $p) {
+        $days = (int)$p['duration_days'];
+        $quota = (float)$p['quota_gb'] > 0
+            ? rtrim(rtrim(number_format((float)$p['quota_gb'], 1, '.', ''), '0'), '.') . 'GB'
+            : '∞';
+        $price = (int)$p['price_minor'];
+        $priceText = $price > 0 ? ' • ' . number_format($price) . ' IRR' : '';
+        $duration = $days > 0 ? $days . ($l === 'fa' ? ' روز' : ' days') : '';
+        $label = ($l === 'fa' ? (string)$p['display_name_fa'] : (string)$p['display_name_en']);
+        if ($duration !== '') $label .= ' • ' . $duration;
+        $label .= ' • ' . $quota . $priceText;
+        $k[] = [['text' => '🛒 ' . $label, 'callback_data' => 'svcplan:' . (int)$p['id']]];
+    }
+    if ((string)$category['service_key'] === 'routebox') {
+        $k[] = [['text' => $l === 'fa' ? '🎁 دریافت تست رایگان' : '🎁 Get free trial', 'callback_data' => 'trial']];
+    }
+    $k[] = [['text' => $l === 'fa' ? '↩️ بازگشت' : '↩️ Back', 'callback_data' => 'menu']];
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
+}
+
+function sendServicePurchase(string $token, $chat, int $uid, string $tgid, int $planId): void
+{
+    $payments = new ManualPaymentService(db());
+    if (!$payments->enabled()) {
+        $provisioner = new ServiceProvisioner(db());
+        $r = $provisioner->provision($uid, $tgid, $planId);
+        $l = langFor($uid);
+        if (($r['provider'] ?? '') === 'ibsng') {
+            $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : ($l === 'fa' ? 'طبق قوانین گروه IBSng' : 'According to IBSng group rules');
+            $text = $l === 'fa'
+                ? "✅ سرویس IBSng فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n🖥️ سرور: {$r['server_name']}\n👥 گروه: {$r['group_name']}\n🔐 نام کاربری: {$r['username']}\n🔑 رمز عبور: {$r['password']}\n🆔 User ID: {$r['user_id']}\n⏱️ اعتبار: {$expiry}\n\n🌐 قابل استفاده برای OpenVPN / Cisco / L2TP"
+                : "✅ IBSng service activated.\n\n📦 Plan: {$r['plan_name_en']}\n🖥️ Server: {$r['server_name']}\n👥 Group: {$r['group_name']}\n🔐 Username: {$r['username']}\n🔑 Password: {$r['password']}\n🆔 User ID: {$r['user_id']}\n⏱️ Validity: {$expiry}\n\n🌐 Usable with OpenVPN / Cisco / L2TP";
+        } elseif (($r['provider'] ?? '') === 'routebox') {
+            $expiry = date('Y-m-d H:i', (int)$r['expires_at']);
+            $text = $l === 'fa'
+                ? "✅ سرویس RouteBox فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n⏱️ اعتبار تا: {$expiry}\n🟣 WireGuard / RouteBox\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید."
+                : "✅ RouteBox service activated.\n\n📦 Plan: {$r['plan_name_en']}\n⏱️ Valid until: {$expiry}\n🟣 WireGuard / RouteBox\n\n📋 Use My services to get your Config or QR.";
+        } elseif (($r['provider'] ?? '') === 'mikrotik_wireguard') {
+            $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
+            $text = $l === 'fa'
+                ? "✅ سرویس MikroTik WireGuard فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n🖥️ سرور: {$r['server_name']}\n👤 نام کاربری: {$r['username']}\n🌐 IP: {$r['assigned_ip']}\n⏱️ اعتبار تا: {$expiry}\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید."
+                : "✅ MikroTik WireGuard service activated.\n\n📦 Plan: {$r['plan_name_en']}\n🖥️ Server: {$r['server_name']}\n👤 Username: {$r['username']}\n🌐 IP: {$r['assigned_ip']}\n⏱️ Valid until: {$expiry}\n\n📋 Use My services to get your Config or QR.";
+        } else {
+            throw new RuntimeException('ارائه‌دهنده این سرویس هنوز برای ربات فعال نشده است.');
+        }
+        tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '📋 سرویس‌های من' : '📋 My services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
+        return;
+    }
+
+    $order = $payments->createOrder($uid, $planId);
+    $s = $payments->settings();
+    $l = langFor($uid);
+    $price = number_format((int)$order['amount']);
+    $currency = (string)$order['currency'];
+    $planName = $l === 'fa' ? (string)$order['plan']['display_name_fa'] : (string)$order['plan']['display_name_en'];
+    $text = $l === 'fa'
+        ? "🧾 سفارش #{$order['order_id']}\n\n📦 سرویس: {$planName}\n🔌 Provider: {$order['plan']['provider_key']}\n💰 مبلغ: {$price} {$currency}\n\n💳 لطفاً مبلغ را به کارت زیر واریز کنید:\n🏦 بانک: {$s['bank']}\n💳 شماره کارت: {$s['card_number']}\n👤 صاحب کارت: {$s['card_holder']}"
+        : "🧾 Order #{$order['order_id']}\n\n📦 Service: {$planName}\n🔌 Provider: {$order['plan']['provider_key']}\n💰 Amount: {$price} {$currency}\n\n💳 Please transfer the amount to:\n🏦 Bank: {$s['bank']}\n💳 Card: {$s['card_number']}\n👤 Holder: {$s['card_holder']}";
+    if (trim((string)$s['instructions']) !== '') $text .= "\n\n📌 " . (string)$s['instructions'];
+    $text .= $l === 'fa' ? "\n\n📷 بعد از پرداخت، عکس رسید را همینجا ارسال کنید. سرویس فقط پس از تأیید Admin فعال می‌شود." : "\n\n📷 After payment, send the receipt image here. The service is activated only after Admin approval.";
+    $k = [
+        [['text' => $l === 'fa' ? '🧾 وضعیت سفارش' : '🧾 Order status', 'callback_data' => 'payment:current']],
+        [['text' => $l === 'fa' ? '❌ لغو سفارش' : '❌ Cancel order', 'callback_data' => 'payment:cancel:' . (int)$order['order_id']]],
+    ];
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
+}
+
+function sendCurrentPaymentOrder(string $token, $chat, int $uid): void
+{
+    $order = (new ManualPaymentService(db()))->currentOrder($uid);
+    $l = langFor($uid);
+    if (!$order) {
+        tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $l === 'fa' ? '🧾 سفارش فعال ندارید.' : '🧾 You have no active order.', 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '↩️ منوی اصلی' : '↩️ Main Menu', 'callback_data' => 'menu']]]], JSON_UNESCAPED_UNICODE)]);
+        return;
+    }
+    $plan = $l === 'fa' ? (string)$order['display_name_fa'] : (string)$order['display_name_en'];
+    $status = match ((string)$order['status']) {
+        'pending_payment' => $l === 'fa' ? 'در انتظار پرداخت و ارسال رسید' : 'Awaiting payment and receipt',
+        'receipt_pending' => $l === 'fa' ? 'رسید در انتظار بررسی Admin' : 'Receipt pending Admin review',
+        'approved' => $l === 'fa' ? 'پرداخت تأیید شد؛ در انتظار Provisioning' : 'Payment approved; provisioning pending',
+        'provisioning' => $l === 'fa' ? 'در حال فعال‌سازی سرویس' : 'Provisioning service',
+        'provision_failed' => $l === 'fa' ? 'Provisioning ناموفق؛ در حال بررسی Admin' : 'Provisioning failed; Admin action required',
+        default => (string)$order['status'],
+    };
+    $text = $l === 'fa'
+        ? "🧾 سفارش #{$order['id']}\n\n📦 {$plan}\n🔌 {$order['provider_key']}\n💰 " . number_format((int)$order['total_minor']) . " {$order['currency']}\n📌 وضعیت: {$status}"
+        : "🧾 Order #{$order['id']}\n\n📦 {$plan}\n🔌 {$order['provider_key']}\n💰 " . number_format((int)$order['total_minor']) . " {$order['currency']}\n📌 Status: {$status}";
+    $k = [];
+    if ((string)$order['status'] === 'pending_payment') $k[] = [['text' => $l === 'fa' ? '❌ لغو سفارش' : '❌ Cancel order', 'callback_data' => 'payment:cancel:' . (int)$order['id']]];
+    $k[] = [['text' => $l === 'fa' ? '↩️ منوی اصلی' : '↩️ Main Menu', 'callback_data' => 'menu']];
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
+}
+
+function handleReceiptUpload(string $token, $chat, int $uid, array $message): void
+{
+    $fileId = '';
+    $uniqueId = '';
+    $fileType = '';
+    $mime = null;
+    if (!empty($message['photo']) && is_array($message['photo'])) {
+        $photo = end($message['photo']);
+        if (is_array($photo)) {
+            $fileId = (string)($photo['file_id'] ?? '');
+            $uniqueId = (string)($photo['file_unique_id'] ?? '');
+            $fileType = 'photo';
+            $mime = 'image/jpeg';
+        }
+    } elseif (!empty($message['document']) && is_array($message['document'])) {
+        $doc = $message['document'];
+        $fileId = (string)($doc['file_id'] ?? '');
+        $uniqueId = (string)($doc['file_unique_id'] ?? '');
+        $fileType = 'document';
+        $mime = isset($doc['mime_type']) ? (string)$doc['mime_type'] : null;
+        $mimeOk = $mime === null || str_starts_with($mime, 'image/') || $mime === 'application/pdf';
+        if (!$mimeOk) throw new RuntimeException('لطفاً تصویر یا PDF رسید را ارسال کنید.');
+    }
+    if ($fileId === '' || $fileType === '') throw new RuntimeException('فایل رسید قابل تشخیص نیست.');
+    $result = (new ManualPaymentService(db()))->attachReceipt($uid, $fileId, $uniqueId, $fileType, $mime, (string)($message['caption'] ?? ''));
+    $order = $result['order'];
+    $l = langFor($uid);
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $l === 'fa' ? "✅ رسید سفارش #{$order['id']} دریافت شد.\n\n⏳ رسید شما برای Admin ارسال شد و پس از تأیید، سرویس به‌صورت خودکار فعال می‌شود." : "✅ Receipt for Order #{$order['id']} received.\n\n⏳ It is pending Admin review. Your service will be activated after approval.", 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '🧾 وضعیت سفارش' : '🧾 Order status', 'callback_data' => 'payment:current']]]], JSON_UNESCAPED_UNICODE)]);
+}
+
+function sendServices(string $token, $chat, int $uid): void
+{
+    $l = langFor($uid);
+    $now = time();
+    $q = db()->prepare('SELECT p.id,r.name server_name,p.peer_name,p.expires_at FROM provisions p JOIN routebox_servers r ON r.id=p.server_id WHERE p.telegram_user_id=? AND p.expires_at>? ORDER BY p.created_at DESC,p.id DESC');
+    $q->execute([$uid, $now]);
+    $routebox = $q->fetchAll(PDO::FETCH_ASSOC);
+    $q = db()->prepare('SELECT s.id,s.username,s.expires_at,s.status,p.display_name_fa,p.display_name_en,r.name server_name,s.metadata_json FROM service_subscriptions s JOIN service_plans p ON p.id=s.plan_id JOIN ibsng_servers r ON r.id=s.provider_server_id WHERE s.telegram_user_id=? AND s.provider_key="ibsng" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?) ORDER BY s.created_at DESC,s.id DESC');
+    $q->execute([$uid, $now]);
+    $ibs = $q->fetchAll(PDO::FETCH_ASSOC);
+    $q = db()->prepare('SELECT s.id,s.username,s.expires_at,s.status,p.display_name_fa,p.display_name_en,r.name server_name,s.metadata_json FROM service_subscriptions s JOIN service_plans p ON p.id=s.plan_id JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?) ORDER BY s.created_at DESC,s.id DESC');
+    $q->execute([$uid, $now]);
+    $mikrotik = $q->fetchAll(PDO::FETCH_ASSOC);
+    if (!$routebox && !$ibs && !$mikrotik) {
+        tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $l === 'fa' ? '📋 سرویس فعال ندارید.' : '📋 No active services.']);
+        return;
+    }
+    $text = $l === 'fa' ? "📋 سرویس‌های فعال شما:\n\n" : "📋 Your active services:\n\n";
+    $k = [];
+    foreach ($routebox as $i => $r) {
+        $text .= '🟣 RouteBox — ' . $r['server_name'] . ' — ' . $r['peer_name'] . ' — ' . date('Y-m-d H:i', (int)$r['expires_at']) . "\n";
+        $k[] = [['text' => '⚙️ RouteBox · ' . ($i + 1), 'callback_data' => 'service:' . $r['id']]];
+    }
+    foreach ($ibs as $i => $r) {
+        $plan = $l === 'fa' ? $r['display_name_fa'] : $r['display_name_en'];
+        $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
+        $text .= '🔵 IBSng — ' . $plan . ' — ' . $r['username'] . ' — ' . $expiry . "\n";
+        $k[] = [['text' => '⚙️ IBSng · ' . ($i + 1), 'callback_data' => 'ibsservice:' . $r['id']]];
+    }
+    foreach ($mikrotik as $i => $r) {
+        $plan = $l === 'fa' ? $r['display_name_fa'] : $r['display_name_en'];
+        $meta = json_decode((string)$r['metadata_json'], true);
+        if (!is_array($meta)) $meta = [];
+        $ip = (string)($meta['assigned_ip'] ?? '—');
+        $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
+        $text .= '🟢 MikroTik — ' . $r['server_name'] . ' — ' . $ip . ' — ' . $expiry . "\n";
+        $k[] = [['text' => '⚙️ MikroTik · ' . ($i + 1), 'callback_data' => 'mikrotikservice:' . $r['id']]];
+    }
+    $k[] = [['text' => $l === 'fa' ? '🔙 منوی اصلی' : '🔙 Main Menu', 'callback_data' => 'menu']];
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
+}
+
+function serviceActions(string $token, $chat, int $uid, int $id): void
+{
+    $l = langFor($uid);
+    $q = db()->prepare('SELECT p.*,r.name server_name,r.base_url,r.user_enc,r.pass_enc,r.verify_tls FROM provisions p JOIN routebox_servers r ON r.id=p.server_id WHERE p.id=? AND p.telegram_user_id=? AND p.expires_at>?');
+    $q->execute([$id, $uid, time()]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) throw new RuntimeException('سرویس RouteBox پیدا نشد یا منقضی شده است.');
+    $t = $l === 'fa' ? '⚙️ سرویس RouteBox\n\n🖥️ ' . $r['server_name'] . '\n🔑 ' . $r['peer_name'] . '\n⏱️ اعتبار تا: ' . date('Y-m-d H:i', (int)$r['expires_at']) : '⚙️ RouteBox service\n\n🖥️ ' . $r['server_name'] . '\n🔑 ' . $r['peer_name'] . '\n⏱️ Valid until: ' . date('Y-m-d H:i', (int)$r['expires_at']);
+    $k = [
+        [['text' => $l === 'fa' ? '📄 دریافت Config' : '📄 Get Config', 'callback_data' => 'config:' . $id], ['text' => $l === 'fa' ? '📷 دریافت QR' : '📷 Get QR', 'callback_data' => 'qr:' . $id]],
+        [['text' => $l === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']],
+    ];
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $t, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
+}
+
+function ibsngServiceActions(string $token, $chat, int $uid, int $id): void
+{
+    $l = langFor($uid);
+    $q = db()->prepare('SELECT s.*,p.display_name_fa,p.display_name_en,r.name server_name FROM service_subscriptions s JOIN service_plans p ON p.id=s.plan_id JOIN ibsng_servers r ON r.id=s.provider_server_id WHERE s.id=? AND s.telegram_user_id=? AND s.provider_key="ibsng" AND s.status="active"');
+    $q->execute([$id, $uid]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) throw new RuntimeException('سرویس IBSng پیدا نشد.');
+    $password = dec((string)$r['password_enc']);
+    $plan = $l === 'fa' ? $r['display_name_fa'] : $r['display_name_en'];
+    $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
+    $text = $l === 'fa' ? "🔵 سرویس IBSng\n\n📦 پلن: {$plan}\n🖥️ سرور: {$r['server_name']}\n🔐 نام کاربری: {$r['username']}\n🔑 رمز عبور: {$password}\n⏱️ اعتبار: {$expiry}\n\n🌐 OpenVPN / Cisco / L2TP" : "🔵 IBSng service\n\n📦 Plan: {$plan}\n🖥️ Server: {$r['server_name']}\n🔐 Username: {$r['username']}\n🔑 Password: {$password}\n⏱️ Validity: {$expiry}\n\n🌐 OpenVPN / Cisco / L2TP";
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
+}
+
+function mikrotikServiceActions(string $token, $chat, int $uid, int $id): void
+{
+    $l = langFor($uid);
+    $q = db()->prepare('SELECT s.id,s.username,s.expires_at,s.status,p.display_name_fa,p.display_name_en,r.name server_name,s.metadata_json FROM service_subscriptions s JOIN service_plans p ON p.id=s.plan_id JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.id=? AND s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?)');
+    $q->execute([$id, $uid, time()]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) throw new RuntimeException('سرویس MikroTik WireGuard پیدا نشد یا منقضی شده است.');
+    $meta = json_decode((string)$r['metadata_json'], true);
+    if (!is_array($meta)) $meta = [];
+    $ip = (string)($meta['assigned_ip'] ?? '—');
+    $plan = $l === 'fa' ? (string)$r['display_name_fa'] : (string)$r['display_name_en'];
+    $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
+    $text = $l === 'fa'
+        ? "🟢 سرویس MikroTik WireGuard\n\n📦 پلن: {$plan}\n🖥️ سرور: {$r['server_name']}\n👤 نام کاربری: {$r['username']}\n🌐 IP: {$ip}\n⏱️ اعتبار تا: {$expiry}"
+        : "🟢 MikroTik WireGuard service\n\n📦 Plan: {$plan}\n🖥️ Server: {$r['server_name']}\n👤 Username: {$r['username']}\n🌐 IP: {$ip}\n⏱️ Valid until: {$expiry}";
+    $k = [
+        [['text' => $l === 'fa' ? '📄 دریافت Config' : '📄 Get Config', 'callback_data' => 'mkconfig:' . $id], ['text' => $l === 'fa' ? '📷 دریافت QR' : '📷 Get QR', 'callback_data' => 'mkqr:' . $id]],
+        [['text' => $l === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']],
+    ];
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
+}
+
+function sendMikroTikConfig(string $token, $chat, int $uid, int $id): void
+{
+    $q = db()->prepare('SELECT s.*,r.name server_name FROM service_subscriptions s JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.id=? AND s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?)');
+    $q->execute([$id, $uid, time()]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) throw new RuntimeException('سرویس MikroTik WireGuard پیدا نشد یا منقضی شده است.');
+    $meta = json_decode((string)$r['metadata_json'], true);
+    if (!is_array($meta)) $meta = [];
+    $conf = trim((string)($meta['config'] ?? ''));
+    if ($conf === '') throw new RuntimeException('Config سرویس MikroTik در دیتابیس موجود نیست.');
+    $tmp = tempnam(sys_get_temp_dir(), 'mkconf');
+    file_put_contents($tmp, $conf);
+    try {
+        tg($token, 'sendDocument', ['chat_id' => $chat, 'document' => new CURLFile($tmp, 'text/plain', 'MikroTik-WireGuard-' . $r['server_name'] . '.conf'), 'caption' => '📄 ' . $r['server_name'] . ' — WireGuard', 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => langFor($uid) === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
+    } finally { @unlink($tmp); }
+}
+
+function sendMikroTikQr(string $token, $chat, int $uid, int $id): void
+{
+    $q = db()->prepare('SELECT s.*,r.name server_name FROM service_subscriptions s JOIN mikrotik_servers r ON r.id=s.provider_server_id WHERE s.id=? AND s.telegram_user_id=? AND s.provider_key="mikrotik_wireguard" AND s.status="active" AND (s.expires_at IS NULL OR s.expires_at>?)');
+    $q->execute([$id, $uid, time()]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) throw new RuntimeException('سرویس MikroTik WireGuard پیدا نشد یا منقضی شده است.');
+    $meta = json_decode((string)$r['metadata_json'], true);
+    if (!is_array($meta)) $meta = [];
+    $conf = trim((string)($meta['config'] ?? ''));
+    if ($conf === '') throw new RuntimeException('Config سرویس MikroTik در دیتابیس موجود نیست.');
+    $bin = trim((string)shell_exec('command -v qrencode 2>/dev/null'));
+    if ($bin === '') throw new RuntimeException('qrencode نصب نیست.');
+    $tmp = tempnam(sys_get_temp_dir(), 'mkqr');
+    @unlink($tmp);
+    $proc = proc_open([$bin, '-l', 'L', '-m', '2', '-s', '8', '-o', $tmp], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    if (!is_resource($proc)) throw new RuntimeException('QR generation failed.');
+    fwrite($pipes[0], $conf); fclose($pipes[0]); fclose($pipes[1]); fclose($pipes[2]);
+    $code = proc_close($proc);
+    if ($code !== 0 || !is_file($tmp)) throw new RuntimeException('QR generation failed.');
+    try {
+        tg($token, 'sendPhoto', ['chat_id' => $chat, 'photo' => new CURLFile($tmp, 'image/png', 'MikroTik-WireGuard-QR.png'), 'caption' => '📷 ' . $r['server_name'] . ' — WireGuard', 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => langFor($uid) === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
+    } finally { @unlink($tmp); }
+}
+
+function sendConfig(string $token, $chat, int $uid, int $id): void
+{
+    $q = db()->prepare('SELECT p.*,r.name server_name,r.base_url,r.user_enc,r.pass_enc,r.verify_tls FROM provisions p JOIN routebox_servers r ON r.id=p.server_id WHERE p.id=? AND p.telegram_user_id=? AND p.expires_at>?');
+    $q->execute([$id, $uid, time()]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) throw new RuntimeException('سرویس پیدا نشد یا منقضی شده است.');
+    $c = new RouteBoxClient($r['base_url'], dec($r['user_enc']), dec($r['pass_enc']), (bool)$r['verify_tls']);
+    $conf = $c->config($r['public_key']);
+    $tmp = tempnam(sys_get_temp_dir(), 'rbt');
+    file_put_contents($tmp, $conf);
+    try { tg($token, 'sendDocument', ['chat_id' => $chat, 'document' => new CURLFile($tmp, 'text/plain', 'RouteBox-' . $r['server_name'] . '.conf'), 'caption' => '📄 ' . $r['server_name'], 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => langFor($uid) === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]); }
+    finally { @unlink($tmp); }
+}
+
+function sendQr(string $token, $chat, int $uid, int $id): void
+{
+    $q = db()->prepare('SELECT p.*,r.name server_name,r.base_url,r.user_enc,r.pass_enc,r.verify_tls FROM provisions p JOIN routebox_servers r ON r.id=p.server_id WHERE p.id=? AND p.telegram_user_id=? AND p.expires_at>?');
+    $q->execute([$id, $uid, time()]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) throw new RuntimeException('سرویس پیدا نشد یا منقضی شده است.');
+    $c = new RouteBoxClient($r['base_url'], dec($r['user_enc']), dec($r['pass_enc']), (bool)$r['verify_tls']);
+    $conf = $c->config($r['public_key']);
+    $bin = trim((string)shell_exec('command -v qrencode 2>/dev/null'));
+    if ($bin === '') throw new RuntimeException('qrencode نصب نیست.');
+    $tmp = tempnam(sys_get_temp_dir(), 'rbtqr'); @unlink($tmp);
+    $p = proc_open([$bin, '-l', 'L', '-m', '2', '-s', '8', '-o', $tmp], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    if (!is_resource($p)) throw new RuntimeException('QR generation failed.');
+    fwrite($pipes[0], $conf); fclose($pipes[0]); fclose($pipes[1]); fclose($pipes[2]);
+    $code = proc_close($p);
+    if ($code !== 0 || !is_file($tmp)) throw new RuntimeException('QR generation failed.');
+    try { tg($token, 'sendPhoto', ['chat_id' => $chat, 'photo' => new CURLFile($tmp, 'image/png', 'RouteBox-QR.png'), 'caption' => '📷 ' . $r['server_name'] . ' — AmneziaWG', 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => langFor($uid) === 'fa' ? '📋 سرویس‌ها' : '📋 Services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]); }
+    finally { @unlink($tmp); }
+}
+
+function guide(string $token, $chat, int $uid): void
+{
+    $l = langFor($uid);
+    $prefix = $l === 'fa' ? "📚 راهنمای استفاده\n\n" : "📚 Usage guide\n\n";
+    $text = cleanT($prefix . cleanT((string)sget($l === 'fa' ? 'guide_fa' : 'guide_en')));
+    $links = [];
+    foreach ([['android_url', 'Android'], ['ios_url', 'iPhone/iPad'], ['windows_url', 'Windows'], ['macos_url', 'macOS']] as [$key, $label]) if ($u = trim((string)sget($key, ''))) $links[] = [['text' => $label, 'url' => $u]];
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => $links ? json_encode(['inline_keyboard' => $links], JSON_UNESCAPED_UNICODE) : '']);
+}
+
+$stored = sget('telegram_token');
+if (!$stored) exit("Telegram token is not configured\n");
+$token = dec($stored);
+@mkdir(__DIR__ . '/storage', 0700, true);
+
+$workerLock = fopen(__DIR__ . '/storage/worker.lock', 'c');
+if ($workerLock === false || !flock($workerLock, LOCK_EX | LOCK_NB)) {
+    fwrite(STDERR, "Another worker is already running.\n");
+    exit(0);
+}
+
+$offset = (int)(@file_get_contents(__DIR__ . '/storage/update.offset') ?: 0);
+
+while (true) {
+    try {
+        $updates = tg($token, 'getUpdates', ['offset' => $offset, 'timeout' => 25, 'allowed_updates' => json_encode(['message', 'callback_query'])]);
+        foreach ($updates as $u) {
+            $offset = (int)$u['update_id'] + 1;
+            file_put_contents(__DIR__ . '/storage/update.offset', (string)$offset, LOCK_EX);
+            $m = $u['message'] ?? null;
+            $cb = $u['callback_query'] ?? null;
+            $chat = $m['chat']['id'] ?? $cb['message']['chat']['id'] ?? null;
+            $from = $m['from'] ?? $cb['from'] ?? null;
+            if ($chat === null || !is_array($from)) continue;
+            $uid = upsertUser($from);
+            if (RouteBox\Telegram\AdminBot::handle($token, $chat, $from, $uid, $m, $cb)) continue;
+            if ($m && (!empty($m['photo']) || !empty($m['document']))) {
+                try {
+                    handleReceiptUpload($token, $chat, $uid, $m);
+                } catch (Throwable $e) {
+                    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => '❌ ' . $e->getMessage()]);
+                }
+                continue;
+            }
+            $text = (string)($m['text'] ?? '');
+            if ($m && ($text === '/start' || str_starts_with($text, '/start '))) { menu($token, $chat, $uid); continue; }
+            if ($m && $text === '/menu') { menu($token, $chat, $uid); continue; }
+            if ($m && $text === '/account') { sendServices($token, $chat, $uid); continue; }
+            if ($m && $text === '/help') { guide($token, $chat, $uid); continue; }
+            if (!$cb) continue;
+            tg($token, 'answerCallbackQuery', ['callback_query_id' => $cb['id']]);
+            $a = (string)($cb['data'] ?? '');
+            try {
+                if ($a === 'language') {
+                    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => '🌐 Language / زبان', 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => '🇮🇷 فارسی', 'callback_data' => 'lang:fa'], ['text' => '🇬🇧 English', 'callback_data' => 'lang:en']]]], JSON_UNESCAPED_UNICODE)]);
+                } elseif ($a === 'menu') {
+                    menu($token, $chat, $uid);
+                } elseif (str_starts_with($a, 'lang:')) {
+                    setUserLang($uid, substr($a, 5)); menu($token, $chat, $uid);
+                } elseif ($a === 'services') {
+                    sendServices($token, $chat, $uid);
+                } elseif ($a === 'guide') {
+                    guide($token, $chat, $uid);
+                } elseif ($a === 'payment:current') {
+                    sendCurrentPaymentOrder($token, $chat, $uid);
+                } elseif (str_starts_with($a, 'payment:cancel:')) {
+                    $orderId = (int)substr($a, 15);
+                    $ok = (new ManualPaymentService(db()))->cancel($orderId, $uid);
+                    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $ok ? (langFor($uid) === 'fa' ? '✅ سفارش لغو شد.' : '✅ Order cancelled.') : (langFor($uid) === 'fa' ? 'این سفارش دیگر قابل لغو نیست.' : 'This order cannot be cancelled.')]);
+                } elseif ($a === 'trial') {
+                    provision($uid, (string)$from['id']);
+                    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => langFor($uid) === 'fa' ? '✅ تست رایگان شما فعال شد.' : '✅ Your free trial is active.']);
+                } elseif (str_starts_with($a, 'servicecat:')) {
+                    sendCategoryPlans($token, $chat, $uid, (int)substr($a, 11));
+                } elseif (str_starts_with($a, 'svcplan:')) {
+                    sendServicePurchase($token, $chat, $uid, (string)$from['id'], (int)substr($a, 8));
+                } elseif (str_starts_with($a, 'service:')) {
+                    serviceActions($token, $chat, $uid, (int)substr($a, 8));
+                } elseif (str_starts_with($a, 'ibsservice:')) {
+                    ibsngServiceActions($token, $chat, $uid, (int)substr($a, 11));
+                } elseif (str_starts_with($a, 'mikrotikservice:')) {
+                    mikrotikServiceActions($token, $chat, $uid, (int)substr($a, 16));
+                } elseif (str_starts_with($a, 'mkconfig:')) {
+                    sendMikroTikConfig($token, $chat, $uid, (int)substr($a, 9));
+                } elseif (str_starts_with($a, 'mkqr:')) {
+                    sendMikroTikQr($token, $chat, $uid, (int)substr($a, 5));
+                } elseif (str_starts_with($a, 'config:')) {
+                    sendConfig($token, $chat, $uid, (int)substr($a, 7));
+                } elseif (str_starts_with($a, 'qr:')) {
+                    sendQr($token, $chat, $uid, (int)substr($a, 3));
+                }
+            } catch (Throwable $e) {
+                tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => '❌ ' . $e->getMessage()]);
+            }
+        }
+    } catch (Throwable $e) {
+        log_event('error', 'Worker: ' . $e->getMessage());
+        sleep(2);
+    }
+}
