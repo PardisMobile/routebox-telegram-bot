@@ -124,6 +124,17 @@
 - [x] Treat both as feature references only; do not copy code or architecture blindly.
 - [x] Produce the feature-gap list before implementation.
 
+### Telegram Bot control-center UI — new slice
+
+- [x] Keep the existing `section=bot` Bot Settings, Bot Buttons and Bot Menu Preview intact.
+- [x] Add separate Customer Bot navigation/overview.
+- [x] Add separate Telegram Bot Admin navigation/overview.
+- [x] Keep Bot Usage Guides separate from Provider Admin Guides.
+- [x] Keep General Guide separate from service-specific guides.
+- [x] Reuse the existing Bot + Worker + Service Layer architecture.
+- [x] Do not add a second Worker or duplicate Provider provisioning.
+- [x] Do not modify the four protected ATD Stats cards.
+
 ## 🔵 Upcoming Phase 2 — IBSng user management through Bot Admin
 
 ### Search and information
@@ -264,3 +275,15 @@
 - [x] Admin provisioning callbacks use short-lived, Admin-bound, one-time action records and do not repeat a successful provisioning action.
 - [x] Admin provisioning actions are audit logged without storing credentials in the audit payload.
 - [ ] Full card-to-card Order/Payment/Receipt approval workflow remains the next implementation slice.
+
+## Telegram Bot Control Center — UI checkpoint
+
+- [x] Added `src/Admin/TelegramBotSections.php` as a presentation-only layer for Customer Bot and Bot Admin overview pages.
+- [x] Added Customer Bot navigation under `section=bot` without changing the existing customer Worker flow.
+- [x] Added Telegram Bot Admin navigation under `section=bot` linking to the existing `public/telegram-admins.php` management surface.
+- [x] Kept existing `section=bot` Settings / Buttons / Menu Preview untouched.
+- [x] Kept Bot Usage Guides separate from Provider Admin Guides.
+- [x] Kept General Guide separate from per-service guides.
+- [x] Did not modify RouteBox, IBSng or MikroTik Provider Core.
+- [x] Did not create a second Worker.
+- [x] Did not modify the protected four ATD Stats cards.
