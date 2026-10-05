@@ -63,12 +63,104 @@ final class TrialUIEnhancer
         return preg_replace('~</head>~i', $css.'</head>', $html, 1) ?? $html;
     }
 
+    /**
+     * Find the nearest card-like div/section containing a marker and return its bounds.
+     * This intentionally avoids depending on the exact legacy Bot card id/class shape.
+     */
+    private static function containingCardBounds(string $html, string $marker): ?array
+    {
+        $needle = stripos($html, $marker);
+        if ($needle === false) return null;
+
+        $tokenPattern = '~<(?:(div|section)\b[^>]*|/(div|section)\s*)>~is';
+        preg_match_all($tokenPattern, substr($html, 0, $needle), $matches, PREG_OFFSET_CAPTURE);
+        $stack = [];
+        foreach ($matches[0] as $match) {
+            $token = $match[0];
+            $pos = (int)$match[1];
+            if (preg_match('~^</\s*(div|section)\b~i', $token, $close)) {
+                $tag = strtolower($close[1]);
+                for ($i = count($stack) - 1; $i >= 0; --$i) {
+                    if ($stack[$i]['tag'] === $tag) {
+                        array_splice($stack, $i, 1);
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            if (preg_match('~^<(div|section)\b([^>]*)>~is', $token, $open)) {
+                if (preg_match('~/\s*>$~', $token)) continue;
+                $attrs = (string)$open[2];
+                $isCard = (bool)preg_match('~\bclass\s*=\s*["\'][^"\']*\bcard\b~i', $attrs)
+                    || (bool)preg_match('~\bid\s*=\s*["\'][^"\']*bot[^"\']*settings[^"\']*["\']~i', $attrs);
+                $stack[] = ['tag' => strtolower($open[1]), 'pos' => $pos, 'is_card' => $isCard];
+            }
+        }
+
+        $card = null;
+        for ($i = count($stack) - 1; $i >= 0; --$i) {
+            if ($stack[$i]['is_card']) {
+                $card = $stack[$i];
+                break;
+            }
+        }
+        if ($card === null) return null;
+
+        $tag = $card['tag'];
+        $start = (int)$card['pos'];
+        $tail = substr($html, $start);
+        preg_match_all('~</?'.$tag.'\b[^>]*>~i', $tail, $closeTokens, PREG_OFFSET_CAPTURE);
+        $depth = 0;
+        foreach ($closeTokens[0] as $tokenMatch) {
+            $token = $tokenMatch[0];
+            $offset = (int)$tokenMatch[1];
+            if (preg_match('~^<'.$tag.'\b~i', $token)) {
+                if (!preg_match('~/\s*>$~', $token)) ++$depth;
+            } elseif (preg_match('~^</'.$tag.'\b~i', $token)) {
+                --$depth;
+                if ($depth === 0) {
+                    return ['start' => $start, 'end' => $start + $offset + strlen($token)];
+                }
+            }
+        }
+        return null;
+    }
+
+    private static function insertAfterContainingCard(string $html, string $marker, string $panel): string
+    {
+        $bounds = self::containingCardBounds($html, $marker);
+        if ($bounds === null) return $html;
+        return substr($html, 0, $bounds['end']) . $panel . substr($html, $bounds['end']);
+    }
+
+    private static function insertBeforeContainingCard(string $html, string $marker, string $panel): string
+    {
+        $bounds = self::containingCardBounds($html, $marker);
+        if ($bounds === null) return $html;
+        return substr($html, 0, $bounds['start']) . $panel . substr($html, $bounds['start']);
+    }
+
     private static function replaceBotTrials(string $html, PDO $db, bool $fa): string
     {
         $html = preg_replace('~<section\b[^>]*id="bot-trials"[^>]*>.*?</section>\s*~is', '', $html) ?? $html;
         $panel = self::botPanel($db, $fa);
-        $pattern = '~(<section\s+class="card"\s+id="bot">.*?</section>)(\s*<section\s+class="card">)~is';
-        return preg_replace($pattern, '$1'.$panel.'$2', $html, 1) ?? $html;
+
+        // The legacy Bot page does not expose one stable id for the Bot Settings card.
+        // Anchor to its existing trial_hours field, then fall back to the next Bot Buttons card.
+        $updated = self::insertAfterContainingCard($html, 'name="trial_hours"', $panel);
+        if ($updated !== $html) return $updated;
+
+        $updated = self::insertBeforeContainingCard($html, 'Bot Buttons', $panel);
+        if ($updated !== $html) return $updated;
+
+        $updated = self::insertBeforeContainingCard($html, 'دکمه‌های ربات', $panel);
+        if ($updated !== $html) return $updated;
+
+        // Last-resort presentation-only placement: before the footer, never inside Provider/Core markup.
+        $marker = '<div class="footer">';
+        $pos = stripos($html, $marker);
+        return $pos === false ? $html : substr($html, 0, $pos) . $panel . substr($html, $pos);
     }
 
     private static function replaceUserTrials(string $html, PDO $db, bool $fa): string
