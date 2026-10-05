@@ -1,37 +1,48 @@
 # ATD Panel — Phase 2
 
-This phase adds the shared administration surfaces without rewriting the stable RouteBox, IBSng or MikroTik provisioning flows.
+Phase 2 adds shared administration surfaces without rewriting stable RouteBox, IBSng or MikroTik Provider flows.
 
-## Implemented
+## Completed
 
-- Original tested sidebar SVG icon set preserved.
-- Sidebar width/spacing improved to prevent provider-name clipping.
-- Provider-first navigation remains:
-  - RouteBox Servers → Plans → Provider Guide
-  - IBSng Servers → Plans → Provider Guide
-  - MikroTik WireGuard → Plans → Provider Guide
-- Telegram Bot → Usage Guides.
-- Provider-neutral Users list with search by Telegram ID, username and name.
-- User Details with provider, plan, status and expiry visibility.
-- Shared Payment Settings foundation using the existing payment schema.
-- Shared guide storage with a preserved General Guide migrated from `guide_fa` / `guide_en` on first initialization.
-- Per-service guide records linked to `service_categories`.
-- Provider Admin Guides for RouteBox, IBSng and MikroTik WireGuard.
-- Initial disabled ZarinPal and Crypto Gateway payment-provider entries.
+- [x] Existing shared `section=` UI architecture preserved.
+- [x] Protected four-card/status UI preserved.
+- [x] Provider-first navigation for RouteBox, IBSng and MikroTik.
+- [x] Provider-neutral Users area remains the shared Web User Management surface.
+- [x] Shared Payment Settings remains at `section=payment-settings`.
+- [x] Existing Bot section remains at `section=bot` with Bot Settings, Bot Buttons and Bot Menu Preview preserved.
+- [x] Customer Bot and Telegram Bot Admin overview navigation added within the existing section architecture.
+- [x] Bot Usage Guides remain separate from Provider Admin Guides and the General Guide.
+- [x] Independent Telegram Numeric ID Admin authorization foundation.
+- [x] Multiple Admins/future roles.
+- [x] Existing Worker integration; no second Worker.
+- [x] Admin RouteBox/IBSng provisioning reuses existing Provider/service logic.
+- [x] Admin audit/replay protection foundation.
+- [x] Card-to-card configuration surfaced through the existing Payment Settings section.
+
+## Current boundaries
+
+The following are intentionally not marked complete yet:
+
+1. Full customer Order → Receipt → Admin Review → Approval/Reject → Provision lifecycle.
+2. Customer Service Details and complete Service lifecycle.
+3. Customer Renewal.
+4. Admin User/Search and Service Management.
+5. IBSng account search/renew/edit through Telegram Admin.
+6. Worker health/log/restart controls.
+7. Expiry notifications.
+8. Full source-wide security audit.
+
+## Dynamic Provider rule
+
+The Bot must read Provider/Plan information from the existing service catalog. It must not maintain a second hard-coded provider or plan catalog.
+
+Current Provider keys include `routebox`, `ibsng` and `mikrotik_wireguard`. Future Providers receive their own `provider_key` and Provider-specific Plan metadata.
 
 ## Compatibility rules
 
-The phase is additive. Existing provider clients, provisioning paths, MikroTik/IBSng/RouteBox server screens and the working Telegram Bot flows are not replaced merely to introduce the new shared admin surfaces.
-
-## Remaining work
-
-1. Move the Telegram Worker `guide` callback to a service selector backed by `telegram_service_guides`.
-2. Add shared subscription actions to User Details, with provider-specific actions delegated to provider adapters.
-3. Add Telegram Bot Admin authorization and admin-only service operations.
-4. Complete payment order/callback/verification lifecycle and real gateway adapters.
-5. Add Worker health/restart/log controls.
-6. Register future providers through the same Provider → Server → Plan → Guide → Provisioning architecture.
-
-## Future-provider rule
-
-Adding V2Ray or another provider should add an integration/adapter and metadata, not a second UI architecture. Shared Plans, Users, Payment Settings and Telegram guide management remain provider-neutral.
+- Existing Provider clients and provisioning remain protected.
+- MikroTik peer/IP allocation remains inside the Provider integration.
+- IBSng Provider Plan Key remains the real IBSng group/plan identifier.
+- Username Prefix remains separate from Provider key and Provider Plan Key.
+- Existing Worker polling/lock behavior remains protected.
+- MirzaBot is reference-only and is not copied.
