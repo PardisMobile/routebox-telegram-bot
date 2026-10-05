@@ -1,0 +1,352 @@
+name: Apply trial management patch
+
+on:
+  push:
+    branches: [ATD-Panel]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply trial management changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > src/Services/TrialService.php <<'PHP'
+          <?php
+
+          declare(strict_types=1);
+
+          namespace RouteBox\Services;
+
+          use PDO;
+          use RuntimeException;
+          use RouteBox\RouteBoxClient;
+          use RouteBox\Integrations\MikroTik\MikroTikClient;
+          use RouteBox\Integrations\MikroTik\MikroTikWireGuardProvider;
+
+          require_once __DIR__ . '/ServiceProvisioner.php';
+          require_once __DIR__ . '/../RouteBoxClient.php';
+          require_once __DIR__ . '/../Integrations/MikroTik/MikroTikClient.php';
+          require_once __DIR__ . '/../Integrations/MikroTik/MikroTikWireGuardProvider.php';
+
+          final class TrialService
+          {
+              public static function ensureSchema(PDO $db): void
+              {
+                  $db->exec("CREATE TABLE IF NOT EXISTS telegram_trial_plans (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      category_id INTEGER NOT NULL UNIQUE,
+                      plan_id INTEGER NOT NULL,
+                      enabled INTEGER NOT NULL DEFAULT 1,
+                      created_at INTEGER NOT NULL,
+                      updated_at INTEGER NOT NULL,
+                      FOREIGN KEY(category_id) REFERENCES service_categories(id) ON DELETE CASCADE,
+                      FOREIGN KEY(plan_id) REFERENCES service_plans(id) ON DELETE RESTRICT
+                  )");
+                  $db->exec("CREATE TABLE IF NOT EXISTS telegram_trial_instances (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      telegram_user_id INTEGER NOT NULL,
+                      category_id INTEGER NOT NULL,
+                      plan_id INTEGER,
+                      provider_key TEXT NOT NULL,
+                      provider_reference_json TEXT NOT NULL DEFAULT '{}',
+                      status TEXT NOT NULL DEFAULT 'active',
+                      claimed_at INTEGER NOT NULL,
+                      expires_at INTEGER,
+                      cleanup_error TEXT,
+                      deleted_at INTEGER,
+                      created_at INTEGER NOT NULL,
+                      updated_at INTEGER NOT NULL,
+                      FOREIGN KEY(telegram_user_id) REFERENCES telegram_users(id) ON DELETE CASCADE,
+                      FOREIGN KEY(category_id) REFERENCES service_categories(id) ON DELETE RESTRICT,
+                      FOREIGN KEY(plan_id) REFERENCES service_plans(id) ON DELETE SET NULL
+                  )");
+                  $db->exec('CREATE INDEX IF NOT EXISTS idx_trial_instances_expiry ON telegram_trial_instances(status,expires_at)');
+                  $db->exec('CREATE INDEX IF NOT EXISTS idx_trial_instances_user ON telegram_trial_instances(telegram_user_id,created_at DESC)');
+                  $db->exec('CREATE INDEX IF NOT EXISTS idx_trial_instances_provider ON telegram_trial_instances(provider_key,status)');
+              }
+
+              public static function planForCategory(PDO $db, int $categoryId): ?array
+              {
+                  self::ensureSchema($db);
+                  $q = $db->prepare(
+                      'SELECT p.*,c.service_key,c.provider_key AS category_provider,c.name_fa AS category_name_fa,c.name_en AS category_name_en
+                       FROM telegram_trial_plans t
+                       JOIN service_plans p ON p.id=t.plan_id
+                       JOIN service_categories c ON c.id=t.category_id
+                       WHERE t.category_id=? AND t.enabled=1 AND p.enabled=1 AND c.enabled=1
+                         AND p.category_id=c.id AND p.provider_key=c.provider_key AND p.duration_days>0
+                       LIMIT 1'
+                  );
+                  $q->execute([$categoryId]);
+                  $row = $q->fetch(PDO::FETCH_ASSOC);
+                  return is_array($row) ? $row : null;
+              }
+
+              public static function categoriesWithPlans(PDO $db): array
+              {
+                  self::ensureSchema($db);
+                  $cats = $db->query('SELECT id,service_key,provider_key,name_fa,name_en FROM service_categories WHERE enabled=1 ORDER BY sort_order,id')->fetchAll(PDO::FETCH_ASSOC);
+                  $out=[];
+                  foreach($cats as $cat){
+                      $q=$db->prepare('SELECT id,display_name_fa,display_name_en,duration_days,quota_gb,price_minor,provider_key,enabled FROM service_plans WHERE category_id=? ORDER BY sort_order,id');
+                      $q->execute([(int)$cat['id']]);
+                      $cat['plans']=$q->fetchAll(PDO::FETCH_ASSOC);
+                      $cat['trial_plan_id']=null;
+                      $t=$db->prepare('SELECT plan_id FROM telegram_trial_plans WHERE category_id=? AND enabled=1 LIMIT 1');
+                      $t->execute([(int)$cat['id']]);
+                      $v=$t->fetchColumn(); if($v!==false)$cat['trial_plan_id']=(int)$v;
+                      $out[]=$cat;
+                  }
+                  return $out;
+              }
+
+              public static function savePlan(PDO $db, int $categoryId, int $planId, bool $enabled): void
+              {
+                  self::ensureSchema($db);
+                  $q=$db->prepare('SELECT c.provider_key AS category_provider,p.provider_key,p.category_id,p.enabled,p.duration_days FROM service_categories c JOIN service_plans p ON p.id=? WHERE c.id=?');
+                  $q->execute([$planId,$categoryId]);
+                  $row=$q->fetch(PDO::FETCH_ASSOC);
+                  if(!$row || (string)$row['category_provider'] !== (string)$row['provider_key'] || (int)$row['category_id'] !== $categoryId) throw new RuntimeException('Trial Plan و Provider/Category مطابقت ندارند.');
+                  if($enabled && ((int)$row['enabled'] !== 1 || (int)$row['duration_days'] < 1)) throw new RuntimeException('Trial Plan باید فعال و دارای مدت معتبر باشد.');
+                  $now=time();
+                  if(!$enabled){$db->prepare('DELETE FROM telegram_trial_plans WHERE category_id=?')->execute([$categoryId]);return;}
+                  $db->prepare('INSERT INTO telegram_trial_plans(category_id,plan_id,enabled,created_at,updated_at) VALUES(?,?,1,?,?) ON CONFLICT(category_id) DO UPDATE SET plan_id=excluded.plan_id,enabled=1,updated_at=excluded.updated_at')->execute([$categoryId,$planId,$now,$now]);
+              }
+
+              public static function provision(PDO $db, int $uid, string $tgid, int $categoryId): array
+              {
+                  $plan=self::planForCategory($db,$categoryId);
+                  if(!$plan) throw new RuntimeException('برای این Provider هنوز Trial Plan فعال نشده است.');
+                  $claim=$db->prepare('INSERT OR IGNORE INTO telegram_trials(telegram_user_id,claimed_at) VALUES(?,?)');
+                  $claim->execute([$uid,time()]);
+                  if($claim->rowCount()!==1) throw new RuntimeException('این حساب قبلاً تست رایگان را دریافت کرده است.');
+                  try{
+                      $result=(new ServiceProvisioner($db))->provision($uid,$tgid,(int)$plan['id']);
+                      $provider=(string)$plan['provider_key'];
+                      $refs=['subscription_id'=>(int)($result['subscription_id']??0),'provision_ids'=>array_values(array_map(static fn($x)=>(int)($x['provision_id']??0),(array)($result['items']??[])))];
+                      if($refs['subscription_id']>0){
+                          $q=$db->prepare('SELECT metadata_json FROM service_subscriptions WHERE id=?');$q->execute([$refs['subscription_id']]);$meta=json_decode((string)$q->fetchColumn(),true);if(!is_array($meta))$meta=[];$meta['is_trial']=1;$db->prepare('UPDATE service_subscriptions SET metadata_json=?,updated_at=? WHERE id=?')->execute([json_encode($meta,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),time(),$refs['subscription_id']]);
+                      }
+                      $expires=(int)($result['expires_at']??0); if($expires<1 && $refs['provision_ids']){$q=$db->prepare('SELECT MAX(expires_at) FROM provisions WHERE id IN ('.implode(',',array_fill(0,count($refs['provision_ids']),'?')).')');$q->execute($refs['provision_ids']);$expires=(int)$q->fetchColumn();}
+                      $now=time();$db->prepare('INSERT INTO telegram_trial_instances(telegram_user_id,category_id,plan_id,provider_key,provider_reference_json,status,claimed_at,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)')->execute([$uid,$categoryId,(int)$plan['id'],$provider,json_encode($refs,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'active',$now,$expires?:null,$now,$now]);
+                      return $result;
+                  }catch(\Throwable $e){$db->prepare('DELETE FROM telegram_trials WHERE telegram_user_id=?')->execute([$uid]);throw $e;}
+              }
+
+              public static function recordLegacyRoutebox(PDO $db,int $uid,int $categoryId,array $result): void
+              {
+                  self::ensureSchema($db);$ids=[];foreach((array)$result as $x){$id=(int)($x['provision_id']??0);if($id>0)$ids[]=$id;}if(!$ids)return;$q=$db->prepare('SELECT expires_at FROM provisions WHERE id=?');$q->execute([$ids[0]]);$expires=(int)$q->fetchColumn();$now=time();$db->prepare('INSERT INTO telegram_trial_instances(telegram_user_id,category_id,plan_id,provider_key,provider_reference_json,status,claimed_at,expires_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)')->execute([$uid,$categoryId,null,'routebox',json_encode(['provision_ids'=>$ids],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'active',$now,$expires?:null,$now,$now]);
+              }
+
+              public static function listTrials(PDO $db,int $limit=100): array
+              {
+                  self::ensureSchema($db);$limit=max(1,min(500,$limit));$q=$db->query('SELECT t.*,u.telegram_id,u.username,u.first_name,c.name_fa,c.name_en,p.display_name_fa,p.display_name_en FROM telegram_trial_instances t JOIN telegram_users u ON u.id=t.telegram_user_id JOIN service_categories c ON c.id=t.category_id LEFT JOIN service_plans p ON p.id=t.plan_id ORDER BY CASE WHEN t.status=\'active\' AND t.expires_at IS NOT NULL AND t.expires_at<=strftime(\'%s\',\'now\') THEN 0 WHEN t.status=\'expired\' THEN 1 ELSE 2 END,t.created_at DESC LIMIT '.$limit);return $q->fetchAll(PDO::FETCH_ASSOC);
+              }
+
+              public static function deleteExpired(PDO $db,int $trialId): array
+              {
+                  self::ensureSchema($db);$q=$db->prepare('SELECT * FROM telegram_trial_instances WHERE id=? LIMIT 1');$q->execute([$trialId]);$trial=$q->fetch(PDO::FETCH_ASSOC);if(!$trial)throw new RuntimeException('Trial پیدا نشد.');if((string)$trial['status']==='deleted')return ['status'=>'deleted'];if($trial['expires_at']===null || (int)$trial['expires_at']>time())throw new RuntimeException('این Trial هنوز منقضی نشده است.');
+                  $refs=json_decode((string)$trial['provider_reference_json'],true);if(!is_array($refs))$refs=[];$provider=(string)$trial['provider_key'];
+                  try{
+                      if($provider==='routebox'){
+                          foreach((array)($refs['provision_ids']??[]) as $pid){$pid=(int)$pid;$s=$db->prepare('SELECT p.*,r.base_url,r.user_enc,r.pass_enc,r.verify_tls FROM provisions p JOIN routebox_servers r ON r.id=p.server_id WHERE p.id=? AND p.telegram_user_id=?');$s->execute([$pid,(int)$trial['telegram_user_id']]);$row=$s->fetch(PDO::FETCH_ASSOC);if(!$row)continue;$client=new RouteBoxClient((string)$row['base_url'],dec((string)$row['user_enc']),dec((string)$row['pass_enc']),(bool)$row['verify_tls']);$client->deletePeer((string)$row['public_key']);$db->prepare('DELETE FROM provisions WHERE id=?')->execute([$pid]);}
+                      }elseif($provider==='mikrotik_wireguard'){
+                          $sid=(int)($refs['subscription_id']??0);if($sid<1)throw new RuntimeException('MikroTik Trial subscription reference is missing.');$q=$db->prepare('SELECT s.* FROM service_subscriptions s WHERE s.id=? AND s.provider_key=\'mikrotik_wireguard\'');$q->execute([$sid]);$sub=$q->fetch(PDO::FETCH_ASSOC);if($sub){$server=$db->prepare('SELECT * FROM mikrotik_servers WHERE id=?');$server->execute([(int)$sub['provider_server_id']]);$srv=$server->fetch(PDO::FETCH_ASSOC);if(!$srv)throw new RuntimeException('MikroTik server not found.');$client=new MikroTikClient((string)$srv['host'],(string)$srv['username'],dec((string)$srv['password_enc']),(int)$srv['api_port'],!empty($srv['tls_mode']));(new MikroTikWireGuardProvider($db,$client))->deleteSubscription(['subscription_id'=>$sid]);$db->prepare('DELETE FROM service_subscriptions WHERE id=?')->execute([$sid]);}
+                      }elseif($provider==='ibsng'){
+                          throw new RuntimeException('پاک‌سازی خودکار Trial برای IBSng هنوز در Provider Adapter فعال نیست؛ برای جلوگیری از حذف اشتباه اکانت، این Trial حذف نشد.');
+                      }else{throw new RuntimeException('Provider Trial cleanup is not supported.');}
+                      $db->prepare("UPDATE telegram_trial_instances SET status='deleted',deleted_at=?,cleanup_error=NULL,updated_at=? WHERE id=?")->execute([time(),time(),$trialId]);return ['status'=>'deleted'];
+                  }catch(\Throwable $e){$db->prepare("UPDATE telegram_trial_instances SET status='expired',cleanup_error=?,updated_at=? WHERE id=?")->execute([$e->getMessage(),time(),$trialId]);throw $e;}
+              }
+          }
+          PHP
+
+          cat > src/Admin/TrialAdminPanel.php <<'PHP'
+          <?php
+          declare(strict_types=1);
+          namespace RouteBox\Admin;
+          use PDO;
+          use RouteBox\Services\TrialService;
+          require_once __DIR__ . '/../Services/TrialService.php';
+          final class TrialAdminPanel
+          {
+              private static function esc(string $v): string { return htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
+              public static function boot(PDO $db): void
+              {
+                  if (basename((string)($_SERVER['SCRIPT_FILENAME']??''))!=='index.php') return;
+                  TrialService::ensureSchema($db);
+                  if ($_SERVER['REQUEST_METHOD']==='POST' && !empty($_SESSION['admin']) && isset($_POST['atd_trial_action'])) {
+                      verify_csrf();
+                      try {
+                          $a=(string)$_POST['atd_trial_action'];
+                          if($a==='save_plan'){TrialService::savePlan($db,(int)($_POST['category_id']??0),(int)($_POST['plan_id']??0),!empty($_POST['enabled']));$_SESSION['flash']='✓ Trial Plan saved.';}
+                          elseif($a==='delete'){TrialService::deleteExpired($db,(int)($_POST['trial_id']??0));$_SESSION['flash']='✓ Trial cleaned up.';}
+                          else throw new \RuntimeException('Invalid Trial action.');
+                      }catch(\Throwable $e){$_SESSION['flash']='❌ '.$e->getMessage();}
+                      header('Location: /?section='.rawurlencode((string)($_POST['return_section']??'users')).(!empty($_POST['return_sub'])?'&sub='.rawurlencode((string)$_POST['return_sub']):''));exit;
+                  }
+                  ob_start(static function(string $html) use ($db): string {
+                      $section=(string)($_GET['section']??'');$sub=(string)($_GET['sub']??'');$csrf=h(csrf_token());
+                      if($section==='bot'){$cats=TrialService::categoriesWithPlans($db);$body='<section class="card" style="margin-top:20px"><div class="section-head"><div><h2>🎁 Free Trial Plans</h2><p>One Trial Plan per provider/category. Existing Bot Settings and ATD Stat cards remain untouched.</p></div></div><div class="grid">';foreach($cats as $c){$body.='<form method="post" style="border:1px solid var(--line);border-radius:14px;padding:14px"><input type="hidden" name="csrf_token" value="'.$csrf.'"><input type="hidden" name="atd_trial_action" value="save_plan"><input type="hidden" name="return_section" value="bot"><input type="hidden" name="category_id" value="'.(int)$c['id'].'"><div style="font-weight:800;margin-bottom:8px">'.self::esc((string)$c['name_fa']).' / '.self::esc((string)$c['name_en']).'</div><select name="plan_id" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:inherit"><option value="0">Disabled</option>';foreach($c['plans'] as $p){$sel=((int)$c['trial_plan_id']===(int)$p['id'])?' selected':'';$label=self::esc((string)$p['display_name_fa'].' / '.(string)$p['display_name_en'].' · '.(int)$p['duration_days'].'d');$body.='<option value="'.(int)$p['id'].'"'.$sel.'>'.$label.'</option>';}$body.='</select><label style="display:block;margin-top:10px"><input type="checkbox" name="enabled" value="1"'.($c['trial_plan_id']?' checked':'').'> Enable Trial</label><div class="form-actions" style="margin-top:10px"><button class="btn btn-primary" type="submit">Save</button></div></form>';}$body.='</div></section>';return str_ireplace('</main>',$body.'</main>',$html,1);}
+                      if($section==='users'){$rows=TrialService::listTrials($db,100);$now=time();$body='<section class="card" style="margin-top:20px"><div class="section-head"><div><h2>🎁 Trials</h2><p>Expired Trial resources can be removed here without removing the permanent claim ledger.</p></div></div><div style="overflow:auto"><table style="width:100%"><thead><tr><th>User</th><th>Provider</th><th>Plan</th><th>Expires</th><th>Status</th><th>Action</th></tr></thead><tbody>';if(!$rows)$body.='<tr><td colspan="6">No Trial records.</td></tr>';foreach($rows as $r){$expired=$r['expires_at']!==null&&(int)$r['expires_at']<=$now&&$r['status']!=='deleted';$name=trim((string)$r['first_name'])?:((string)$r['username']!==''?'@'.$r['username']:(string)$r['telegram_id']);$plan=$r['plan_id']?(string)$r['display_name_fa']:'Legacy RouteBox Trial';$status=$r['status'];if($expired)$status='expired';$body.='<tr><td>'.self::esc($name).' <small>'.self::esc((string)$r['telegram_id']).'</small></td><td>'.self::esc((string)$r['provider_key']).'</td><td>'.self::esc($plan).'</td><td>'.($r['expires_at']?self::esc(date('Y-m-d H:i',(int)$r['expires_at'])):'—').'</td><td>'.self::esc($status).($r['cleanup_error']?'<div style="color:var(--red);font-size:11px">'.self::esc((string)$r['cleanup_error']).'</div>':'').'</td><td>';if($expired){$disabled=$r['provider_key']==='ibsng'?' disabled title="IBSng provider deletion is not available yet"':'';$body.='<form method="post" style="display:inline"><input type="hidden" name="csrf_token" value="'.$csrf.'"><input type="hidden" name="atd_trial_action" value="delete"><input type="hidden" name="return_section" value="users"><button class="btn btn-secondary" type="submit" name="trial_id" value="'.(int)$r['id'].'" onclick="return confirm(\'Remove this expired Trial and its provider resource?\')"'.$disabled.'>Delete Trial</button></form>';}else{$body.='<span style="color:var(--muted)">—</span>';}$body.='</td></tr>';}$body.='</tbody></table></div></section>';return str_ireplace('</main>',$body.'</main>',$html,1);}
+                      return $html;
+                  });
+              }
+          }
+          PHP
+
+          cat > database/migrations/005_telegram_trials.sql <<'SQL'
+          -- Provider-aware Telegram free-trial configuration and lifecycle ledger.
+          -- The permanent telegram_trials claim ledger is intentionally never deleted by cleanup.
+          CREATE TABLE IF NOT EXISTS telegram_trial_plans (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              category_id INTEGER NOT NULL UNIQUE,
+              plan_id INTEGER NOT NULL,
+              enabled INTEGER NOT NULL DEFAULT 1,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+          );
+          CREATE TABLE IF NOT EXISTS telegram_trial_instances (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              telegram_user_id INTEGER NOT NULL,
+              category_id INTEGER NOT NULL,
+              plan_id INTEGER,
+              provider_key TEXT NOT NULL,
+              provider_reference_json TEXT NOT NULL DEFAULT '{}',
+              status TEXT NOT NULL DEFAULT 'active',
+              claimed_at INTEGER NOT NULL,
+              expires_at INTEGER,
+              cleanup_error TEXT,
+              deleted_at INTEGER,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS idx_trial_instances_expiry ON telegram_trial_instances(status,expires_at);
+          CREATE INDEX IF NOT EXISTS idx_trial_instances_user ON telegram_trial_instances(telegram_user_id,created_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_trial_instances_provider ON telegram_trial_instances(provider_key,status);
+          SQL
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/bootstrap.php');s=p.read_text()
+          old="ensure_runtime_schema();\nif (basename((string)($_SERVER['SCRIPT_FILENAME'] ?? '')) === 'index.php') { if(is_file(__DIR__.'/admin_features.php')) require __DIR__.'/admin_features.php'; }"
+          new="ensure_runtime_schema();\nrequire_once __DIR__.'/Services/TrialService.php';\n\\RouteBox\\Services\\TrialService::ensureSchema(db());\nif (basename((string)($_SERVER['SCRIPT_FILENAME'] ?? '')) === 'index.php') { if(is_file(__DIR__.'/admin_features.php')) require __DIR__.'/admin_features.php'; require_once __DIR__.'/Admin/TrialAdminPanel.php'; \\RouteBox\\Admin\\TrialAdminPanel::boot(db()); }"
+          if old not in s: raise SystemExit('bootstrap anchor not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('worker.php');s=p.read_text()
+          s=s.replace("require __DIR__ . '/src/Services/ServiceProvisioner.php';\n", "require __DIR__ . '/src/Services/ServiceProvisioner.php';\nrequire __DIR__ . '/src/Services/TrialService.php';\n",1)
+          old="""    if ((string)$category['service_key'] === 'routebox') {\n        $k[] = [['text' => $l === 'fa' ? '🎁 دریافت تست رایگان' : '🎁 Get free trial', 'callback_data' => 'trial']];\n    }"""
+          new="""    if (\\RouteBox\\Services\\TrialService::planForCategory(db(), (int)$category['id']) !== null || (string)$category['service_key'] === 'routebox') {\n        $k[] = [['text' => $l === 'fa' ? '🎁 دریافت تست رایگان' : '🎁 Get free trial', 'callback_data' => 'trial:' . (int)$category['id']]];\n    }"""
+          if old not in s: raise SystemExit('worker trial button anchor not found')
+          s=s.replace(old,new,1)
+          marker="function sendServicePurchase(string $token, $chat, int $uid, string $tgid, int $planId): void\n"
+          fn=r'''function sendTrial(string $token, $chat, int $uid, string $tgid, int $categoryId): void
+{
+    $category = (new ServiceCatalog(db()))->category($categoryId);
+    $provider = (string)$category['provider_key'];
+    $plan = \RouteBox\Services\TrialService::planForCategory(db(), $categoryId);
+    if ($plan === null) {
+        if ($provider !== 'routebox') throw new RuntimeException('برای این Provider هنوز Trial Plan فعال نشده است.');
+        $result = provision($uid, $tgid);
+        \RouteBox\Services\TrialService::recordLegacyRoutebox(db(), $uid, $categoryId, $result);
+        $l=langFor($uid); tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$l==='fa'?'✅ تست رایگان RouteBox شما فعال شد.\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید.':'✅ Your RouteBox free trial is active.\n\n📋 Use My services to get your Config or QR.', 'reply_markup'=>json_encode(['inline_keyboard'=>[[['text'=>$l==='fa'?'📋 سرویس‌های من':'📋 My services','callback_data'=>'services']]]],JSON_UNESCAPED_UNICODE)]);
+        return;
+    }
+    $result=\RouteBox\Services\TrialService::provision(db(),$uid,$tgid,$categoryId);
+    $l=langFor($uid);$name=$l==='fa'?(string)$plan['display_name_fa']:(string)$plan['display_name_en'];
+    if($provider==='ibsng'){$text=$l==='fa'?"✅ تست IBSng فعال شد.\n\n📦 پلن: {$name}\n🔐 نام کاربری: ".(string)($result['username']??'')."\n🔑 رمز عبور: ".(string)($result['password']??'')."\n\n📋 جزئیات سرویس در «سرویس‌های من» قابل مشاهده است.":"✅ IBSng trial activated.\n\n📦 Plan: {$name}\n🔐 Username: ".(string)($result['username']??'')."\n🔑 Password: ".(string)($result['password']??'')."\n\n📋 See My services for details.";}elseif($provider==='mikrotik_wireguard'){$text=$l==='fa'?"✅ تست MikroTik WireGuard فعال شد.\n\n📦 پلن: {$name}\n🌐 IP: ".(string)($result['assigned_ip']??'—')."\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید.":"✅ MikroTik WireGuard trial activated.\n\n📦 Plan: {$name}\n🌐 IP: ".(string)($result['assigned_ip']??'—')."\n\n📋 Use My services to get your Config or QR.";}else{$text=$l==='fa'?"✅ تست {$name} فعال شد.\n\n📋 برای مدیریت سرویس از «سرویس‌های من» استفاده کنید.":"✅ {$name} trial activated.\n\n📋 Use My services to manage it.";}
+    tg($token,'sendMessage',['chat_id'=>$chat,'text'=>$text,'reply_markup'=>json_encode(['inline_keyboard'=>[[['text'=>$l==='fa'?'📋 سرویس‌های من':'📋 My services','callback_data'=>'services']]]],JSON_UNESCAPED_UNICODE)]);
+}
+
+'''
+          if marker not in s: raise SystemExit('worker function marker not found')
+          s=s.replace(marker,fn+marker,1)
+          old="""                } elseif ($a === 'trial') {\n                    provision($uid, (string)$from['id']);\n                    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => langFor($uid) === 'fa' ? '✅ تست رایگان شما فعال شد.' : '✅ Your free trial is active.']);\n                } elseif (str_starts_with($a, 'servicecat:')) {"""
+          new="""                } elseif ($a === 'trial') {\n                    sendTrial($token, $chat, $uid, (string)$from['id'], (int)($cb['message']['chat']['id'] ?? 0));\n                } elseif (str_starts_with($a, 'trial:')) {\n                    sendTrial($token, $chat, $uid, (string)$from['id'], (int)substr($a, 6));\n                } elseif (str_starts_with($a, 'servicecat:')) {"""
+          # Preserve legacy callback by resolving its category to RouteBox.
+          new="""                } elseif ($a === 'trial') {\n                    $legacyCat = db()->query(\"SELECT id FROM service_categories WHERE service_key='routebox' LIMIT 1\")->fetchColumn();\n                    if ($legacyCat === false) throw new RuntimeException('RouteBox service category not found.');\n                    sendTrial($token, $chat, $uid, (string)$from['id'], (int)$legacyCat);\n                } elseif (str_starts_with($a, 'trial:')) {\n                    sendTrial($token, $chat, $uid, (string)$from['id'], (int)substr($a, 6));\n                } elseif (str_starts_with($a, 'servicecat:')) {"""
+          if old not in s: raise SystemExit('worker callback anchor not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/Telegram/AdminBot.php');s=p.read_text()
+          s=s.replace("use RouteBox\\Services\\ServiceProvisioner;\n", "use RouteBox\\Services\\ServiceProvisioner;\nuse RouteBox\\Services\\TrialService;\n",1)
+          s=s.replace("require_once __DIR__ . '/../Services/ServiceProvisioner.php';\n", "require_once __DIR__ . '/../Services/ServiceProvisioner.php';\nrequire_once __DIR__ . '/../Services/TrialService.php';\n",1)
+          s=s.replace("            elseif ($data === 'adm:audit') self::auditList($token, $chat, $telegramId);\n", "            elseif ($data === 'adm:audit') self::auditList($token, $chat, $telegramId);\n            elseif ($data === 'adm:trials') self::trials($token, $chat);\n            elseif (preg_match('/^adm:trial:delete:(\\d+)$/', $data, $m)) self::deleteTrial($token, $chat, $telegramId, (int)$m[1]);\n",1)
+          s=s.replace("            [['text' => '💳 Payments', 'callback_data' => 'adm:payments']],\n", "            [['text' => '💳 Payments', 'callback_data' => 'adm:payments'], ['text' => '🎁 Trials', 'callback_data' => 'adm:trials']],\n",1)
+          marker="    private static function audit(string $adminTelegramId, string $action, ?int $targetUserId, ?int $targetServiceId, ?string $provider, string $result, array $details = []): void\n"
+          methods=r'''    private static function trials(string $token, int|string $chat): void
+    {
+        $rows=TrialService::listTrials(self::db(),50);$now=time();$text="🎁 Trials\n\n";$k=[];
+        foreach($rows as $r){$name=trim((string)($r['first_name']??''))?:((string)($r['username']??'')!==''?'@'.$r['username']:(string)$r['telegram_id']);$status=(string)$r['status'];$expired=$r['expires_at']!==null&&(int)$r['expires_at']<=$now&&$status!=='deleted';if($expired)$status='expired';$text.='• #'.(int)$r['id'].' · '.$name.' · '.$r['provider_key'].' · '.$status.' · '.($r['expires_at']?date('Y-m-d H:i',(int)$r['expires_at']):'—')."\n";if($expired&&$r['provider_key']!=='ibsng')$k[]=[['text'=>'🗑 Delete Trial #'.(int)$r['id'],'callback_data'=>'adm:trial:delete:'.(int)$r['id']]];}
+        if(!$rows)$text.='No Trial records.';$k[]=[['text'=>'↩️ Admin Menu','callback_data'=>'adm:menu']];\tg\($token,'sendMessage',['chat_id'=>$chat,'text'=>$text,'reply_markup'=>json_encode(['inline_keyboard'=>$k],JSON_UNESCAPED_UNICODE)]);
+    }
+
+    private static function deleteTrial(string $token,int|string $chat,string $adminTelegramId,int $trialId): void
+    {
+        try{TrialService::deleteExpired(self::db(),$trialId);self::audit($adminTelegramId,'trial_deleted',null,null,null,'success',['trial_id'=>$trialId]);\tg\($token,'sendMessage',['chat_id'=>$chat,'text'=>'✅ Expired Trial and its provider resource were removed.','reply_markup'=>json_encode(['inline_keyboard'=>[[['text'=>'🎁 Trials','callback_data'=>'adm:trials'],['text'=>'🏠 Admin Menu','callback_data'=>'adm:menu']]]],JSON_UNESCAPED_UNICODE)]);}catch(\\Throwable $e){self::audit($adminTelegramId,'trial_delete_failed',null,null,null,'failed',['trial_id'=>$trialId,'error'=>$e->getMessage()]);throw $e;}
+    }
+
+'''
+          methods=methods.replace('\\g\\(', '\\tg(')
+          if marker not in s: raise SystemExit('admin bot audit marker not found')
+          s=s.replace(marker,methods+marker,1)
+          p.write_text(s)
+          PY
+
+          cat >> CHANGELOG.md <<'EOF'
+
+### Telegram Free Trials
+- Added provider/category-specific Trial Plan mapping without replacing the existing Bot Settings or provider provisioning core.
+- Added persistent Trial lifecycle records and expired-resource cleanup controls.
+- Trial cleanup never removes the permanent `telegram_trials` claim ledger, so deleting an expired Trial cannot grant the same Telegram user another Trial.
+- IBSng cleanup remains intentionally blocked until the existing IBSng adapter exposes a safe user-delete capability.
+EOF
+
+          cat >> ROADMAP.md <<'EOF'
+
+### Telegram Free Trial Management
+- [x] Provider/category-specific Trial Plan mapping using existing service Plans.
+- [x] Trial lifecycle ledger separate from the permanent claim ledger.
+- [x] Expired Trial management in `section=users` and Telegram Admin.
+- [x] RouteBox and MikroTik provider cleanup paths reuse existing integrations.
+- [ ] IBSng provider-side Trial deletion: blocked pending a safe deletion capability in the existing IBSng adapter; no duplicate IBSng implementation added.
+EOF
+
+          cat >> ATD_PANEL_WORKING_NOTES.md <<'EOF'
+
+## Telegram Trial Management — 2026-10-05
+- Trial configuration is provider/category-specific and references the existing `service_plans` rows; no provider is hard-coded into Plan selection.
+- The permanent `telegram_trials` claim ledger is never deleted during Trial cleanup. Removing an expired provider resource therefore cannot let the same Telegram user claim a second Trial.
+- `telegram_trial_instances` is the lifecycle/cleanup ledger and is separate from the permanent claim ledger.
+- RouteBox legacy `trial_hours` remains a compatibility fallback when no RouteBox Trial Plan is configured.
+- RouteBox and MikroTik cleanup reuse existing provider integrations. IBSng cleanup is intentionally blocked until the existing IBSng adapter exposes a safe delete operation; the Trial is not silently deleted from the local database while the provider account remains.
+- Web Trial management is injected into existing `section=bot` and `section=users` surfaces; the existing Bot ATD Stat cards and Provider Core are not rewritten.
+EOF
+
+          rm -f .github/workflows/apply-trial-management.yml
+
+          for f in src/bootstrap.php src/Services/TrialService.php src/Admin/TrialAdminPanel.php src/Telegram/AdminBot.php worker.php; do php -l "$f"; done
+          git diff --check
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/bootstrap.php src/Services/TrialService.php src/Admin/TrialAdminPanel.php src/Telegram/AdminBot.php worker.php database/migrations/005_telegram_trials.sql CHANGELOG.md ROADMAP.md ATD_PANEL_WORKING_NOTES.md .github/workflows/apply-trial-management.yml
+          git commit -m 'feat(bot): add provider-aware trial lifecycle management'
+          git push
