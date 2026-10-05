@@ -63,11 +63,9 @@ final class TrialAdminPanel
 
         /*
          * public/index.php starts the existing ATDUICompatibility output
-         * buffer after bootstrap. Registering our own output buffer here
-         * therefore puts it underneath the real ATD shell buffer and is not
-         * reliable for the legacy/special-section renderer. Instead, at PHP
-         * shutdown we modify the still-open outer ATD buffer directly. The
-         * normal ATDUICompatibility callback then runs unchanged afterwards.
+         * buffer after bootstrap. Do not create a second UI buffer here.
+         * Instead, at PHP shutdown we modify the still-open outer buffer;
+         * the normal ATDUICompatibility callback then runs unchanged.
          */
         if (!self::$shutdownRegistered) {
             self::$shutdownRegistered = true;
@@ -86,9 +84,10 @@ final class TrialAdminPanel
         $html = ob_get_contents();
         if (!is_string($html) || $html === '') return;
 
-        // Only touch the already-rendered unified ATD shell. This prevents
-        // accidental injection into unrelated output buffers.
-        if (stripos($html, 'id="atd-ui-compatibility"') === false) return;
+        // The compatibility callback has not run yet at shutdown, so its
+        // own injected <style> marker is not present. Identify the actual
+        // existing unified shell by its stable <main class="main"> markup.
+        if (stripos($html, '<main class="main">') === false) return;
         if (stripos($html, '</main>') === false) return;
 
         $lang = (string)($_GET['lang'] ?? ($_SESSION['panel_lang'] ?? 'fa')) === 'en' ? 'en' : 'fa';
