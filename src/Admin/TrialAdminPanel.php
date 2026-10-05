@@ -12,10 +12,8 @@ require_once __DIR__ . '/../Services/TrialService.php';
 /**
  * Presentation/admin controls for the provider-aware Trial lifecycle.
  *
- * This class deliberately does not create a page or route. The existing
- * ATD Panel shell remains the source of truth; the UI is attached to the
- * already-rendered section=bot and section=users output at shutdown, before
- * the existing ATDUICompatibility output callback finalizes the response.
+ * This class does not create a page or route. It attaches Trial controls to
+ * the existing unified ATD shell for section=bot and section=users only.
  */
 final class TrialAdminPanel
 {
@@ -72,36 +70,56 @@ final class TrialAdminPanel
     private static function injectIntoExistingShell(PDO $db): void
     {
         $section = (string)($_GET['section'] ?? '');
-        if (!in_array($section, ['bot', 'users'], true)) return;
-        if (ob_get_level() < 1) return;
+        if (!in_array($section, ['bot', 'users'], true) || ob_get_level() < 1) return;
 
         $html = ob_get_contents();
         if (!is_string($html) || $html === '') return;
-        if (stripos($html, '<main class="main">') === false) return;
+        if (stripos($html, '<main class="main">') === false || stripos($html, '</main>') === false) return;
 
         $lang = (string)($_GET['lang'] ?? ($_SESSION['panel_lang'] ?? 'fa')) === 'en' ? 'en' : 'fa';
         $panel = $section === 'bot'
             ? self::botSettings($db, $lang)
             : self::userTrials($db, $lang);
 
-        // Keep the existing section layout intact. Trials belong directly
-        // below the Bot Settings card, and on Users they belong before the
-        // existing footer (not below the copyright/footer area).
+        // Remove only an older Trial panel, if one is already present.
+        $html = preg_replace('~<section\b[^>]*id="bot-trials"[^>]*>.*?</section>\s*~is', '', $html) ?? $html;
+        $html = preg_replace('~<section\b[^>]*id="user-trials"[^>]*>.*?</section>\s*~is', '', $html) ?? $html;
+
         if ($section === 'bot') {
-            $marker = '</form></section>\n\n  <section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">☷</div>';
+            $insertAt = self::findBotSettingsEnd($html);
+            if ($insertAt === null) return;
         } else {
-            $marker = '<div class="footer">';
+            $footer = stripos($html, '<div class="footer">');
+            if ($footer === false) return;
+            $insertAt = $footer;
         }
-        $pos = stripos($html, $marker);
-        if ($pos === false) return;
 
         ob_clean();
-        if ($section === 'bot') {
-            $insertAt = $pos + strlen($marker);
-            echo substr($html, 0, $pos) . '</form></section>' . $panel . $marker . substr($html, $insertAt);
-        } else {
-            echo substr($html, 0, $pos) . $panel . substr($html, $pos);
+        echo substr($html, 0, $insertAt) . $panel . substr($html, $insertAt);
+    }
+
+    /**
+     * Locate the real existing Bot Settings card by its visible title, then
+     * return the position immediately after that card. This intentionally
+     * does not depend on generated whitespace, section ids or CSS classes.
+     */
+    private static function findBotSettingsEnd(string $html): ?int
+    {
+        $anchors = ['Bot Settings', 'Bot settings', 'تنظیمات ربات', 'name="trial_hours"', "name='trial_hours'"];
+
+        foreach ($anchors as $anchor) {
+            $pos = stripos($html, $anchor);
+            if ($pos === false) continue;
+
+            $before = substr($html, 0, $pos);
+            $sectionStart = strrpos($before, '<section');
+            $sectionEnd = stripos($html, '</section>', $pos);
+            if ($sectionStart !== false && $sectionEnd !== false) {
+                return $sectionEnd + strlen('</section>');
+            }
         }
+
+        return null;
     }
 
     private static function styles(): string
@@ -125,8 +143,10 @@ final class TrialAdminPanel
             . '.atd-trials-panel tr:last-child td{border-bottom:0}'
             . '.atd-trials-panel .status{display:inline-flex;padding:4px 8px;border-radius:999px;background:var(--atd-accent-soft);font-size:11px}'
             . '.atd-trials-panel .status.expired{background:rgba(220,80,80,.12)}'
+            . '.atd-trials-panel .atd-trial-search{display:flex;gap:8px;margin:0 0 16px;align-items:center}'
+            . '.atd-trials-panel .atd-trial-search input{flex:1;min-width:0}'
             . '@media(max-width:900px){.atd-trials-panel .atd-trial-grid{grid-template-columns:1fr 1fr}}'
-            . '@media(max-width:650px){.atd-trials-panel .atd-trial-grid{grid-template-columns:1fr}.atd-trials-panel .atd-trials-head{flex-direction:column}}'
+            . '@media(max-width:650px){.atd-trials-panel .atd-trial-grid{grid-template-columns:1fr}.atd-trials-panel .atd-trials-head{flex-direction:column}.atd-trials-panel .atd-trial-search{flex-direction:column;align-items:stretch}}'
             . '</style>';
     }
 
@@ -178,12 +198,11 @@ final class TrialAdminPanel
     private static function userTrials(PDO $db, string $lang): string
     {
         $fa = $lang === 'fa';
-        $search = trim((string)($_GET['q'] ?? ''));
+        $search = trim((string)($_GET['trial_q'] ?? ''));
         $rows = TrialService::listTrials($db, 500);
 
-        // Reuse the exact `q` parameter of the existing Users search. The
-        // main Users table remains untouched; this only applies the same
-        // search term to the Trial list as well.
+        // This search is intentionally independent from the existing Users
+        // search. The main Users list and its `q` parameter remain untouched.
         if ($search !== '') {
             $needle = function_exists('mb_strtolower') ? mb_strtolower($search, 'UTF-8') : strtolower($search);
             $rows = array_values(array_filter($rows, static function (array $row) use ($needle): bool {
@@ -253,13 +272,29 @@ final class TrialAdminPanel
                 . '</td></tr>';
         }
 
+        $mainQ = (string)($_GET['q'] ?? '');
+        $searchForm = '<form class="atd-trial-search" method="get">'
+            . '<input type="hidden" name="section" value="users">'
+            . '<input type="hidden" name="q" value="' . self::e($mainQ) . '">'
+            . '<input name="trial_q" value="' . self::e($search) . '" placeholder="'
+            . ($fa ? 'جستجوی Trial با Telegram ID، username، نام، Provider یا Plan' : 'Search Trials by Telegram ID, username, name, Provider or Plan') . '">'
+            . '<button class="btn btn-primary" type="submit">🔎 ' . ($fa ? 'جستجوی Trial' : 'Search Trials') . '</button>';
+        if ($search !== '') {
+            $searchForm .= '<a class="btn btn-secondary" href="/?section=users'
+                . ($mainQ !== '' ? '&q=' . rawurlencode($mainQ) : '') . '">'
+                . ($fa ? 'پاک کردن' : 'Clear') . '</a>';
+        }
+        $searchForm .= '</form>';
+
         return self::styles()
             . '<section class="card atd-trials-panel" id="user-trials">'
             . '<div class="atd-trials-head"><div><div class="eyebrow">ATD PANEL · USERS · TRIALS</div><h2>🎁 Trials</h2><p>'
             . ($fa
                 ? 'Trialهای فعال و منقضی‌شده اینجا مدیریت می‌شوند. حذف Trial فقط منبع Provider را پاک می‌کند؛ سابقه دریافت Trial برای جلوگیری از دریافت مجدد باقی می‌ماند.'
                 : 'Manage active and expired Trials. Cleanup removes the Provider resource while preserving permanent eligibility history so the Trial cannot be claimed again.')
-            . '</p></div></div><div class="atd-trial-table"><table><thead><tr><th>ID</th><th>'
+            . '</p></div></div>'
+            . $searchForm
+            . '<div class="atd-trial-table"><table><thead><tr><th>ID</th><th>'
             . ($fa ? 'کاربر' : 'User') . '</th><th>Provider</th><th>Plan</th><th>'
             . ($fa ? 'وضعیت' : 'Status') . '</th><th>' . ($fa ? 'انقضا' : 'Expiry')
             . '</th><th></th></tr></thead><tbody>' . $body
