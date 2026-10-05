@@ -1,0 +1,144 @@
+<?php
+
+declare(strict_types=1);
+
+namespace RouteBox\Admin;
+
+use PDO;
+use RouteBox\Services\TrialService;
+
+require_once __DIR__ . '/../Services/TrialService.php';
+
+/** Presentation-only Trial UI layer. Core/provider behavior is untouched. */
+final class TrialUIEnhancer
+{
+    private static bool $registered = false;
+
+    private static function e(mixed $v): string
+    {
+        return htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    private static function fa(): bool
+    {
+        return (string)($_GET['lang'] ?? ($_SESSION['panel_lang'] ?? 'fa')) === 'fa';
+    }
+
+    public static function boot(PDO $db): void
+    {
+        if (self::$registered || PHP_SAPI === 'cli') return;
+        self::$registered = true;
+        TrialService::ensureSchema($db);
+        register_shutdown_function(static function () use ($db): void {
+            self::apply($db);
+        });
+    }
+
+    private static function apply(PDO $db): void
+    {
+        $section = (string)($_GET['section'] ?? '');
+        if (!in_array($section, ['bot', 'users'], true) || ob_get_level() < 1) return;
+        $html = ob_get_contents();
+        if (!is_string($html) || $html === '') return;
+        $fa = self::fa();
+        $html = self::addBotTrialNav($html, $fa);
+        $html = self::fixUsersHeading($html);
+        $html = $section === 'bot' ? self::replaceBotTrials($html, $db, $fa) : self::replaceUserTrials($html, $db, $fa);
+        ob_clean();
+        echo $html;
+    }
+
+    private static function addBotTrialNav(string $html, bool $fa): string
+    {
+        if (stripos($html, 'id="atd-provider-trials-nav"') !== false) return $html;
+        $item = '<a id="atd-provider-trials-nav" class="atd-nav-subitem" href="/?section=bot#bot-trials" title="'.self::e($fa ? 'مدیریت Trial رایگان Providerها' : 'Manage Provider Free Trials').'"><span class="sub-dot">•</span><span>🎁 Provider Free Trials</span></a>';
+        $pattern = '~(<a[^>]+href="/\?section=bot-guides"[^>]*>.*?</a>)~is';
+        return preg_replace($pattern, '$1'.$item, $html, 1) ?? $html;
+    }
+
+    private static function fixUsersHeading(string $html): string
+    {
+        if (stripos($html, 'id="atd-trial-ui-final"') !== false) return $html;
+        $css = '<style id="atd-trial-ui-final">.atd-user-page>.section-head{display:none!important}.atd-trial-search{display:flex;gap:8px;margin:0 0 16px;align-items:center}.atd-trial-search input{flex:1;min-width:0}@media(max-width:650px){.atd-trial-search{flex-direction:column;align-items:stretch}}</style>';
+        return preg_replace('~</head>~i', $css.'</head>', $html, 1) ?? $html;
+    }
+
+    private static function replaceBotTrials(string $html, PDO $db, bool $fa): string
+    {
+        $html = preg_replace('~<section\b[^>]*id="bot-trials"[^>]*>.*?</section>\s*~is', '', $html) ?? $html;
+        $panel = self::botPanel($db, $fa);
+        $pattern = '~(<section\s+class="card"\s+id="bot">.*?</section>)(\s*<section\s+class="card">)~is';
+        return preg_replace($pattern, '$1'.$panel.'$2', $html, 1) ?? $html;
+    }
+
+    private static function replaceUserTrials(string $html, PDO $db, bool $fa): string
+    {
+        $html = preg_replace('~<section\b[^>]*id="user-trials"[^>]*>.*?</section>\s*~is', '', $html) ?? $html;
+        $panel = self::userPanel($db, $fa);
+        $marker = '<div class="footer">';
+        $pos = stripos($html, $marker);
+        return $pos === false ? $html : substr($html, 0, $pos).$panel.substr($html, $pos);
+    }
+
+    private static function botPanel(PDO $db, bool $fa): string
+    {
+        $cards = '';
+        foreach (TrialService::categoriesWithPlans($db) as $cat) {
+            $current = (int)($cat['trial_plan_id'] ?? 0);
+            $cards .= '<form class="atd-trial-card" method="post">'
+                .'<input type="hidden" name="csrf_token" value="'.self::e(csrf_token()).'">'
+                .'<input type="hidden" name="atd_trial_action" value="save_plan">'
+                .'<input type="hidden" name="return_section" value="bot">'
+                .'<input type="hidden" name="category_id" value="'.(int)$cat['id'].'">'
+                .'<h3>'.self::e($fa?$cat['name_fa']:$cat['name_en']).'</h3>'
+                .'<div class="muted">provider_key: <code>'.self::e($cat['provider_key']).'</code></div>'
+                .'<select name="plan_id"><option value="0">— '.($fa?'بدون Trial':'No Trial').' —</option>';
+            foreach ($cat['plans'] as $plan) {
+                $sel=$current===(int)$plan['id']?' selected':'';
+                $name=$fa?$plan['display_name_fa']:$plan['display_name_en'];
+                $cards.='<option value="'.(int)$plan['id'].'"'.$sel.'>'.self::e($name).' · '.(int)$plan['duration_days'].'d</option>';
+            }
+            $cards.='</select><div class="row"><label><input type="checkbox" name="enabled" value="1"'.($current>0?' checked':'').'> '.($fa?'فعال':'Enabled').'</label><button class="btn btn-primary" type="submit">'.($fa?'ذخیره':'Save').'</button></div></form>';
+        }
+        if($cards==='') $cards='<div class="muted">'.($fa?'هنوز Provider/Plan فعالی برای انتخاب Trial وجود ندارد.':'No active Provider Plans are available for Trial selection yet.').'</div>';
+        return self::styles().'<section class="card atd-trials-panel" id="bot-trials"><div class="atd-trials-head"><div><div class="eyebrow">ATD PANEL · BOT · TRIALS</div><h2>🎁 '.($fa?'Free Trial هر Provider':'Provider Free Trials').'</h2><p>'.($fa?'برای هر Provider، Trial از Plan واقعی همان Provider/Category انتخاب می‌شود.':'Select the real Trial Plan for each Provider/Category.').'</p></div></div><div class="atd-trial-grid">'.$cards.'</div></section>';
+    }
+
+    private static function userPanel(PDO $db, bool $fa): string
+    {
+        $term=trim((string)($_GET['trial_q']??''));
+        $rows=TrialService::listTrials($db,500);
+        if($term!==''){
+            $needle=function_exists('mb_strtolower')?mb_strtolower($term,'UTF-8'):strtolower($term);
+            $rows=array_values(array_filter($rows,static function(array $r)use($needle):bool{
+                $hay=implode(' ',[(string)($r['telegram_id']??''),(string)($r['username']??''),(string)($r['first_name']??''),(string)($r['provider_key']??''),(string)($r['display_name_fa']??''),(string)($r['display_name_en']??''),(string)($r['name_fa']??''),(string)($r['name_en']??'')]);
+                $hay=function_exists('mb_strtolower')?mb_strtolower($hay,'UTF-8'):strtolower($hay);
+                return str_contains($hay,$needle);
+            }));
+        }
+        $rowsHtml='';
+        foreach($rows as $r){
+            $expired=$r['expires_at']!==null&&(int)$r['expires_at']<=time()&&(string)$r['status']!=='deleted';
+            $name=trim((string)($r['first_name']??''));
+            if($name==='')$name=trim((string)($r['username']??''))!==''?'@'.$r['username']:(string)$r['telegram_id'];
+            $status=$expired?($fa?'منقضی‌شده':'Expired'):((string)$r['status']==='deleted'?($fa?'حذف‌شده':'Deleted'):($fa?'فعال':'Active'));
+            $rowsHtml.='<tr><td>'.(int)$r['id'].'</td><td>'.self::e($name).'</td><td>'.self::e($r['provider_key']).'</td><td>'.self::e($fa?($r['display_name_fa']??''):($r['display_name_en']??'')).'</td><td><span class="status'.($expired?' expired':'').'">'.self::e($status).'</span></td><td>'.($r['expires_at']?date('Y-m-d H:i',(int)$r['expires_at']):'—').'</td><td>';
+            if($expired){
+                $confirm=$fa?'Trial منقضی‌شده حذف و از Provider پاکسازی شود؟':'Cleanup and delete this expired Trial?';
+                $rowsHtml.='<form method="post" onsubmit="return confirm(\''.self::e($confirm).'\')"><input type="hidden" name="csrf_token" value="'.self::e(csrf_token()).'"><input type="hidden" name="atd_trial_action" value="delete_trial"><input type="hidden" name="return_section" value="users"><input type="hidden" name="trial_id" value="'.(int)$r['id'].'"><button class="btn btn-secondary" type="submit">🗑 '.($fa?'پاکسازی و حذف':'Cleanup & Delete').'</button></form>';
+            }else $rowsHtml.='<span style="color:var(--muted)">—</span>';
+            $rowsHtml.='</td></tr>';
+        }
+        if($rowsHtml==='')$rowsHtml='<tr><td colspan="7" style="color:var(--muted)">'.($term!==''?($fa?'Trialی با این جستجو پیدا نشد.':'No Trials matched this search.'):($fa?'هنوز Trialی ثبت نشده است.':'No Trials recorded yet.')).'</td></tr>';
+        $mainQ=(string)($_GET['q']??'');
+        $search='<form class="atd-trial-search" method="get"><input type="hidden" name="section" value="users"><input type="hidden" name="q" value="'.self::e($mainQ).'"><input name="trial_q" value="'.self::e($term).'" placeholder="'.($fa?'جستجوی Trial با Telegram ID، username، نام، Provider یا Plan':'Search Trials by Telegram ID, username, name, Provider or Plan').'"><button class="btn btn-primary" type="submit">🔎 '.($fa?'جستجوی Trial':'Search Trials').'</button>';
+        if($term!=='')$search.='<a class="btn btn-secondary" href="/?section=users'.($mainQ!==''?'&q='.rawurlencode($mainQ):'').'">'.($fa?'پاک کردن':'Clear').'</a>';
+        $search.='</form>';
+        return self::styles().'<section class="card atd-trials-panel" id="user-trials"><div class="atd-trials-head"><div><div class="eyebrow">ATD PANEL · USERS · TRIALS</div><h2>🎁 Trials</h2><p>'.($fa?'جستجوی این بخش مستقل از جستجوی Users است؛ حذف Trial فقط منبع Provider را پاک می‌کند و سابقه دریافت Trial باقی می‌ماند.':'This Trial search is independent from Users search; cleanup removes the Provider resource while preserving Trial history.').'</p></div></div>'.$search.'<div class="atd-trial-table"><table><thead><tr><th>ID</th><th>'.($fa?'کاربر':'User').'</th><th>Provider</th><th>Plan</th><th>'.($fa?'وضعیت':'Status').'</th><th>'.($fa?'انقضا':'Expires').'</th><th>'.($fa?'عملیات':'Actions').'</th></tr></thead><tbody>'.$rowsHtml.'</tbody></table></div></section>';
+    }
+
+    private static function styles(): string
+    {
+        return '<style id="atd-trial-ui-styles">.atd-trials-panel{margin-top:18px}.atd-trials-panel .atd-trials-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}.atd-trials-panel .atd-trials-head h2{margin:3px 0 6px;font-size:22px}.atd-trials-panel .atd-trials-head p{margin:0;color:var(--muted);font-size:13px;line-height:1.7}.atd-trial-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.atd-trial-card{border:1px solid var(--line);border-radius:15px;padding:15px;background:var(--card2);min-width:0}.atd-trial-card h3{margin:0 0 6px;font-size:15px}.atd-trials-panel .muted{color:var(--muted);font-size:12px;line-height:1.65}.atd-trials-panel select{width:100%;box-sizing:border-box;margin-top:11px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:inherit}.atd-trials-panel .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}.atd-trial-table{overflow:auto;border:1px solid var(--line);border-radius:14px}.atd-trial-table table{width:100%;border-collapse:collapse}.atd-trial-table th,.atd-trial-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:start;white-space:nowrap}.atd-trial-table th{font-size:11px;color:var(--muted)}.atd-trial-table tr:last-child td{border-bottom:0}.atd-trials-panel .status{display:inline-flex;padding:4px 8px;border-radius:999px;background:var(--atd-accent-soft);font-size:11px}.atd-trials-panel .status.expired{background:rgba(220,80,80,.12)}@media(max-width:900px){.atd-trial-grid{grid-template-columns:1fr 1fr}}@media(max-width:650px){.atd-trial-grid{grid-template-columns:1fr}.atd-trial-search{flex-direction:column;align-items:stretch!important}}</style>';
+    }
+}
