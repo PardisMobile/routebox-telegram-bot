@@ -45,13 +45,11 @@ final class TrialService
         self::ensureSchema($db);
         $plan=self::planForCategory($db,$categoryId);
         if(!$plan)throw new RuntimeException('برای این Provider هنوز Trial Plan فعال نشده است.');
-
         $now=time();
         $claim=$db->prepare('INSERT OR IGNORE INTO telegram_trial_instances(telegram_user_id,category_id,plan_id,provider_key,status,claimed_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)');
         $claim->execute([$uid,$categoryId,(int)$plan['id'],(string)$plan['provider_key'],'provisioning',$now,$now,$now]);
         if($claim->rowCount()!==1)throw new RuntimeException('این حساب قبلاً تست رایگان این Provider را دریافت کرده است.');
         $trialId=(int)$db->lastInsertId();
-
         try{
             $result=(new ServiceProvisioner($db))->provision($uid,$tgid,(int)$plan['id']);
             $refs=['subscription_id'=>(int)($result['subscription_id']??0),'provision_ids'=>array_values(array_map(static fn($x)=>(int)($x['provision_id']??0),(array)($result['items']??[])))];
