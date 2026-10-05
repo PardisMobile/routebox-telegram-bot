@@ -143,11 +143,22 @@ final class TrialAdminPanel
             . '.atd-trials-panel tr:last-child td{border-bottom:0}'
             . '.atd-trials-panel .status{display:inline-flex;padding:4px 8px;border-radius:999px;background:var(--atd-accent-soft);font-size:11px}'
             . '.atd-trials-panel .status.expired{background:rgba(220,80,80,.12)}'
-            . '.atd-trials-panel .atd-trial-search{display:flex;gap:8px;margin:0 0 16px;align-items:center}'
-            . '.atd-trials-panel .atd-trial-search input{flex:1;min-width:0}'
+            . '.atd-trials-panel .atd-trial-search{display:flex;gap:10px;margin:0 0 16px;align-items:center}'
+            . '.atd-trials-panel .atd-trial-search input{flex:1;min-width:0;height:44px;box-sizing:border-box;padding:0 13px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:inherit;font:inherit}'
+            . '.atd-trials-panel .atd-trial-search .btn,.atd-user-page .searchbar .btn{height:44px;min-width:110px;box-sizing:border-box}'
+            . '.atd-user-page .searchbar{display:flex;gap:10px;margin:0 0 16px;align-items:center}'
+            . '.atd-user-page .searchbar input{flex:1;min-width:0;height:44px;box-sizing:border-box;padding:0 13px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:inherit;font:inherit}'
+            . '.atd-user-page .searchbar .btn{display:inline-flex;align-items:center;justify-content:center}'
+            . '.atd-pagination{display:flex;align-items:center;justify-content:center;gap:6px;margin:14px 0 2px;flex-wrap:wrap}'
+            . '.atd-pagination button{min-width:36px;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);cursor:pointer;font:700 12px inherit}'
+            . '.atd-pagination button:hover{border-color:color-mix(in srgb,var(--atd-accent) 40%,var(--line));background:var(--atd-accent-soft)}'
+            . '.atd-pagination button.active{background:linear-gradient(135deg,var(--atd-accent),var(--atd-accent-strong));color:#fff;border-color:transparent}'
+            . '.atd-pagination button:disabled{opacity:.45;cursor:not-allowed}'
+            . '.atd-pagination .atd-page-info{color:var(--muted);font-size:11px;margin:0 6px}'
             . '@media(max-width:900px){.atd-trials-panel .atd-trial-grid{grid-template-columns:1fr 1fr}}'
-            . '@media(max-width:650px){.atd-trials-panel .atd-trial-grid{grid-template-columns:1fr}.atd-trials-panel .atd-trials-head{flex-direction:column}.atd-trials-panel .atd-trial-search{flex-direction:column;align-items:stretch}}'
-            . '</style>';
+            . '@media(max-width:650px){.atd-trials-panel .atd-trial-grid{grid-template-columns:1fr}.atd-trials-panel .atd-trials-head{flex-direction:column}.atd-trials-panel .atd-trial-search,.atd-user-page .searchbar{flex-direction:column;align-items:stretch}.atd-trials-panel .atd-trial-search .btn,.atd-user-page .searchbar .btn{width:100%}}'
+            . '</style>'
+            . '<script>(function(){\'use strict\';function paginate(selector, key){var table=document.querySelector(selector);if(!table||!table.tBodies.length)return;var tbody=table.tBodies[0];var rows=Array.prototype.slice.call(tbody.rows);if(rows.length===1&&rows[0].cells.length===1&&rows[0].cells[0].colSpan>1)return;if(rows.length<=20)return;var perPage=20,total=Math.ceil(rows.length/perPage),current=1;var host=table.closest(\'.atd-trial-table,.table-wrap\');if(!host)return;var nav=document.createElement(\'div\');nav.className=\'atd-pagination\';nav.setAttribute(\'data-pagination\',key);host.insertAdjacentElement(\'afterend\',nav);function render(){rows.forEach(function(row,i){row.style.display=(i>=(current-1)*perPage&&i<current*perPage)?\'\':\'none\';});nav.innerHTML=\'\';var prev=document.createElement(\'button\');prev.type=\'button\';prev.textContent=\'‹\';prev.disabled=current===1;prev.title=\'Previous\';prev.addEventListener(\'click\',function(){if(current>1){current--;render();}});nav.appendChild(prev);var start=Math.max(1,current-2),end=Math.min(total,start+4);start=Math.max(1,end-4);for(var p=start;p<=end;p++){(function(page){var b=document.createElement(\'button\');b.type=\'button\';b.textContent=String(page);if(page===current)b.className=\'active\';b.addEventListener(\'click\',function(){current=page;render();});nav.appendChild(b);})(p);}var info=document.createElement(\'span\');info.className=\'atd-page-info\';info.textContent=(document.documentElement.getAttribute(\'lang\')===\'fa\'?\'صفحه \':\'Page \')+current+(document.documentElement.getAttribute(\'lang\')===\'fa\'?\' از \':\' of \')+total;nav.appendChild(info);var next=document.createElement(\'button\');next.type=\'button\';next.textContent=\'›\';next.disabled=current===total;next.title=\'Next\';next.addEventListener(\'click\',function(){if(current<total){current++;render();}});nav.appendChild(next);}render();}paginate(\'.atd-user-page .table-wrap table\',\'users\');paginate(\'#user-trials .atd-trial-table table\',\'trials\');})();</script>';
     }
 
     private static function botSettings(PDO $db, string $lang): string
