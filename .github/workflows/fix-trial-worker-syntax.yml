@@ -1,0 +1,40 @@
+name: Fix trial worker syntax
+
+on:
+  push:
+    branches: [ATD-Panel]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fix worker syntax only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('worker.php')
+          s = p.read_text()
+          old = "}}}}catch(Throwable $e){log_event('error','Worker: '.$e->getMessage());sleep(2);}}"
+          new = "}}}catch(Throwable $e){log_event('error','Worker: '.$e->getMessage());sleep(2);}}"
+          if old not in s:
+              raise SystemExit('Expected worker syntax pattern not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          php -l worker.php
+          git diff --check
+          if git diff --quiet -- worker.php; then
+            echo 'No worker change required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add worker.php
+          git commit -m 'fix(worker): restore valid try catch structure'
+          git push
