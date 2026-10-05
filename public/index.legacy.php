@@ -60,7 +60,7 @@ if ($isAtdExtra && (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST')) {
 }
 
 /* Every section uses the exact existing Admin shell; special sections replace only the body. */
-$specialSections = ['ibsng', 'mikrotik', 'provider-plans', 'users', 'user-details', 'payment-settings', 'provider-guide'];
+$specialSections = ['ibsng', 'mikrotik', 'provider-plans', 'users', 'user-details', 'payment-settings', 'provider-guide', 'bot-guides', 'bot-customer', 'bot-admin'];
 if (!in_array($requestedSection, $specialSections, true)) {
     ob_start();
     require __DIR__ . '/index.core.php';
@@ -82,6 +82,7 @@ require_once __DIR__ . '/../src/Integrations/IBSng/IBSngSection.php';
 require_once __DIR__ . '/../src/Integrations/MikroTik/MikroTikModule.php';
 require_once __DIR__ . '/../src/Integrations/MikroTik/MikroTikSection.php';
 require_once __DIR__ . '/../src/Admin/ATDPanelSections.php';
+require_once __DIR__ . '/../src/Admin/TelegramBotSections.php';
 
 use RouteBox\Integrations\IBSng\IBSngModule;
 use RouteBox\Integrations\IBSng\IBSngSection;
@@ -120,11 +121,16 @@ $guideActive = static function (string $provider) use ($section): string {
     return trim((string)($_GET['provider'] ?? 'routebox')) === $provider ? ' active' : '';
 };
 
+$botSections = ['bot','bot-customer','bot-admin','bot-guides'];
 $nav = '<nav class="nav atd-nav" aria-label="' . $label('ناوبری پنل', 'Panel navigation') . '">';
 $nav .= '<a class="atd-nav-item' . $active('dashboard') . '" href="/?section=dashboard"><span class="nav-icon">' . $navIcon('dashboard') . '</span><span>' . $label('داشبورد', 'Dashboard') . '</span></a>';
-$nav .= '<div class="atd-nav-group' . ($section === 'bot' || $section === 'bot-guides' ? ' expanded' : '') . '">';
+$nav .= '<div class="atd-nav-group' . (in_array($section, $botSections, true) ? ' expanded' : '') . '">';
 $nav .= '<a class="atd-nav-item provider-item' . ($section === 'bot' ? ' active' : '') . '" href="/?section=bot"><span class="nav-icon">' . $navIcon('bot') . '</span><span>' . $label('ربات تلگرام', 'Telegram Bot') . '</span><span class="nav-chevron">›</span></a>';
-$nav .= '<div class="atd-nav-sub"><a class="atd-nav-subitem' . ($section === 'bot-guides' ? ' active' : '') . '" href="/?section=bot-guides"><span class="sub-dot">•</span><span>' . $label('راهنمای استفاده', 'Usage Guides') . '</span></a></div></div>';
+$nav .= '<div class="atd-nav-sub">';
+$nav .= '<a class="atd-nav-subitem' . ($section === 'bot-customer' ? ' active' : '') . '" href="/?section=bot-customer"><span class="sub-dot">•</span><span>' . $label('بات کاربر', 'Customer Bot') . '</span></a>';
+$nav .= '<a class="atd-nav-subitem' . ($section === 'bot-admin' ? ' active' : '') . '" href="/?section=bot-admin"><span class="sub-dot">•</span><span>' . $label('Bot Admin', 'Bot Admin') . '</span></a>';
+$nav .= '<a class="atd-nav-subitem' . ($section === 'bot-guides' ? ' active' : '') . '" href="/?section=bot-guides"><span class="sub-dot">•</span><span>' . $label('راهنمای استفاده', 'Usage Guides') . '</span></a>';
+$nav .= '</div></div>';
 
 $providers = [
     'routebox' => ['section'=>'servers','fa'=>'Routebox Servers','en'=>'Routebox Servers','icon'=>'servers'],
@@ -174,7 +180,7 @@ if (stripos($html, '</head>') !== false) {
 $html = str_replace('RouteBox Admin', 'ATD Panel', $html);
 $html = str_replace('Telegram Bot Control Center', 'Multi-Service Control Center', $html);
 
-if ($section !== 'ibsng' && $section !== 'mikrotik' && $section !== 'provider-plans' && !$isAtdExtra && $section !== 'bot-guides') {
+if ($section !== 'ibsng' && $section !== 'mikrotik' && $section !== 'provider-plans' && !$isAtdExtra && !in_array($section, ['bot-guides','bot-customer','bot-admin'], true)) {
     echo $html;
     exit;
 }
@@ -210,6 +216,14 @@ if ($section === 'provider-plans') {
     $body = \RouteBox\Admin\ATDPanelSections::renderBot(db(), $lang, csrf_token());
     $title = $lang === 'fa' ? 'راهنمای ربات' : 'Telegram Bot Usage Guides';
     $subtitle = $lang === 'fa' ? 'راهنمای عمومی و راهنمای اتصال هر سرویس' : 'General and per-service connection guides';
+} elseif ($section === 'bot-customer') {
+    $body = \RouteBox\Admin\TelegramBotSections::renderCustomer($lang);
+    $title = $lang === 'fa' ? 'بات کاربر عادی' : 'Customer Bot';
+    $subtitle = $lang === 'fa' ? 'تجربه کاربر Telegram روی Bot و Worker فعلی' : 'Customer Telegram experience on the existing Bot and Worker';
+} elseif ($section === 'bot-admin') {
+    $body = \RouteBox\Admin\TelegramBotSections::renderAdmin(db(), $lang);
+    $title = 'Telegram Bot Admin';
+    $subtitle = $lang === 'fa' ? 'مدیریت Adminهای Telegram و معماری موجود Bot Admin' : 'Manage Telegram Admins and the existing Bot Admin architecture';
 } elseif ($section === 'ibsng') {
     $admin = IBSngModule::admin(db());
     $body = IBSngSection::render($admin, $lang, csrf_token());
