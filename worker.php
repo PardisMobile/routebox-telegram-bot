@@ -6,8 +6,10 @@ require __DIR__ . '/src/bootstrap.php';
 require __DIR__ . '/src/RouteBoxClient.php';
 require __DIR__ . '/src/Services/ServiceCatalog.php';
 require __DIR__ . '/src/Services/ServiceProvisioner.php';
+require __DIR__ . '/src/Integrations/Payment/ManualPaymentService.php';
 require __DIR__ . '/src/Telegram/AdminBot.php';
 
+use RouteBox\Integrations\Payment\ManualPaymentService;
 use RouteBox\Services\ServiceCatalog;
 use RouteBox\Services\ServiceProvisioner;
 
@@ -153,6 +155,7 @@ function menu(string $token, $chat, int $uid): void
         ['text' => '📋 ' . ($l === 'fa' ? 'سرویس‌های من' : 'My services'), 'callback_data' => 'services'],
         ['text' => $b['language'] ?? '🌐 Language', 'callback_data' => 'language'],
     ];
+    $k[] = [['text' => '🧾 ' . ($l === 'fa' ? 'سفارش جاری' : 'Current order'), 'callback_data' => 'payment:current']];
     $k[] = [['text' => '📚 ' . ($l === 'fa' ? 'راهنمای استفاده' : 'Usage guide'), 'callback_data' => 'guide']];
     $w = cleanT((string)sget($l === 'fa' ? 'welcome_fa' : 'welcome_en', $l === 'fa' ? '🚀 RouteBox Telegram Bot\n\nسلام 👋' : '🚀 RouteBox Telegram Bot\n\nHello 👋'));
     tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $w, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
@@ -195,28 +198,105 @@ function sendCategoryPlans(string $token, $chat, int $uid, int $categoryId): voi
 
 function sendServicePurchase(string $token, $chat, int $uid, string $tgid, int $planId): void
 {
-    $provisioner = new ServiceProvisioner(db());
-    $r = $provisioner->provision($uid, $tgid, $planId);
-    $l = langFor($uid);
-    if (($r['provider'] ?? '') === 'ibsng') {
-        $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : ($l === 'fa' ? 'طبق قوانین گروه IBSng' : 'According to IBSng group rules');
-        $text = $l === 'fa'
-            ? "✅ سرویس IBSng فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n🖥️ سرور: {$r['server_name']}\n👥 گروه: {$r['group_name']}\n🔐 نام کاربری: {$r['username']}\n🔑 رمز عبور: {$r['password']}\n🆔 User ID: {$r['user_id']}\n⏱️ اعتبار: {$expiry}\n\n🌐 قابل استفاده برای OpenVPN / Cisco / L2TP"
-            : "✅ IBSng service activated.\n\n📦 Plan: {$r['plan_name_en']}\n🖥️ Server: {$r['server_name']}\n👥 Group: {$r['group_name']}\n🔐 Username: {$r['username']}\n🔑 Password: {$r['password']}\n🆔 User ID: {$r['user_id']}\n⏱️ Validity: {$expiry}\n\n🌐 Usable with OpenVPN / Cisco / L2TP";
-    } elseif (($r['provider'] ?? '') === 'routebox') {
-        $expiry = date('Y-m-d H:i', (int)$r['expires_at']);
-        $text = $l === 'fa'
-            ? "✅ سرویس RouteBox فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n⏱️ اعتبار تا: {$expiry}\n🟣 WireGuard / RouteBox\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید."
-            : "✅ RouteBox service activated.\n\n📦 Plan: {$r['plan_name_en']}\n⏱️ Valid until: {$expiry}\n🟣 WireGuard / RouteBox\n\n📋 Use My services to get your Config or QR.";
-    } elseif (($r['provider'] ?? '') === 'mikrotik_wireguard') {
-        $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
-        $text = $l === 'fa'
-            ? "✅ سرویس MikroTik WireGuard فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n🖥️ سرور: {$r['server_name']}\n👤 نام کاربری: {$r['username']}\n🌐 IP: {$r['assigned_ip']}\n⏱️ اعتبار تا: {$expiry}\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید."
-            : "✅ MikroTik WireGuard service activated.\n\n📦 Plan: {$r['plan_name_en']}\n🖥️ Server: {$r['server_name']}\n👤 Username: {$r['username']}\n🌐 IP: {$r['assigned_ip']}\n⏱️ Valid until: {$expiry}\n\n📋 Use My services to get your Config or QR.";
-    } else {
-        throw new RuntimeException('ارائه‌دهنده این سرویس هنوز برای ربات فعال نشده است.');
+    $payments = new ManualPaymentService(db());
+    if (!$payments->enabled()) {
+        $provisioner = new ServiceProvisioner(db());
+        $r = $provisioner->provision($uid, $tgid, $planId);
+        $l = langFor($uid);
+        if (($r['provider'] ?? '') === 'ibsng') {
+            $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : ($l === 'fa' ? 'طبق قوانین گروه IBSng' : 'According to IBSng group rules');
+            $text = $l === 'fa'
+                ? "✅ سرویس IBSng فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n🖥️ سرور: {$r['server_name']}\n👥 گروه: {$r['group_name']}\n🔐 نام کاربری: {$r['username']}\n🔑 رمز عبور: {$r['password']}\n🆔 User ID: {$r['user_id']}\n⏱️ اعتبار: {$expiry}\n\n🌐 قابل استفاده برای OpenVPN / Cisco / L2TP"
+                : "✅ IBSng service activated.\n\n📦 Plan: {$r['plan_name_en']}\n🖥️ Server: {$r['server_name']}\n👥 Group: {$r['group_name']}\n🔐 Username: {$r['username']}\n🔑 Password: {$r['password']}\n🆔 User ID: {$r['user_id']}\n⏱️ Validity: {$expiry}\n\n🌐 Usable with OpenVPN / Cisco / L2TP";
+        } elseif (($r['provider'] ?? '') === 'routebox') {
+            $expiry = date('Y-m-d H:i', (int)$r['expires_at']);
+            $text = $l === 'fa'
+                ? "✅ سرویس RouteBox فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n⏱️ اعتبار تا: {$expiry}\n🟣 WireGuard / RouteBox\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید."
+                : "✅ RouteBox service activated.\n\n📦 Plan: {$r['plan_name_en']}\n⏱️ Valid until: {$expiry}\n🟣 WireGuard / RouteBox\n\n📋 Use My services to get your Config or QR.";
+        } elseif (($r['provider'] ?? '') === 'mikrotik_wireguard') {
+            $expiry = $r['expires_at'] ? date('Y-m-d H:i', (int)$r['expires_at']) : '—';
+            $text = $l === 'fa'
+                ? "✅ سرویس MikroTik WireGuard فعال شد.\n\n📦 پلن: {$r['plan_name_fa']}\n🖥️ سرور: {$r['server_name']}\n👤 نام کاربری: {$r['username']}\n🌐 IP: {$r['assigned_ip']}\n⏱️ اعتبار تا: {$expiry}\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید."
+                : "✅ MikroTik WireGuard service activated.\n\n📦 Plan: {$r['plan_name_en']}\n🖥️ Server: {$r['server_name']}\n👤 Username: {$r['username']}\n🌐 IP: {$r['assigned_ip']}\n⏱️ Valid until: {$expiry}\n\n📋 Use My services to get your Config or QR.";
+        } else {
+            throw new RuntimeException('ارائه‌دهنده این سرویس هنوز برای ربات فعال نشده است.');
+        }
+        tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '📋 سرویس‌های من' : '📋 My services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
+        return;
     }
-    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '📋 سرویس‌های من' : '📋 My services', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
+
+    $order = $payments->createOrder($uid, $planId);
+    $s = $payments->settings();
+    $l = langFor($uid);
+    $price = number_format((int)$order['amount']);
+    $currency = (string)$order['currency'];
+    $planName = $l === 'fa' ? (string)$order['plan']['display_name_fa'] : (string)$order['plan']['display_name_en'];
+    $text = $l === 'fa'
+        ? "🧾 سفارش #{$order['order_id']}\n\n📦 سرویس: {$planName}\n🔌 Provider: {$order['plan']['provider_key']}\n💰 مبلغ: {$price} {$currency}\n\n💳 لطفاً مبلغ را به کارت زیر واریز کنید:\n🏦 بانک: {$s['bank']}\n💳 شماره کارت: {$s['card_number']}\n👤 صاحب کارت: {$s['card_holder']}"
+        : "🧾 Order #{$order['order_id']}\n\n📦 Service: {$planName}\n🔌 Provider: {$order['plan']['provider_key']}\n💰 Amount: {$price} {$currency}\n\n💳 Please transfer the amount to:\n🏦 Bank: {$s['bank']}\n💳 Card: {$s['card_number']}\n👤 Holder: {$s['card_holder']}";
+    if (trim((string)$s['instructions']) !== '') $text .= "\n\n📌 " . (string)$s['instructions'];
+    $text .= $l === 'fa' ? "\n\n📷 بعد از پرداخت، عکس رسید را همینجا ارسال کنید. سرویس فقط پس از تأیید Admin فعال می‌شود." : "\n\n📷 After payment, send the receipt image here. The service is activated only after Admin approval.";
+    $k = [
+        [['text' => $l === 'fa' ? '🧾 وضعیت سفارش' : '🧾 Order status', 'callback_data' => 'payment:current']],
+        [['text' => $l === 'fa' ? '❌ لغو سفارش' : '❌ Cancel order', 'callback_data' => 'payment:cancel:' . (int)$order['order_id']]],
+    ];
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
+}
+
+function sendCurrentPaymentOrder(string $token, $chat, int $uid): void
+{
+    $order = (new ManualPaymentService(db()))->currentOrder($uid);
+    $l = langFor($uid);
+    if (!$order) {
+        tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $l === 'fa' ? '🧾 سفارش فعال ندارید.' : '🧾 You have no active order.', 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '↩️ منوی اصلی' : '↩️ Main Menu', 'callback_data' => 'menu']]]], JSON_UNESCAPED_UNICODE)]);
+        return;
+    }
+    $plan = $l === 'fa' ? (string)$order['display_name_fa'] : (string)$order['display_name_en'];
+    $status = match ((string)$order['status']) {
+        'pending_payment' => $l === 'fa' ? 'در انتظار پرداخت و ارسال رسید' : 'Awaiting payment and receipt',
+        'receipt_pending' => $l === 'fa' ? 'رسید در انتظار بررسی Admin' : 'Receipt pending Admin review',
+        'approved' => $l === 'fa' ? 'پرداخت تأیید شد؛ در انتظار Provisioning' : 'Payment approved; provisioning pending',
+        'provisioning' => $l === 'fa' ? 'در حال فعال‌سازی سرویس' : 'Provisioning service',
+        'provision_failed' => $l === 'fa' ? 'Provisioning ناموفق؛ در حال بررسی Admin' : 'Provisioning failed; Admin action required',
+        default => (string)$order['status'],
+    };
+    $text = $l === 'fa'
+        ? "🧾 سفارش #{$order['id']}\n\n📦 {$plan}\n🔌 {$order['provider_key']}\n💰 " . number_format((int)$order['total_minor']) . " {$order['currency']}\n📌 وضعیت: {$status}"
+        : "🧾 Order #{$order['id']}\n\n📦 {$plan}\n🔌 {$order['provider_key']}\n💰 " . number_format((int)$order['total_minor']) . " {$order['currency']}\n📌 Status: {$status}";
+    $k = [];
+    if ((string)$order['status'] === 'pending_payment') $k[] = [['text' => $l === 'fa' ? '❌ لغو سفارش' : '❌ Cancel order', 'callback_data' => 'payment:cancel:' . (int)$order['id']]];
+    $k[] = [['text' => $l === 'fa' ? '↩️ منوی اصلی' : '↩️ Main Menu', 'callback_data' => 'menu']];
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
+}
+
+function handleReceiptUpload(string $token, $chat, int $uid, array $message): void
+{
+    $fileId = '';
+    $uniqueId = '';
+    $fileType = '';
+    $mime = null;
+    if (!empty($message['photo']) && is_array($message['photo'])) {
+        $photo = end($message['photo']);
+        if (is_array($photo)) {
+            $fileId = (string)($photo['file_id'] ?? '');
+            $uniqueId = (string)($photo['file_unique_id'] ?? '');
+            $fileType = 'photo';
+            $mime = 'image/jpeg';
+        }
+    } elseif (!empty($message['document']) && is_array($message['document'])) {
+        $doc = $message['document'];
+        $fileId = (string)($doc['file_id'] ?? '');
+        $uniqueId = (string)($doc['file_unique_id'] ?? '');
+        $fileType = 'document';
+        $mime = isset($doc['mime_type']) ? (string)$doc['mime_type'] : null;
+        $mimeOk = $mime === null || str_starts_with($mime, 'image/') || $mime === 'application/pdf';
+        if (!$mimeOk) throw new RuntimeException('لطفاً تصویر یا PDF رسید را ارسال کنید.');
+    }
+    if ($fileId === '' || $fileType === '') throw new RuntimeException('فایل رسید قابل تشخیص نیست.');
+    $result = (new ManualPaymentService(db()))->attachReceipt($uid, $fileId, $uniqueId, $fileType, $mime, (string)($message['caption'] ?? ''));
+    $order = $result['order'];
+    $l = langFor($uid);
+    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $l === 'fa' ? "✅ رسید سفارش #{$order['id']} دریافت شد.\n\n⏳ رسید شما برای Admin ارسال شد و پس از تأیید، سرویس به‌صورت خودکار فعال می‌شود." : "✅ Receipt for Order #{$order['id']} received.\n\n⏳ It is pending Admin review. Your service will be activated after approval.", 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => $l === 'fa' ? '🧾 وضعیت سفارش' : '🧾 Order status', 'callback_data' => 'payment:current']]]], JSON_UNESCAPED_UNICODE)]);
 }
 
 function sendServices(string $token, $chat, int $uid): void
@@ -423,6 +503,14 @@ while (true) {
             if ($chat === null || !is_array($from)) continue;
             $uid = upsertUser($from);
             if (RouteBox\Telegram\AdminBot::handle($token, $chat, $from, $uid, $m, $cb)) continue;
+            if ($m && (!empty($m['photo']) || !empty($m['document']))) {
+                try {
+                    handleReceiptUpload($token, $chat, $uid, $m);
+                } catch (Throwable $e) {
+                    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => '❌ ' . $e->getMessage()]);
+                }
+                continue;
+            }
             $text = (string)($m['text'] ?? '');
             if ($m && ($text === '/start' || str_starts_with($text, '/start '))) { menu($token, $chat, $uid); continue; }
             if ($m && $text === '/menu') { menu($token, $chat, $uid); continue; }
@@ -442,6 +530,12 @@ while (true) {
                     sendServices($token, $chat, $uid);
                 } elseif ($a === 'guide') {
                     guide($token, $chat, $uid);
+                } elseif ($a === 'payment:current') {
+                    sendCurrentPaymentOrder($token, $chat, $uid);
+                } elseif (str_starts_with($a, 'payment:cancel:')) {
+                    $orderId = (int)substr($a, 15);
+                    $ok = (new ManualPaymentService(db()))->cancel($orderId, $uid);
+                    tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $ok ? (langFor($uid) === 'fa' ? '✅ سفارش لغو شد.' : '✅ Order cancelled.') : (langFor($uid) === 'fa' ? 'این سفارش دیگر قابل لغو نیست.' : 'This order cannot be cancelled.')]);
                 } elseif ($a === 'trial') {
                     provision($uid, (string)$from['id']);
                     tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => langFor($uid) === 'fa' ? '✅ تست رایگان شما فعال شد.' : '✅ Your free trial is active.']);

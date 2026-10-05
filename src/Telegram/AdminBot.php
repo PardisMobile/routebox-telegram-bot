@@ -6,11 +6,13 @@ namespace RouteBox\Telegram;
 
 use PDO;
 use RuntimeException;
+use RouteBox\Integrations\Payment\ManualPaymentService;
 use RouteBox\Services\ServiceCatalog;
 use RouteBox\Services\ServiceProvisioner;
 
 require_once __DIR__ . '/../Services/ServiceCatalog.php';
 require_once __DIR__ . '/../Services/ServiceProvisioner.php';
+require_once __DIR__ . '/../Integrations/Payment/ManualPaymentService.php';
 
 /** Telegram Bot Admin orchestration. Provider logic remains in ServiceProvisioner. */
 final class AdminBot
@@ -64,6 +66,9 @@ final class AdminBot
             if ($data === 'adm:menu') self::menu($token, $chat, $telegramId);
             elseif ($data === 'adm:users') self::users($token, $chat);
             elseif ($data === 'adm:services') self::services($token, $chat);
+            elseif ($data === 'adm:payments') self::payments($token, $chat);
+            elseif (preg_match('/^adm:payment:(\d+)$/', $data, $m)) self::paymentDetail($token, $chat, (int)$m[1]);
+            elseif (preg_match('/^adm:payment:(approve|reject|retry):(\d+)$/', $data, $m)) self::paymentAction($token, $chat, $telegramId, $m[1], (int)$m[2]);
             elseif ($data === 'adm:audit') self::auditList($token, $chat, $telegramId);
             elseif ($data === 'adm:create:routebox') self::chooseUser($token, $chat, 'routebox');
             elseif ($data === 'adm:create:ibsng') self::chooseUser($token, $chat, 'ibsng');
@@ -87,6 +92,7 @@ final class AdminBot
         $role = (string)($a['role'] ?? 'admin');
         $k = [
             [['text' => '👥 Users', 'callback_data' => 'adm:users'], ['text' => '🛠 Services', 'callback_data' => 'adm:services']],
+            [['text' => '💳 Payments', 'callback_data' => 'adm:payments']],
             [['text' => '➕ RouteBox بدون پرداخت', 'callback_data' => 'adm:create:routebox']],
             [['text' => '➕ IBSng بدون پرداخت', 'callback_data' => 'adm:create:ibsng']],
             [['text' => '📜 Audit Log', 'callback_data' => 'adm:audit']],
@@ -118,6 +124,131 @@ final class AdminBot
         foreach ($rows as $row) $text .= sprintf("• #%d %s · %s · %s · %s\n", (int)$row['id'], $row['provider_key'], (string)($row['username'] ?: $row['tg_username']), $row['status'], $row['expires_at'] ? date('Y-m-d H:i', (int)$row['expires_at']) : '—');
         if (!$rows) $text .= 'سرویسی ثبت نشده است.';
         \tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => '↩️ Admin Menu', 'callback_data' => 'adm:menu']]]], JSON_UNESCAPED_UNICODE)]);
+    }
+
+    private static function payments(string $token, int|string $chat): void
+    {
+        $service = new ManualPaymentService(self::db());
+        $rows = $service->pendingPayments(20);
+        $text = "💳 Pending Payments / Receipts\n\n";
+        $k = [];
+        foreach ($rows as $row) {
+            $name = trim((string)($row['first_name'] ?? '')) ?: ((string)($row['tg_username'] ?? '') !== '' ? '@' . $row['tg_username'] : $row['telegram_id']);
+            $plan = (string)($row['display_name_en'] ?? $row['provider_key']);
+            $text .= sprintf("• #%d · %s · %s · %s %s\n", (int)$row['order_id'], $name, $plan, number_format((int)$row['amount_minor']), $row['currency']);
+            $k[] = [['text' => '🧾 Order #' . (int)$row['order_id'], 'callback_data' => 'adm:payment:' . (int)$row['payment_id']]];
+        }
+        if (!$rows) $text .= 'رسید پرداخت در انتظار بررسی وجود ندارد.';
+        $k[] = [['text' => '↩️ Admin Menu', 'callback_data' => 'adm:menu']];
+        \tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE)]);
+    }
+
+    private static function paymentDetail(string $token, int|string $chat, int $paymentId): void
+    {
+        $payment = (new ManualPaymentService(self::db()))->payment($paymentId);
+        if (!$payment) throw new RuntimeException('Payment پیدا نشد.');
+        $text = "💳 Payment #{$paymentId}\n\n🧾 Order: #" . (int)$payment['order_id'] . "\n👤 Telegram ID: " . (string)$payment['telegram_id'] . "\n📦 Plan: " . (string)$payment['display_name_en'] . "\n🔌 Provider: " . (string)$payment['provider_key'] . "\n💰 Amount: " . number_format((int)$payment['amount_minor']) . ' ' . (string)$payment['currency'] . "\n📌 Status: " . (string)$payment['payment_status'];
+        if (trim((string)($payment['caption'] ?? '')) !== '') $text .= "\n📝 Caption: " . (string)$payment['caption'];
+        $k = [];
+        if ((string)$payment['payment_status'] === 'review') {
+            $k[] = [['text' => '✅ Approve', 'callback_data' => 'adm:payment:approve:' . $paymentId], ['text' => '❌ Reject', 'callback_data' => 'adm:payment:reject:' . $paymentId]];
+        } elseif ((string)$payment['order_status'] === 'provision_failed') {
+            $k[] = [['text' => '🔁 Retry Provisioning', 'callback_data' => 'adm:payment:retry:' . (int)$payment['order_id']]];
+        }
+        $k[] = [['text' => '↩️ Payments', 'callback_data' => 'adm:payments'], ['text' => '🏠 Admin Menu', 'callback_data' => 'adm:menu']];
+        $markup = json_encode(['inline_keyboard' => $k], JSON_UNESCAPED_UNICODE);
+        if ((string)($payment['file_type'] ?? '') === 'photo' && (string)($payment['telegram_file_id'] ?? '') !== '') {
+            \tg($token, 'sendPhoto', ['chat_id' => $chat, 'photo' => (string)$payment['telegram_file_id'], 'caption' => $text, 'reply_markup' => $markup]);
+        } elseif ((string)($payment['telegram_file_id'] ?? '') !== '') {
+            \tg($token, 'sendDocument', ['chat_id' => $chat, 'document' => (string)$payment['telegram_file_id'], 'caption' => $text, 'reply_markup' => $markup]);
+        } else {
+            \tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => $text, 'reply_markup' => $markup]);
+        }
+    }
+
+    private static function paymentAction(string $token, int|string $chat, string $adminTelegramId, string $action, int $id): void
+    {
+        $service = new ManualPaymentService(self::db());
+        if ($action === 'approve') {
+            $payment = $service->approve($id, $adminTelegramId);
+            if ((string)$payment['order_status'] === 'completed') {
+                \tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => 'ℹ️ این پرداخت قبلاً Provision شده است و دوباره اجرا نمی‌شود.']);
+                return;
+            }
+            if (!$service->claimProvisioning((int)$payment['order_id'])) {
+                $latest = $service->payment($id);
+                if ($latest && (string)$latest['order_status'] === 'completed') {
+                    \tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => 'ℹ️ این پرداخت قبلاً Provision شده است و دوباره اجرا نمی‌شود.']);
+                    return;
+                }
+                throw new RuntimeException('این سفارش در وضعیت قابل Provision نیست.');
+            }
+            try {
+                $result = (new ServiceProvisioner(self::db()))->provision((int)$payment['telegram_user_id'], (string)$payment['telegram_id'], (int)$payment['plan_id']);
+                $service->completeProvisioning((int)$payment['order_id'], [
+                    'provider' => $payment['provider_key'],
+                    'subscription_id' => (int)($result['subscription_id'] ?? 0),
+                    'provision_count' => count((array)($result['items'] ?? [])),
+                ]);
+                self::audit($adminTelegramId, 'payment_approved_and_provisioned', (int)$payment['telegram_user_id'], (int)($result['subscription_id'] ?? 0) ?: null, (string)$payment['provider_key'], 'success', ['order_id' => (int)$payment['order_id']]);
+                \tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => '✅ پرداخت تأیید و سرویس با موفقیت Provision شد.\nOrder #' . (int)$payment['order_id']]);
+                self::notifyProvisionedCustomer($token, (string)$payment['telegram_id'], $payment, $result);
+            } catch (\Throwable $e) {
+                $service->failProvisioning((int)$payment['order_id'], $e->getMessage());
+                self::audit($adminTelegramId, 'payment_provision_failed', (int)$payment['telegram_user_id'], null, (string)$payment['provider_key'], 'failed', ['order_id' => (int)$payment['order_id'], 'error' => $e->getMessage()]);
+                throw new RuntimeException('پرداخت تأیید شد اما Provision سرویس ناموفق بود. از Retry Provisioning استفاده کنید.');
+            }
+            return;
+        }
+        if ($action === 'reject') {
+            $payment = $service->reject($id, $adminTelegramId);
+            self::audit($adminTelegramId, 'payment_rejected', (int)$payment['telegram_user_id'], null, (string)$payment['provider_key'], 'success', ['order_id' => (int)$payment['order_id']]);
+            \tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => '❌ رسید پرداخت رد شد. Order #' . (int)$payment['order_id']]);
+            \tg($token, 'sendMessage', ['chat_id' => (string)$payment['telegram_id'], 'text' => '❌ رسید پرداخت شما برای Order #' . (int)$payment['order_id'] . ' تأیید نشد. لطفاً با پشتیبانی تماس بگیرید یا سفارش جدید ثبت کنید.']);
+            return;
+        }
+        if ($action === 'retry') {
+            $payment = $service->payment($id);
+            if (!$payment) throw new RuntimeException('Payment پیدا نشد.');
+            if (!$service->retryProvisioning((int)$payment['order_id'])) {
+                $latest = $service->payment($id);
+                if ($latest && (string)$latest['order_status'] === 'completed') {
+                    \tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => 'ℹ️ این سفارش قبلاً Provision شده است.']);
+                    return;
+                }
+                throw new RuntimeException('این سفارش در وضعیت Retry Provisioning نیست.');
+            }
+            try {
+                $result = (new ServiceProvisioner(self::db()))->provision((int)$payment['telegram_user_id'], (string)$payment['telegram_id'], (int)$payment['plan_id']);
+                $service->completeProvisioning((int)$payment['order_id'], ['provider' => $payment['provider_key'], 'subscription_id' => (int)($result['subscription_id'] ?? 0)]);
+                self::audit($adminTelegramId, 'payment_provision_retry', (int)$payment['telegram_user_id'], (int)($result['subscription_id'] ?? 0) ?: null, (string)$payment['provider_key'], 'success', ['order_id' => (int)$payment['order_id']]);
+                \tg($token, 'sendMessage', ['chat_id' => $chat, 'text' => '✅ Provisioning مجدد با موفقیت انجام شد.']);
+                self::notifyProvisionedCustomer($token, (string)$payment['telegram_id'], $payment, $result);
+            } catch (\Throwable $e) {
+                $service->failProvisioning((int)$payment['order_id'], $e->getMessage());
+                self::audit($adminTelegramId, 'payment_provision_retry', (int)$payment['telegram_user_id'], null, (string)$payment['provider_key'], 'failed', ['order_id' => (int)$payment['order_id'], 'error' => $e->getMessage()]);
+                throw new RuntimeException('Retry Provisioning ناموفق بود.');
+            }
+            return;
+        }
+        throw new RuntimeException('عملیات پرداخت نامعتبر است.');
+    }
+
+    private static function notifyProvisionedCustomer(string $token, string $telegramId, array $payment, array $result): void
+    {
+        $provider = (string)$payment['provider_key'];
+        $plan = (string)$payment['display_name_fa'];
+        if ($provider === 'ibsng') {
+            $username = (string)($result['username'] ?? '');
+            $password = (string)($result['password'] ?? '');
+            $text = "✅ پرداخت شما تأیید شد و سرویس IBSng فعال شد.\n\n📦 پلن: {$plan}\n🔐 نام کاربری: {$username}\n🔑 رمز عبور: {$password}\n\n🌐 OpenVPN / Cisco / L2TP\n\n📋 جزئیات سرویس در «سرویس‌های من» قابل مشاهده است.";
+        } elseif ($provider === 'mikrotik_wireguard') {
+            $ip = (string)($result['assigned_ip'] ?? '—');
+            $text = "✅ پرداخت شما تأیید شد و سرویس MikroTik WireGuard فعال شد.\n\n📦 پلن: {$plan}\n🌐 IP: {$ip}\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید.";
+        } else {
+            $text = "✅ پرداخت شما تأیید شد و سرویس RouteBox فعال شد.\n\n📦 پلن: {$plan}\n\n📋 برای دریافت Config یا QR از «سرویس‌های من» استفاده کنید.";
+        }
+        \tg($token, 'sendMessage', ['chat_id' => $telegramId, 'text' => $text, 'reply_markup' => json_encode(['inline_keyboard' => [[['text' => '📋 سرویس‌های من', 'callback_data' => 'services']]]], JSON_UNESCAPED_UNICODE)]);
     }
 
     private static function chooseUser(string $token, int|string $chat, string $provider): void
