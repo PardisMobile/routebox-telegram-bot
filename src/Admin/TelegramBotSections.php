@@ -45,7 +45,17 @@ final class TelegramBotSections
             . '.atd-bot-control-section .bot-flow strong{display:block;margin-bottom:8px}'
             . '.atd-bot-control-section .bot-flow code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;line-height:1.8;color:var(--muted)}'
             . '.atd-bot-control-section .notice{margin-top:16px;padding:12px 14px;border-radius:12px;background:var(--atd-accent-soft);border:1px solid color-mix(in srgb,var(--atd-accent) 20%,var(--line));line-height:1.7}'
-            . '@media(max-width:760px){.atd-bot-control-section .bot-overview-grid{grid-template-columns:1fr}}'
+            . '.atd-bot-control-section .admin-table{overflow:auto;border:1px solid var(--line);border-radius:14px;margin-top:16px}'
+            . '.atd-bot-control-section table{width:100%;border-collapse:collapse}'
+            . '.atd-bot-control-section th,.atd-bot-control-section td{padding:12px 13px;border-bottom:1px solid var(--line);text-align:start;white-space:nowrap}'
+            . '.atd-bot-control-section th{color:var(--muted);font-size:12px}'
+            . '.atd-bot-control-section tr:last-child td{border-bottom:0}'
+            . '.atd-bot-control-section .admin-form{display:grid;grid-template-columns:minmax(0,2fr) minmax(130px,1fr) auto auto;gap:10px;align-items:end;margin-top:14px}'
+            . '.atd-bot-control-section .admin-field{display:flex;flex-direction:column;gap:7px}'
+            . '.atd-bot-control-section .admin-field label{font-size:12px;font-weight:700;color:var(--muted)}'
+            . '.atd-bot-control-section .admin-field input,.atd-bot-control-section .admin-field select{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid var(--line);border-radius:11px;background:var(--card);color:inherit;font:inherit}'
+            . '.atd-bot-control-section .admin-check{height:40px;display:flex;gap:7px;align-items:center;color:var(--muted);white-space:nowrap}'
+            . '@media(max-width:760px){.atd-bot-control-section .bot-overview-grid{grid-template-columns:1fr}.atd-bot-control-section .admin-form{grid-template-columns:1fr}.atd-bot-control-section .admin-check{height:auto}}'
             . '</style>';
     }
 
@@ -53,7 +63,7 @@ final class TelegramBotSections
     {
         $fa = self::fa($lang);
         $body = '<div class="bot-overview-grid">'
-            . '<div class="bot-overview-card"><h3>👤 ' . ($fa ? 'Customer Bot' : 'Customer Bot') . '</h3>'
+            . '<div class="bot-overview-card"><h3>👤 Customer Bot</h3>'
             . '<p>' . ($fa ? 'رابط کاربری Telegram برای مشتریان؛ روی Bot و Worker فعلی ATD Panel.' : 'The customer-facing Telegram interface running on the existing ATD Panel Bot and Worker.') . '</p>'
             . '<ul>'
             . '<li>' . ($fa ? 'انتخاب Provider و Plan از Catalog فعلی' : 'Provider and Plan selection from the existing catalog') . '</li>'
@@ -66,9 +76,8 @@ final class TelegramBotSections
             . '</div></div>'
             . '<div class="bot-overview-card"><h3>🧩 ' . ($fa ? 'Service Experience' : 'Service Experience') . '</h3>'
             . '<p>' . ($fa ? 'راهنمای هر سرویس از General Guide جداست و باید متناسب با سرویس خریداری‌شده نمایش داده شود.' : 'Service guides remain separate from the General Guide and are intended to follow the purchased service.') . '</p>'
-            . '<ul>'
-            . '<li>RouteBox / WireGuard</li><li>IBSng</li><li>MikroTik WireGuard</li>'
-            . '</ul><div class="actions"><a class="btn btn-secondary" href="/?section=bot-guides">' . ($fa ? 'مدیریت Service Guides' : 'Manage Service Guides') . '</a></div></div>'
+            . '<ul><li>RouteBox / WireGuard</li><li>IBSng</li><li>MikroTik WireGuard</li></ul>'
+            . '<div class="actions"><a class="btn btn-secondary" href="/?section=bot-guides">' . ($fa ? 'مدیریت Service Guides' : 'Manage Service Guides') . '</a></div></div>'
             . '</div>'
             . '<div class="bot-flow"><strong>' . ($fa ? 'Customer Flow' : 'Customer Flow') . '</strong><code>Telegram → Register → Choose Service → Choose Plan → Order / Payment → Provisioning → Credentials / Config → My Services / Renew</code></div>'
             . '<div class="notice">' . ($fa ? 'این صفحه فقط نمای مدیریتی است؛ Provisioning، Worker و Providerهای موجود از اینجا بازنویسی یا duplicate نمی‌شوند.' : 'This is an administrative overview only. Existing provisioning, Worker behavior and Provider integrations are not duplicated or rewritten here.') . '</div>';
@@ -81,30 +90,55 @@ final class TelegramBotSections
         $fa = self::fa($lang);
         $adminCount = 0;
         $enabledCount = 0;
+        $rows = [];
         try {
             $adminCount = (int)$db->query('SELECT COUNT(*) FROM telegram_bot_admins')->fetchColumn();
             $enabledCount = (int)$db->query('SELECT COUNT(*) FROM telegram_bot_admins WHERE enabled=1')->fetchColumn();
+            $rows = $db->query('SELECT id,telegram_id,role,enabled,created_at FROM telegram_bot_admins ORDER BY enabled DESC,id ASC')->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Throwable) {
-            // The existing AdminBot schema is created by its own orchestration path.
+            // Existing AdminBot schema is created by its own orchestration path.
         }
 
+        $csrf = '';
+        if (function_exists('csrf_token')) {
+            $csrf = (string)csrf_token();
+        }
+        $escCsrf = self::esc($csrf);
         $body = '<div class="bot-overview-grid">'
             . '<div class="bot-overview-card"><h3>🛡️ ' . ($fa ? 'Telegram Bot Admin' : 'Telegram Bot Admin') . '</h3>'
-            . '<p>' . ($fa ? 'سیستم مستقل Authorization برای Adminهای Telegram؛ مستقل از IBSng owner / owner_name.' : 'Independent Telegram Admin authorization, separate from IBSng owner / owner_name.') . '</p>'
-            . '<ul>'
-            . '<li>' . ($fa ? 'Numeric Telegram ID' : 'Numeric Telegram ID') . '</li>'
-            . '<li>' . ($fa ? 'چند Admin همزمان' : 'Multiple Admins') . '</li>'
-            . '<li>' . ($fa ? 'Role-ready: Owner / Admin / Support / Finance / Operator' : 'Role-ready: Owner / Admin / Support / Finance / Operator') . '</li>'
-            . '<li>' . ($fa ? 'Audit Log برای عملیات حساس' : 'Audit Log for sensitive actions') . '</li>'
-            . '</ul><div class="actions"><a class="btn btn-primary" href="/telegram-admins.php">' . ($fa ? 'مدیریت Adminها' : 'Manage Admins') . '</a></div></div>'
+            . '<p>' . ($fa ? 'Authorization مستقل بر اساس Telegram Numeric ID؛ مستقل از IBSng owner / owner_name.' : 'Independent Telegram Numeric ID authorization, separate from IBSng owner / owner_name.') . '</p>'
+            . '<ul><li>Numeric Telegram ID</li><li>' . ($fa ? 'چند Admin همزمان' : 'Multiple Admins') . '</li><li>' . ($fa ? 'Role-ready' : 'Role-ready') . ': Owner / Admin / Support / Finance / Operator</li><li>' . ($fa ? 'Audit Log برای عملیات حساس' : 'Audit Log for sensitive actions') . '</li></ul></div>'
             . '<div class="bot-overview-card"><h3>📊 ' . ($fa ? 'وضعیت Adminها' : 'Admin Status') . '</h3>'
-            . '<p>' . ($fa ? 'اطلاعات از همان جدول Authorization فعلی خوانده می‌شود.' : 'Read-only status from the existing Telegram Admin authorization table.') . '</p>'
             . '<ul><li>' . ($fa ? 'تعداد Admin: ' : 'Admins: ') . '<strong>' . $adminCount . '</strong></li><li>' . ($fa ? 'فعال: ' : 'Enabled: ') . '<strong>' . $enabledCount . '</strong></li></ul>'
-            . '<div class="actions"><a class="btn btn-secondary" href="/telegram-admins.php">' . ($fa ? 'باز کردن مدیریت Admin' : 'Open Admin Management') . '</a></div></div>'
-            . '</div>'
-            . '<div class="bot-flow"><strong>' . ($fa ? 'Admin Flow' : 'Admin Flow') . '</strong><code>Telegram Admin ID → Authorization → Admin Menu → Users / Services / Orders / Payments / Audit → Existing Application / Provider Layer</code></div>'
-            . '<div class="notice">' . ($fa ? 'Provisioning سرویس Admin از همان ServiceProvisioner و Provider integration موجود استفاده می‌کند. این صفحه هیچ implementation جدیدی برای Providerها ایجاد نمی‌کند.' : 'Admin service provisioning continues through the existing ServiceProvisioner and Provider integrations. This page adds no parallel Provider implementation.') . '</div>';
+            . '<p>' . ($fa ? 'مدیریت از همین صفحه انجام می‌شود و UI مستقل دیگری برای Adminها وجود ندارد.' : 'Administration is managed inside this section; there is no separate Admin page UI.') . '</p></div>'
+            . '</div>';
 
-        return self::shell($fa ? 'Telegram Bot Admin' : 'Telegram Bot Admin', $fa ? 'مرکز مدیریت قابلیت‌های Admin ربات روی معماری فعلی.' : 'Management overview for the existing Telegram Bot Admin architecture.', $body);
+        $body .= '<div class="bot-overview-card" style="margin-top:14px"><h3>' . ($fa ? 'افزودن Admin' : 'Add Telegram Admin') . '</h3>'
+            . '<form class="admin-form" method="post" action="/telegram-admins.php">'
+            . '<input type="hidden" name="csrf_token" value="' . $escCsrf . '"><input type="hidden" name="action" value="save">'
+            . '<div class="admin-field"><label>' . ($fa ? 'Telegram Numeric ID' : 'Telegram Numeric ID') . '</label><input name="telegram_id" inputmode="numeric" pattern="[0-9]{5,20}" required placeholder="123456789"></div>'
+            . '<div class="admin-field"><label>' . ($fa ? 'نقش' : 'Role') . '</label><select name="role"><option value="owner">Owner</option><option value="admin" selected>Admin</option><option value="support">Support</option><option value="finance">Finance</option><option value="operator">Operator</option></select></div>'
+            . '<label class="admin-check"><input type="checkbox" name="enabled" checked> ' . ($fa ? 'فعال' : 'Enabled') . '</label>'
+            . '<button class="btn btn-primary" type="submit">' . ($fa ? 'افزودن Admin' : 'Add Admin') . '</button>'
+            . '</form></div>';
+
+        $body .= '<div class="bot-overview-card" style="margin-top:14px"><h3>' . ($fa ? 'Adminهای ثبت‌شده' : 'Configured Admins') . '</h3>'
+            . '<div class="admin-table"><table><thead><tr><th>Telegram ID</th><th>Role</th><th>' . ($fa ? 'وضعیت' : 'Status') . '</th><th>' . ($fa ? 'تاریخ ایجاد' : 'Created') . '</th><th>' . ($fa ? 'عملیات' : 'Actions') . '</th></tr></thead><tbody>';
+        foreach ($rows as $row) {
+            $id = (int)$row['id'];
+            $enabled = (int)$row['enabled'] === 1;
+            $body .= '<tr><td><code>' . self::esc((string)$row['telegram_id']) . '</code></td><td>' . self::esc(ucfirst((string)$row['role'])) . '</td><td>' . ($enabled ? ($fa ? 'فعال' : 'Enabled') : ($fa ? 'غیرفعال' : 'Disabled')) . '</td><td>' . date('Y-m-d H:i', (int)$row['created_at']) . '</td><td><div class="actions">'
+                . '<form method="post" action="/telegram-admins.php"><input type="hidden" name="csrf_token" value="' . $escCsrf . '"><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="' . $id . '"><button class="btn" type="submit">' . ($enabled ? ($fa ? 'غیرفعال' : 'Disable') : ($fa ? 'فعال' : 'Enable')) . '</button></form>'
+                . '<form method="post" action="/telegram-admins.php" onsubmit="return confirm(\'' . ($fa ? 'این Admin حذف شود؟' : 'Remove this Telegram Bot Admin?') . '\')"><input type="hidden" name="csrf_token" value="' . $escCsrf . '"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="' . $id . '"><button class="btn" type="submit">' . ($fa ? 'حذف' : 'Remove') . '</button></form>'
+                . '</div></td></tr>';
+        }
+        if (!$rows) {
+            $body .= '<tr><td colspan="5">' . ($fa ? 'هنوز Adminی ثبت نشده است.' : 'No Telegram Bot Admins configured yet.') . '</td></tr>';
+        }
+        $body .= '</tbody></table></div></div>'
+            . '<div class="bot-flow"><strong>' . ($fa ? 'Admin Flow' : 'Admin Flow') . '</strong><code>Telegram Admin ID → Authorization → Admin Menu → Users / Services / Orders / Payments / Audit → Existing Application / Provider Layer</code></div>'
+            . '<div class="notice">' . ($fa ? 'Provisioning سرویس Admin از همان ServiceProvisioner و Provider integration موجود استفاده می‌کند. این بخش هیچ implementation جدیدی برای Providerها ایجاد نمی‌کند.' : 'Admin service provisioning continues through the existing ServiceProvisioner and Provider integrations. This section adds no parallel Provider implementation.') . '</div>';
+
+        return self::shell($fa ? 'Telegram Bot Admin' : 'Telegram Bot Admin', $fa ? 'مدیریت Adminهای Telegram داخل همان Unified UI پنل.' : 'Telegram Admin management inside the existing unified ATD Panel UI.', $body);
     }
 }
