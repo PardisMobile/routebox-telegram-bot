@@ -1,305 +1,191 @@
-# 🚀 RouteBox Telegram Bot
+# 🚀 RouteBox Telegram Bot / ATD Panel
 
-Telegram Bot + independent Web Admin Panel for **RouteBox / AmneziaWG**, with a modular service architecture for multiple service providers such as **IBSng**.
+Telegram Bot + Web Admin Panel for a modular multi-Provider service platform.
 
-**Current version:** `0.1.0-beta.11.05` · **Status:** 🧪 Beta  
-**Production installer:** `install.sh`  
-**Platform:** Ubuntu 22.04+
+**Development branch:** `ATD-Panel`  
+**Current version:** `0.1.0-beta.11.05`  
+**Last confirmed healthy application/UI checkpoint:** `6026a16`
 
-> The `VERSION` file is the source of truth for the installed application version.
+> Read `ATD_PANEL_WORKING_NOTES.md`, `ROADMAP.md` and `docs/ATD_PANEL_CURRENT_STATE.md` before changing the project.
 
-## ✨ Current capabilities
+## Providers
 
-### Telegram Bot
+Current Provider integrations:
 
-- 🇮🇷🇬🇧 Persian / English bot experience
-- Provider-independent service-category menu
-- RouteBox / AmneziaWG provisioning
-- Multiple RouteBox servers
-- Free trial with trial-reuse protection
-- Configurable welcome messages and Telegram buttons
-- My Services management
-- `.conf` configuration delivery
-- QR-code delivery for AmneziaWG
-- Guide links for Android, iPhone/iPad, Windows and macOS
-- Basic commands: `/start`, `/menu`, `/account`, `/help`
+- RouteBox / AmneziaWG
+- IBSng A1.24
+- MikroTik WireGuard
 
-### RouteBox integration
+The architecture is Provider-neutral. Provider/Plan discovery is based on the existing service catalog and Provider-specific `provider_key` / Plan metadata.
 
-The Bot uses the current RouteBox API integration for authentication, health/status, AWG status, peers, expiry, configuration export, VPN link / Sing-box export and traffic reset.
-
-The production installer also performs a real temporary RouteBox/AWG smoke test before accepting a configured server.
-
-### Admin Panel
-
-- 🖥️ Independent PHP Admin Panel
-- 🌙 Light / Dark mode
-- 🇮🇷🇬🇧 Persian / English interface
-- RouteBox server management and connection tests
-- Plan management
-- Trial and bot settings
-- Password change and CSRF protection
-- Version check against GitHub
-- In-panel update workflow
-- Recovery / repair tooling
-- Optional HTTP + HTTPS on the same panel port by reusing the existing RouteBox panel certificate
-- Does not require taking over existing Apache/Nginx ports 80/443
-
-### 🎨 ATD Panel UI baseline
-
-The `ATD-Panel` branch contains the current Admin Panel visual-normalization work for RouteBox, IBSng and MikroTik.
-
-- Consistent provider/server status cards with connection state, country flag, IP and ping where available
-- Four Users summary cards: RouteBox Users, IBSng Users, MikroTik Users and Telegram Bot Users
-- Consistent server action-button styling while preserving provider capabilities
-- Consistent plan-card actions: `Edit Plan` / `Disable` / `Delete`
-- Compact plan edit panels with an explicit Close action and Escape-to-close behavior
-- IBSng Provider Plan Key is shown as the meaningful/manual group-name field; RouteBox and MikroTik do not require manual entry of provider-generated/internal keys
-- Server lists are shown before Add Server when servers already exist
-- MikroTik peer lists are bounded to 50 visible peers per page with pagination
-- Cross-browser country flags use image assets with country-code fallback instead of relying on emoji font rendering
-
-> **Important:** ATD Panel UI work is intentionally isolated from the working provider implementations. RouteBox, IBSng and MikroTik provisioning/API logic, peer allocation and tested business functions are treated as protected unless a separate functional task explicitly requests a change.
-
-## 🔵 IBSng integration — completed and tested
-
-IBSng A1.24 is implemented as an additional modular service provider. The existing RouteBox/AWG provisioning path remains separate and is not replaced by IBSng.
-
-Completed IBSng capabilities include:
-
-- IBSng Web Panel / API connection
-- IBSng authentication and session handling
-- IBSng server configuration foundation
-- IBSng group mapping
-- IBSng group listing / synchronization support
-- IBSng user lookup / user information operations
-- IBSng test-user creation support
-- End-to-end IBSng account provisioning from Telegram
-- Automatic IBSng Internet Username + password assignment
-- IBSng subscription persistence in `service_subscriptions`
-- Provider / server / group-aware IBSng service provisioning
-- Worker loading of the isolated `IBSngClient`
-- One IBSng account for the configured access methods (OpenVPN / Cisco / L2TP), rather than creating separate accounts for each access method
-- Real IBSng A1.24 provisioning flow tested successfully
-
-### IBSng architecture
-
-The repository uses `ServiceRouter`, `ServiceDispatcher`, `ServiceProviderInterface` and the IBSng provider/service classes rather than a separate `ServiceProvisioner` class. The effective flow is:
+Current Provider keys include:
 
 ```text
+routebox
+ibsng
+mikrotik_wireguard
+```
+
+A future Provider must integrate through the existing architecture rather than requiring a rewrite of the Bot or Web Panel.
+
+## Protected architecture
+
+The project already has an operational:
+
+```text
+Web Panel
+   │
+Telegram Bot ── Existing Worker
+   │
+Service/Application Layer
+   │
+Provider Integrations
+   │
+Database
+```
+
+Do not create a second Worker, duplicate Provider provisioning, duplicate MikroTik IP allocation, or casually rewrite working Provider Core.
+
+## ATD Panel UI
+
+The Web Panel uses a shared `?section=` architecture.
+
+Important existing sections:
+
+- `section=users` — shared User Management
+- `section=payment-settings` — shared Payment Settings
+- `section=bot` — Telegram Bot control center
+
+The `section=bot` area already contains protected Bot Settings, Bot Buttons and Bot Menu Preview. Customer Bot and Telegram Bot Admin are child destinations inside this same UI architecture.
+
+The four protected ATD Stats/status cards must not be removed, reordered or redesigned casually.
+
+## Telegram Bot
+
+The existing Customer Bot supports the modular service architecture and Provider-specific service flows.
+
+The Bot must not maintain a separate hard-coded Provider/Plan catalog:
+
+```text
+Provider
+   ↓
+provider_key
+   ↓
+Service Category
+   ↓
+Provider-owned Plan
+   ↓
 Telegram Bot
-      |
-      v
-ServiceRouter / ServiceDispatcher
-      |
-      +----------------------+
-      |                      |
-      v                      v
-RouteBox provider       IBSngService
-                             |
-                             v
-                        IBSngProvider
-                             |
-                             v
-                        IBSngClient
-                             |
-                             v
-                      IBSng A1.24 API
 ```
 
-The IBSng module lives under `src/Integrations/IBSng/`. Provider-specific protocol code stays isolated from the existing RouteBox client and provisioning flow.
+### Telegram Bot Admin
 
-> **Important terminology:** IBSng `owner` / `owner_name` is an IBSng-specific concept. It is **not** the Telegram Bot Admin system. Telegram Bot Admin is a separate future permission layer.
+The Admin foundation is implemented:
 
-## 💳 Payment foundation
+- Telegram Numeric ID authorization
+- multiple Admins
+- future-ready roles
+- Web management via `public/telegram-admins.php`
+- dedicated Admin menu inside the existing Worker
+- existing Provider/service provisioning reused
+- replay protection and audit logging
 
-The payment layer is architecturally present, but real payment gateways are not currently advertised as production-ready:
+Remaining major Admin work includes User/Search, Service Management, IBSng account management, Worker operations, notifications and the complete payment lifecycle.
 
-- `PaymentGatewayInterface`
-- `PaymentResult`
-- `OrderService`
-- Orders and payment-provider schema
-- Coupon and coupon-redemption schema
-- Provider-independent service catalog and dispatcher
+## Usage Guides
 
-Future gateways can be added without rewriting the RouteBox or IBSng provisioning implementations.
+Do not confuse these:
 
-## 📦 Installation
+1. **General Guide** — general product/bot usage.
+2. **Bot/service Usage Guides** — customer instructions for the Provider/service they purchased.
+3. **Provider Admin Guides** — operator instructions for configuring Provider servers in ATD Panel.
 
-### Production Installation
+## Payment
 
-`install.sh` is the **user-facing production installer**. It downloads and executes the internal `installer-core.sh`, then performs the existing production repair, restricted updater and optional RouteBox TLS integration steps.
+Payment is Provider-neutral.
 
-One-command production installation:
+The existing `section=payment-settings` surface now contains the card-to-card configuration.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh | bash
+The complete workflow is still staged and must be tested before being called complete:
+
+```text
+Customer
+  ↓
+Dynamic Provider / Plan
+  ↓
+Order
+  ↓
+Payment
+  ↓
+Receipt
+  ↓
+Admin Review
+  ↓
+Approve / Reject
+  ↓
+Existing Provider Provisioning
+  ↓
+Activate + Send Config/Credentials
 ```
 
-The production installer is intended for **Ubuntu 22.04+** and the current installer flow handles:
+Future payment adapters include ZarinPal and Crypto.
 
-- required system dependencies and PHP 8+ validation
-- SQLite/database initialization
-- application configuration and first-install Admin credentials
-- Telegram Bot token validation
-- RouteBox server/API validation and real AWG smoke testing
-- production systemd Worker service
-- independent PHP Admin Panel and dynamic panel port
-- Admin Panel health/repair integration
-- restricted Admin Panel update tooling
-- optional reuse of the existing RouteBox TLS certificate without taking over ports 80/443
+## IBSng
 
-### Development / IBSng Environment
+IBSng A1.24 provisioning is operational and tested end-to-end.
 
-The development installer is an isolated deployment for development/testing of the modular-services and IBSng work. It targets the `feature/modular-services-ibsng` branch and uses separate `routebox-telegram-bot-dev` application/state paths, leaving the production installation separate.
+Important:
 
-One-command development installation:
+- `provider_key` identifies the Provider.
+- IBSng Provider Plan Key represents the real IBSng Group/Plan identifier.
+- Username Prefix is only a username-generation setting.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/feature/modular-services-ibsng/install-dev.sh | bash
+These values must never be conflated.
+
+## MikroTik WireGuard
+
+MikroTik provisioning and IP/peer allocation remain Provider-owned. The Telegram Bot must never duplicate the allocation algorithm.
+
+## MirzaBot reference policy
+
+`https://github.com/mahdiMGF2/mirzabot` is a **research/feature reference only**.
+
+It may be used to compare feature ideas and user/admin workflows. Its source code, schema, naming, UI, menu structure, text and implementation must not be copied into ATD Panel.
+
+## Security
+
+A full source-wide security audit remains pending. Required areas include SQL Injection, XSS, CSRF, IDOR, authentication/authorization, privilege escalation, command injection, SSRF, path traversal, unsafe uploads, Telegram callback forgery/replay, rate limiting, secrets and session security.
+
+For a real SQL Injection finding, report the exact file/function/query/input/attack vector/severity before fixing it. Then use the smallest prepared-statement/parameter-binding change and regression-test it.
+
+## Installer
+
+Current installer structure:
+
+```text
+install.sh
+installer-core.sh
+install-dev.sh
+install-dev-full.sh
 ```
 
-`install-dev.sh` is the developer-facing entrypoint and delegates to `install-dev-full.sh`. The current development flow installs the development checkout, PHP/SQLite/Git/curl/OpenSSL/QR prerequisites, an isolated Worker and Admin Panel, performs syntax validation and web-panel health checks, and exposes the IBSng development/test tooling present on that branch.
+`install-v2.sh` is retired and must not be treated as a current installer.
 
-### Final installer structure
+## Documentation
 
-There are exactly **four installer files** in the final layout:
-
-| File | Role |
-|---|---|
-| `install.sh` | ⭐ **User-facing production installer / public entrypoint** |
-| `installer-core.sh` | 🔧 **Internal production installer core**, called by `install.sh` |
-| `install-dev.sh` | 🛠 **Developer entrypoint** for `feature/modular-services-ibsng` |
-| `install-dev-full.sh` | 🧪 **Full development / IBSng developer setup** |
-
-`install-v2.sh` has been retired and is no longer part of the repository. Do not use or reference it.
-
-The production entrypoint remains `install.sh`; users should not need to call the internal core directly.
-
-## 🛠️ Update and recovery tooling
-
-Production updates can be started with:
-
-```bash
-sudo bash /opt/routebox-telegram-bot/update.sh
-```
-
-The Admin Panel also contains the update workflow. The repository includes backup/restore and Admin Panel repair tooling alongside the installer.
-
-## 🔐 Security model
-
-- Telegram Bot Tokens are entered silently during installation and stored encrypted.
-- RouteBox and IBSng credentials are stored encrypted.
-- Admin sessions use HTTP-only / SameSite cookies and CSRF protection.
-- SQLite/database and configuration are kept outside the public web root.
-- The Admin Panel runs as `www-data`.
-- The web updater uses a restricted root wrapper rather than general sudo access.
-- A worker lock prevents accidental duplicate Telegram polling workers.
-- Production installation/update flows do not take over existing Apache/Nginx/RouteBox ports 80/443.
-
-## 🗺️ Development roadmap
-
-### ✅ Completed IBSng milestone
-
-- [x] Modular IBSng provider integration
-- [x] IBSng A1.24 connection/authentication/session handling
-- [x] IBSng server configuration foundation
-- [x] IBSng group mapping and listing
-- [x] IBSng user lookup operations
-- [x] IBSng test-user creation support
-- [x] End-to-end Telegram IBSng account provisioning
-- [x] Internet Username + password provisioning
-- [x] `service_subscriptions` persistence
-- [x] Provider/server/group-aware provisioning
-- [x] Worker integration with the isolated IBSng client
-- [x] Real IBSng A1.24 provisioning flow tested successfully
-
-### 🎨 ATD Panel UI normalization — completed baseline
-
-- [x] Unified RouteBox / IBSng / MikroTik server status-card presentation
-- [x] Restored status, flag and ping information in the provider summary area
-- [x] Added the four Users summary cards and placed them directly under the Users heading
-- [x] Unified Connected / Running status-pill styling
-- [x] Unified provider plan action-row styling
-- [x] Added explicit plan-editor close behavior without changing plan update logic
-- [x] Made Provider Plan Key manual/required only for IBSng where it represents the IBSng group name
-- [x] Preserved RouteBox/MikroTik provider-generated/internal plan-key behavior
-- [x] Moved IBSng and MikroTik server lists before Add Server when servers exist
-- [x] Added bounded MikroTik peer pagination at 50 peers per page
-- [x] Fixed country-flag rendering so Chrome/Edge do not depend on regional-indicator emoji fonts
-
-### 🔜 Upcoming: Telegram Bot Admin
-
-Telegram Bot Admin is a **new, independent permission layer**. It is not the same thing as the IBSng `owner` / `owner_name` concept.
-
-- [ ] Independent Telegram Bot Admin authentication / authorization system
-- [ ] Configure Telegram Bot Admin users from the Web/Admin Panel
-- [ ] Support **multiple Telegram numeric administrator IDs**
-- [ ] Dedicated Telegram Bot Admin menu
-- [ ] Telegram service-management capabilities for authorized admins
-
-### 💳 Upcoming: Admin payment bypass
-
-- [ ] Authorized Telegram Bot Admin can bypass customer payment when creating services
-- [ ] RouteBox service creation without customer payment
-- [ ] IBSng service creation without customer payment
-- [ ] Provider-neutral design so the bypass can support future service providers
-- [ ] Keep the normal customer payment flow unchanged
-- [ ] Record admin-created orders/provisioning actions for auditability
-
-### 🔵 Upcoming: IBSng user management from Telegram Bot Admin
-
-- [ ] Search IBSng users by username
-- [ ] View IBSng username and account information
-- [ ] Display account expiry date
-- [ ] Display expiry date in Persian/Shamsi format
-- [ ] Display traffic/quota usage when the IBSng service is quota-based
-- [ ] Renew an IBSng user
-- [ ] Edit IBSng user information where supported
-- [ ] Additional safe account-management actions as appropriate
-- [ ] Renewal must use the IBSng plans already configured in the RouteBox Admin Panel; no separate hard-coded renewal catalog
-
-### ⚙️ Upcoming: IBSng administration tools
-
-- [ ] Configurable generated IBSng username prefix from the Admin Panel
-- [ ] Current generated prefix is `rb`; allow future configuration such as `tgbot`
-- [ ] Move `test-ibsng-account.php` functionality into the IBSng Admin Panel as a safe UI
-- [ ] Keep the standalone test script out of the normal user workflow
-
-### 🔧 Upcoming: Worker operations
-
-- [ ] Telegram Bot Worker status in the Admin Panel
-- [ ] Restart/reload button in the Telegram Bot section
-- [ ] Ensure the control targets the correct existing Worker systemd service
-- [ ] Worker health monitoring
-- [ ] Recent operational logs / diagnostics
-
-### 📦 Completed: Installer refactor
-
-- [x] `install.sh` remains the user-facing production entrypoint
-- [x] `install-v2.sh` renamed to `installer-core.sh`
-- [x] Production entrypoint updated to use `installer-core.sh`
-- [x] Production installer UX improved with clear sections, status messages and final summary
-- [x] Installer core UX improved without changing the production architecture
-- [x] Development installers retained as `install-dev.sh` and `install-dev-full.sh`
-- [x] Installer documentation updated to the final four-file structure
-
-## 📚 Documentation
-
-- [Installation Guide](./INSTALL.md)
+- [Persistent Working Notes](./ATD_PANEL_WORKING_NOTES.md)
 - [Roadmap](./ROADMAP.md)
+- [Current State / New-Chat Handoff](./docs/ATD_PANEL_CURRENT_STATE.md)
 - [Changelog](./CHANGELOG.md)
-- [Modular Architecture](./docs/MODULAR_ARCHITECTURE.md)
-- [ATD Panel Working Notes](./docs/ATD_PANEL_WORKING_NOTES.md)
-- [IBSng tools](./tools/)
+- [Installation](./INSTALL.md)
+- [ATD Architecture](./docs/ATD_PANEL_ARCHITECTURE.md)
+- [Telegram Bot Admin](./docs/TELEGRAM_ADMIN.md)
+- [Payment Workflow](./docs/ATD_PAYMENT_WORKFLOW.md)
+- [Security Baseline](./docs/SECURITY_BASELINE.md)
 - [Troubleshooting](./TROUBLESHOOTING.md)
 
-## 👤 Creator
+## Development rule
 
-**RouteBox Telegram Bot — created and maintained by Amir Taheri.**
+Existing functionality > Refactor.
 
-## ATD Panel follow-up — 2026-10-04
-
-The ATD Panel baseline is now unified across RouteBox, IBSng and MikroTik. The public RouteBox page uses `section=routebox` while the legacy `servers` action contract remains internal. Legacy server flags use image assets for Chrome/Edge/Firefox consistency, Add Server follows server lists, RouteBox uses its existing delete endpoint through the UI, and the Dashboard project-site button is reserved for the real URL to be supplied later.
-
-The four-card/status/system layout is protected from UI refactors. Provider APIs, provisioning, peer allocation and IBSng group mapping remain protected unless a separate functional task explicitly requests a change.
+Before changing Provider Core, Worker, database semantics or sensitive functional flows: inspect the complete call chain, explain the dependency and risk, make the smallest change, test it, update documentation and create a traceable commit.
