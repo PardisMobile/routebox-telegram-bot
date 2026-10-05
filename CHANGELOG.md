@@ -76,20 +76,21 @@ Version source of truth: [`VERSION`](./VERSION)
 
 ### Telegram Bot Admin
 
-- [ ] Independent Telegram Bot Admin authentication / authorization.
-- [ ] Configure Bot Admin users from the Web/Admin Panel.
-- [ ] Support multiple Telegram numeric administrator IDs.
-- [ ] Dedicated Bot Admin Telegram menu.
-- [ ] Telegram service-management operations for authorized admins.
+- [x] Independent Telegram Bot Admin authentication / authorization.
+- [x] Configure Bot Admin users from the Web/Admin Panel.
+- [x] Support multiple Telegram numeric administrator IDs.
+- [x] Dedicated Bot Admin Telegram menu.
+- [x] Telegram service-management operations for authorized admins.
+- [x] Added Web Panel Bot Admin overview without introducing a second Worker or Provider implementation.
 
 ### Admin payment bypass
 
-- [ ] Allow authorized Telegram Bot Admin users to create services without customer payment.
-- [ ] RouteBox service creation without payment.
-- [ ] IBSng service creation without payment.
-- [ ] Provider-neutral design for future service providers.
-- [ ] Preserve the normal customer payment flow.
-- [ ] Record admin-created orders/provisioning actions for auditability.
+- [x] Allow authorized Telegram Bot Admin users to create services without customer payment.
+- [x] RouteBox service creation without payment.
+- [x] IBSng service creation without payment.
+- [x] Provider-neutral design for future service providers.
+- [x] Preserve the normal customer payment flow.
+- [x] Record admin-created orders/provisioning actions for auditability.
 
 ### IBSng user management
 
@@ -106,6 +107,16 @@ Version source of truth: [`VERSION`](./VERSION)
 - [ ] Configure the generated IBSng username prefix from the Admin Panel.
 - [ ] Keep the current generated prefix `rb` as the default; support values such as `tgbot` later.
 - [ ] Move `test-ibsng-account.php` into a safe IBSng Admin Panel UI.
+
+### Telegram Bot control-center UI
+
+- [x] Keep Bot Settings, Bot Buttons and Bot Menu Preview on the existing `section=bot` page.
+- [x] Add separate Customer Bot overview navigation.
+- [x] Add separate Telegram Bot Admin overview navigation.
+- [x] Keep Telegram Bot Usage Guides separate from Provider Admin Guides.
+- [x] Keep General Guide and service-specific guides conceptually separate.
+- [x] Reuse the existing Telegram Bot / Worker / ServiceProvisioner architecture; no second Worker was introduced.
+- [x] Do not modify Provider Core implementations for the UI organization.
 
 ### Worker / operations
 
@@ -151,4 +162,5 @@ Version source of truth: [`VERSION`](./VERSION)
 - Added RouteBox/IBSng admin provisioning through the existing ServiceProvisioner path.
 - Added one-time Admin action records and audit logging without credential payloads.
 - Added Web Panel Telegram Admin management at public/telegram-admins.php.
-- Card-to-card payment/receipt approval remains the next slice.
+- Added a separate Web Panel Customer Bot / Bot Admin overview without changing Provider Core behavior.
+- Card-to-card payment/receipt approval remains the next functional slice.
