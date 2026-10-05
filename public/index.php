@@ -25,3 +25,10 @@ if ($__atdRouteboxAlias) {
 }
 
 require __DIR__ . '/index.legacy.php';
+
+// Register after the existing TrialAdminPanel callback so this final
+// presentation pass can deterministically repair only the Trial UI.
+if (function_exists('db')) {
+    require_once __DIR__ . '/../src/Admin/TrialUIEnhancer.php';
+    \RouteBox\Admin\TrialUIEnhancer::boot(db());
+}
