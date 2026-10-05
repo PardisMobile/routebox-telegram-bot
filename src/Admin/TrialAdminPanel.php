@@ -10,12 +10,17 @@ use RouteBox\Services\TrialService;
 require_once __DIR__ . '/../Services/TrialService.php';
 
 /**
- * Trial UI is intentionally attached to the existing ATD Panel pages.
- * It does not create a new route, page, shell, or provider implementation.
+ * Presentation/admin controls for the provider-aware Trial lifecycle.
+ *
+ * This class deliberately does not create a page or route. The existing
+ * ATD Panel shell remains the source of truth; the UI is attached to the
+ * already-rendered section=bot and section=users output at shutdown, before
+ * the existing ATDUICompatibility output callback finalizes the response.
  */
 final class TrialAdminPanel
 {
     private static bool $booted = false;
+    private static bool $shutdownRegistered = false;
 
     private static function e(mixed $value): string
     {
@@ -26,16 +31,21 @@ final class TrialAdminPanel
     {
         if (self::$booted || PHP_SAPI === 'cli') return;
         self::$booted = true;
+
         TrialService::ensureSchema($db);
 
-        // Keep Trial actions on the existing web-panel request lifecycle.
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && isset($_POST['atd_trial_action'])) {
             require_admin();
             verify_csrf();
             try {
                 $action = (string)$_POST['atd_trial_action'];
                 if ($action === 'save_plan') {
-                    TrialService::savePlan($db, (int)($_POST['category_id'] ?? 0), (int)($_POST['plan_id'] ?? 0), isset($_POST['enabled']));
+                    TrialService::savePlan(
+                        $db,
+                        (int)($_POST['category_id'] ?? 0),
+                        (int)($_POST['plan_id'] ?? 0),
+                        isset($_POST['enabled'])
+                    );
                 } elseif ($action === 'delete_trial') {
                     TrialService::deleteExpired($db, (int)($_POST['trial_id'] ?? 0));
                 } else {
@@ -51,27 +61,47 @@ final class TrialAdminPanel
             exit;
         }
 
-        // index.core.php is already the single shared shell for section=bot.
-        // Add one card to that page and one card to the existing Users page.
-        ob_start(static function (string $html) use ($db): string {
-            $section = (string)($_GET['section'] ?? '');
-            $lang = (string)($_GET['lang'] ?? ($_SESSION['panel_lang'] ?? 'fa')) === 'en' ? 'en' : 'fa';
-            if ($section === 'bot') {
-                return self::injectBeforeMainEnd($html, self::botSettings($db, $lang));
-            }
-            if ($section === 'users') {
-                return self::injectBeforeMainEnd($html, self::userTrials($db, $lang));
-            }
-            return $html;
-        });
+        /*
+         * public/index.php starts the existing ATDUICompatibility output
+         * buffer after bootstrap. Registering our own output buffer here
+         * therefore puts it underneath the real ATD shell buffer and is not
+         * reliable for the legacy/special-section renderer. Instead, at PHP
+         * shutdown we modify the still-open outer ATD buffer directly. The
+         * normal ATDUICompatibility callback then runs unchanged afterwards.
+         */
+        if (!self::$shutdownRegistered) {
+            self::$shutdownRegistered = true;
+            register_shutdown_function(static function () use ($db): void {
+                self::injectIntoExistingShell($db);
+            });
+        }
     }
 
-    private static function injectBeforeMainEnd(string $html, string $panel): string
+    private static function injectIntoExistingShell(PDO $db): void
     {
+        $section = (string)($_GET['section'] ?? '');
+        if (!in_array($section, ['bot', 'users'], true)) return;
+        if (ob_get_level() < 1) return;
+
+        $html = ob_get_contents();
+        if (!is_string($html) || $html === '') return;
+
+        // Only touch the already-rendered unified ATD shell. This prevents
+        // accidental injection into unrelated output buffers.
+        if (stripos($html, 'id="atd-ui-compatibility"') === false) return;
+        if (stripos($html, '</main>') === false) return;
+
+        $lang = (string)($_GET['lang'] ?? ($_SESSION['panel_lang'] ?? 'fa')) === 'en' ? 'en' : 'fa';
+        $panel = $section === 'bot'
+            ? self::botSettings($db, $lang)
+            : self::userTrials($db, $lang);
+
         $marker = '</main>';
         $pos = stripos($html, $marker);
-        if ($pos === false) return $html;
-        return substr($html, 0, $pos) . $panel . substr($html, $pos);
+        if ($pos === false) return;
+
+        ob_clean();
+        echo substr($html, 0, $pos) . $panel . substr($html, $pos);
     }
 
     private static function styles(): string
@@ -104,6 +134,7 @@ final class TrialAdminPanel
     {
         $fa = $lang === 'fa';
         $cards = '';
+
         foreach (TrialService::categoriesWithPlans($db) as $cat) {
             $current = (int)($cat['trial_plan_id'] ?? 0);
             $cards .= '<form class="atd-trial-card" method="post">'
@@ -115,19 +146,33 @@ final class TrialAdminPanel
                 . '<div class="muted">provider_key: <code>' . self::e($cat['provider_key']) . '</code></div>'
                 . '<select name="plan_id">'
                 . '<option value="0">— ' . ($fa ? 'بدون Trial' : 'No Trial') . ' —</option>';
+
             foreach ($cat['plans'] as $plan) {
                 $selected = $current === (int)$plan['id'] ? ' selected' : '';
                 $label = $fa ? $plan['display_name_fa'] : $plan['display_name_en'];
-                $cards .= '<option value="' . (int)$plan['id'] . '"' . $selected . '>' . self::e($label) . ' · ' . (int)$plan['duration_days'] . 'd</option>';
+                $cards .= '<option value="' . (int)$plan['id'] . '"' . $selected . '>'
+                    . self::e($label) . ' · ' . (int)$plan['duration_days'] . 'd</option>';
             }
-            $cards .= '</select><div class="row"><label><input type="checkbox" name="enabled" value="1"' . ($current > 0 ? ' checked' : '') . '> ' . ($fa ? 'فعال' : 'Enabled') . '</label>'
-                . '<button class="btn btn-primary" type="submit">' . ($fa ? 'ذخیره' : 'Save') . '</button></div></form>';
+
+            $cards .= '</select><div class="row"><label><input type="checkbox" name="enabled" value="1"' . ($current > 0 ? ' checked' : '') . '> '
+                . ($fa ? 'فعال' : 'Enabled')
+                . '</label><button class="btn btn-primary" type="submit">'
+                . ($fa ? 'ذخیره' : 'Save') . '</button></div></form>';
         }
+
         if ($cards === '') {
-            $cards = '<div class="muted">' . ($fa ? 'هنوز Provider/Plan فعالی برای انتخاب Trial وجود ندارد.' : 'No active Provider Plans are available for Trial selection yet.') . '</div>';
+            $cards = '<div class="muted">'
+                . ($fa ? 'هنوز Provider/Plan فعالی برای انتخاب Trial وجود ندارد.' : 'No active Provider Plans are available for Trial selection yet.')
+                . '</div>';
         }
+
         return self::styles()
-            . '<section class="card atd-trials-panel" id="bot-trials"><div class="atd-trials-head"><div><div class="eyebrow">ATD PANEL · BOT · TRIALS</div><h2>🎁 ' . ($fa ? 'Free Trial هر Provider' : 'Provider Free Trials') . '</h2><p>' . ($fa ? 'Trial هر Provider از Plan واقعی همان Provider/Category انتخاب می‌شود؛ Provider key فقط از Catalog خوانده می‌شود و hard-code نیست.' : 'Each Provider Trial uses a real Plan from that Provider/Category. Provider keys come from the catalog and are not hard-coded.') . '</p></div></div><div class="atd-trial-grid">' . $cards . '</div></section>';
+            . '<section class="card atd-trials-panel" id="bot-trials">'
+            . '<div class="atd-trials-head"><div><div class="eyebrow">ATD PANEL · BOT · TRIALS</div><h2>🎁 '
+            . ($fa ? 'Free Trial هر Provider' : 'Provider Free Trials')
+            . '</h2><p>'
+            . ($fa ? 'Trial هر Provider از Plan واقعی همان Provider/Category انتخاب می‌شود؛ Provider key از Catalog خوانده می‌شود و hard-code نیست.' : 'Each Provider Trial uses a real Plan from that Provider/Category. Provider keys come from the catalog and are not hard-coded.')
+            . '</p></div></div><div class="atd-trial-grid">' . $cards . '</div></section>';
     }
 
     private static function userTrials(PDO $db, string $lang): string
@@ -135,26 +180,65 @@ final class TrialAdminPanel
         $fa = $lang === 'fa';
         $rows = TrialService::listTrials($db);
         $body = '';
+
         foreach ($rows as $row) {
-            $expired = $row['expires_at'] !== null && (int)$row['expires_at'] <= time() && (string)$row['status'] !== 'deleted';
+            $expired = $row['expires_at'] !== null
+                && (int)$row['expires_at'] <= time()
+                && (string)$row['status'] !== 'deleted';
             $name = trim((string)($row['first_name'] ?? ''));
-            if ($name === '') $name = trim((string)($row['username'] ?? '')) !== '' ? '@' . (string)$row['username'] : (string)$row['telegram_id'];
-            $status = $expired ? ($fa ? 'منقضی‌شده' : 'Expired') : ((string)$row['status'] === 'deleted' ? ($fa ? 'حذف‌شده' : 'Deleted') : ($fa ? 'فعال' : 'Active'));
-            $body .= '<tr><td>' . (int)$row['id'] . '</td><td>' . self::e($name) . '</td><td>' . self::e($row['provider_key']) . '</td><td>' . self::e($fa ? ($row['display_name_fa'] ?? '') : ($row['display_name_en'] ?? '')) . '</td><td><span class="status' . ($expired ? ' expired' : '') . '">' . self::e($status) . '</span></td><td>' . ($row['expires_at'] ? date('Y-m-d H:i', (int)$row['expires_at']) : '—') . '</td><td>';
+            if ($name === '') {
+                $name = trim((string)($row['username'] ?? '')) !== ''
+                    ? '@' . (string)$row['username']
+                    : (string)$row['telegram_id'];
+            }
+            $status = $expired
+                ? ($fa ? 'منقضی‌شده' : 'Expired')
+                : ((string)$row['status'] === 'deleted'
+                    ? ($fa ? 'حذف‌شده' : 'Deleted')
+                    : ($fa ? 'فعال' : 'Active'));
+
+            $body .= '<tr><td>' . (int)$row['id'] . '</td><td>' . self::e($name)
+                . '</td><td>' . self::e($row['provider_key']) . '</td><td>'
+                . self::e($fa ? ($row['display_name_fa'] ?? '') : ($row['display_name_en'] ?? ''))
+                . '</td><td><span class="status' . ($expired ? ' expired' : '') . '">'
+                . self::e($status) . '</span></td><td>'
+                . ($row['expires_at'] ? date('Y-m-d H:i', (int)$row['expires_at']) : '—')
+                . '</td><td>';
+
             if ($expired) {
-                $confirm = $fa ? 'Trial منقضی‌شده حذف و از Provider پاکسازی شود؟' : 'Cleanup and delete this expired Trial?';
+                $confirm = $fa
+                    ? 'Trial منقضی‌شده حذف و از Provider پاکسازی شود؟'
+                    : 'Cleanup and delete this expired Trial?';
                 $body .= '<form method="post" onsubmit="return confirm(\'' . self::e($confirm) . '\')">'
-                    . '<input type="hidden" name="csrf_token" value="' . self::e(csrf_token()) . '"><input type="hidden" name="atd_trial_action" value="delete_trial"><input type="hidden" name="return_section" value="users"><input type="hidden" name="trial_id" value="' . (int)$row['id'] . '">'
-                    . '<button class="btn btn-secondary" type="submit">🗑 ' . ($fa ? 'پاکسازی و حذف' : 'Cleanup & Delete') . '</button></form>';
+                    . '<input type="hidden" name="csrf_token" value="' . self::e(csrf_token()) . '">'
+                    . '<input type="hidden" name="atd_trial_action" value="delete_trial">'
+                    . '<input type="hidden" name="return_section" value="users">'
+                    . '<input type="hidden" name="trial_id" value="' . (int)$row['id'] . '">'
+                    . '<button class="btn btn-secondary" type="submit">🗑 '
+                    . ($fa ? 'پاکسازی و حذف' : 'Cleanup & Delete')
+                    . '</button></form>';
             } else {
                 $body .= '<span style="color:var(--muted)">—</span>';
             }
             $body .= '</td></tr>';
         }
+
         if ($body === '') {
-            $body = '<tr><td colspan="7" style="color:var(--muted)">' . ($fa ? 'هنوز Trialی ثبت نشده است.' : 'No Trials recorded yet.') . '</td></tr>';
+            $body = '<tr><td colspan="7" style="color:var(--muted)">'
+                . ($fa ? 'هنوز Trialی ثبت نشده است.' : 'No Trials recorded yet.')
+                . '</td></tr>';
         }
+
         return self::styles()
-            . '<section class="card atd-trials-panel" id="user-trials"><div class="atd-trials-head"><div><div class="eyebrow">ATD PANEL · USERS · TRIALS</div><h2>🎁 Trials</h2><p>' . ($fa ? 'Trialهای فعال و منقضی‌شده اینجا مدیریت می‌شوند. حذف Trial فقط منبع Provider را پاک می‌کند؛ سابقه دریافت Trial برای جلوگیری از دریافت مجدد باقی می‌ماند.' : 'Manage active and expired Trials. Cleanup removes the Provider resource while preserving permanent eligibility history so the Trial cannot be claimed again.') . '</p></div></div><div class="atd-trial-table"><table><thead><tr><th>ID</th><th>' . ($fa ? 'کاربر' : 'User') . '</th><th>Provider</th><th>Plan</th><th>' . ($fa ? 'وضعیت' : 'Status') . '</th><th>' . ($fa ? 'انقضا' : 'Expiry') . '</th><th></th></tr></thead><tbody>' . $body . '</tbody></table></div></section>';
+            . '<section class="card atd-trials-panel" id="user-trials">'
+            . '<div class="atd-trials-head"><div><div class="eyebrow">ATD PANEL · USERS · TRIALS</div><h2>🎁 Trials</h2><p>'
+            . ($fa
+                ? 'Trialهای فعال و منقضی‌شده اینجا مدیریت می‌شوند. حذف Trial فقط منبع Provider را پاک می‌کند؛ سابقه دریافت Trial برای جلوگیری از دریافت مجدد باقی می‌ماند.'
+                : 'Manage active and expired Trials. Cleanup removes the Provider resource while preserving permanent eligibility history so the Trial cannot be claimed again.')
+            . '</p></div></div><div class="atd-trial-table"><table><thead><tr><th>ID</th><th>'
+            . ($fa ? 'کاربر' : 'User') . '</th><th>Provider</th><th>Plan</th><th>'
+            . ($fa ? 'وضعیت' : 'Status') . '</th><th>' . ($fa ? 'انقضا' : 'Expiry')
+            . '</th><th></th></tr></thead><tbody>' . $body
+            . '</tbody></table></div></section>';
     }
 }
