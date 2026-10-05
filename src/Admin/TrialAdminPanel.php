@@ -87,15 +87,21 @@ final class TrialAdminPanel
         // Keep the existing section layout intact. Trials belong directly
         // below the Bot Settings card, and on Users they belong before the
         // existing footer (not below the copyright/footer area).
-        $marker = $section === 'bot'
-            ? '<section class="card" id="bot">'
-            : '<div class="footer">';
+        if ($section === 'bot') {
+            $marker = '</form></section>\n\n  <section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">☷</div>';
+        } else {
+            $marker = '<div class="footer">';
+        }
         $pos = stripos($html, $marker);
         if ($pos === false) return;
 
         ob_clean();
-        echo substr($html, 0, $pos) . ($section === 'bot' ? $panel : '')
-            . ($section === 'users' ? $panel : '') . substr($html, $pos);
+        if ($section === 'bot') {
+            $insertAt = $pos + strlen($marker);
+            echo substr($html, 0, $pos) . '</form></section>' . $panel . $marker . substr($html, $insertAt);
+        } else {
+            echo substr($html, 0, $pos) . $panel . substr($html, $pos);
+        }
     }
 
     private static function styles(): string
