@@ -2,191 +2,150 @@
 
 ## Goal
 
-ATD Panel is the provider-neutral administration layer for RouteBox Telegram Bot. It must not become a RouteBox-only admin panel.
+ATD Panel is the provider-neutral administration layer for RouteBox Telegram Bot. It must not become a RouteBox-only panel.
 
-The current working integrations are RouteBox, IBSng and MikroTik WireGuard. Future providers such as V2Ray must fit the same navigation, server, plan, guide and provisioning architecture without redesigning the panel.
+Current working Providers are RouteBox, IBSng and MikroTik WireGuard. Future Providers must fit the same Provider → Server → Plan → Guide → Service/Provisioning architecture.
 
-## Safety rule
-
-The current production-tested provider flows are the baseline. The ATD Panel refactor must be additive and incremental. Do not rewrite stable RouteBox, IBSng or MikroTik provisioning code merely to change the UI.
-
-## Sidebar
+## Core architecture
 
 ```text
-Dashboard
-Telegram Bot
-RouteBox Servers
-Plans        <-- removed from top-level after provider migration
-IBSng Servers
-MikroTik WireGuard
-Security
-Updates
+                    ATD Panel
+                       │
+        ┌──────────────┼──────────────┐
+        │              │              │
+     Web Panel     Telegram Bot    Future API
+        │              │
+        │           Existing Worker
+        │              │
+        └──────────────┼──────────────┘
+                       │
+                 Service Layer
+                       │
+                Provider Abstraction
+             ┌─────────┼─────────┐
+             │         │         │
+          RouteBox   IBSng   MikroTik
 ```
 
-The final provider entries are expected to expose a provider-scoped submenu:
+Existing Provider Core and Worker behavior are protected. New UI/Admin features orchestrate existing services rather than moving protocol logic into Telegram handlers.
+
+## Provider / Plan discovery
+
+The Bot does not own a hard-coded provider catalog.
 
 ```text
-RouteBox Servers
-  ├─ Servers / Connection
-  ├─ Plans
-  └─ Usage Guide
-
-IBSng Servers
-  ├─ Servers / Connection
-  ├─ Plans
-  └─ Usage Guide
-
-MikroTik WireGuard
-  ├─ Servers / Connection
-  ├─ Plans
-  └─ Usage Guide
+Provider
+   ↓
+provider_key
+   ↓
+Service Category
+   ↓
+Provider-owned Plans
+   ↓
+Telegram / Web UI
 ```
 
-The exact visual navigation can use collapsible provider groups while preserving the existing icon set.
+Current Provider keys include `routebox`, `ibsng` and `mikrotik_wireguard`.
 
-## Shared provider contract
+A future Provider supplies its own key and Provider-specific Plan metadata. The Bot should discover it through the existing service architecture.
 
-Each provider owns:
+`Provider Plan Key`, `provider_key` and Username Prefix are separate concepts. IBSng Provider Plan Key is the real IBSng group/plan identifier and must not be confused with a generated username prefix.
 
-1. Provider identity and label.
+## Existing Web UI architecture
+
+All shared Web UI remains based on the existing `?section=` model.
+
+Important protected destinations:
+
+- `section=users` — shared User Management.
+- `section=payment-settings` — shared Payment Settings.
+- `section=bot` — shared Telegram Bot area.
+
+The four protected ATD Stats/status cards are not to be removed, reordered or redesigned casually.
+
+## Telegram Bot UI architecture
+
+`section=bot` contains the existing Bot Settings, Bot Buttons and Bot Menu Preview. Customer Bot and Telegram Bot Admin are child destinations within the same section architecture; do not create a separate Web application/page architecture for Bot Admin.
+
+Bot Usage Guides are customer-facing service/provider usage instructions. They are separate from:
+
+1. the General Guide; and
+2. Provider Administration Guides.
+
+## Shared Provider contract
+
+Each Provider owns:
+
+1. Provider identity/key.
 2. Server configuration and connection tests.
-3. Provider-specific setup/connection guide.
-4. Provider-scoped plans.
-5. Provider-specific operational controls where required.
+3. Provider-specific administration guide.
+4. Provider-scoped Plans.
+5. Provider-specific operations/capabilities.
+6. Provisioning/service adapter.
 
-The shared ATD Panel owns:
+The shared ATD layer owns:
 
-- sidebar and page shell
-- authentication, CSRF and security
+- common shell/navigation
+- authentication/CSRF/security
 - reusable cards/tables/forms
-- shared plan CRUD presentation
-- price field and currency handling
-- users and subscription management
-- user details
-- payment settings and order/payment foundations
-- Telegram Bot administration
-- multi-provider usage-guide management
+- shared Plan presentation
+- Users
+- Payment Settings
+- Orders/Payments foundations
+- Telegram Bot/Admin orchestration
+- customer service guides
 - updates/recovery UX
-
-## Plans
-
-Plans are provider-scoped. There must be one consistent Plan UI for every provider.
-
-Common plan fields:
-
-- name
-- provider
-- category/service
-- duration
-- quota/traffic when applicable
-- price
-- currency
-- enabled/disabled
-- sort order
-- optional provider-specific metadata
-
-A price of `0` must be treated according to an explicit product rule. It must never silently become a normal customer-purchasable paid service. The Telegram flow must validate the price/payment state before provisioning when payment is required.
-
-Provider-specific fields belong in an extensible metadata/config layer rather than being hard-coded into the shared plan screen.
-
-## Usage Guides
-
-There are two distinct guide layers:
-
-### Telegram Bot service guides
-
-Managed under `Telegram Bot` and editable per service/provider. These are customer-facing connection instructions such as Android, iOS, Windows, macOS, OpenVPN, L2TP, WireGuard/AmneziaWG, etc.
-
-The existing guide content must be migrated without loss.
-
-### Provider administration guides
-
-Each provider has its own Admin Panel guide explaining how to add/configure/test that provider's server. Examples:
-
-- RouteBox: API credentials, URL, TLS and smoke test.
-- IBSng: panel/API credentials, group mapping and account provisioning prerequisites.
-- MikroTik WireGuard: RouterOS REST access, WireGuard interface, endpoint, pool and listen-port detection.
-- Future V2Ray: its own connection, API and server prerequisites.
 
 ## Users
 
-`Users` is a provider-neutral administration area.
-
-It should provide:
-
-- Telegram users list
-- search by Telegram ID/name/username/phone where stored
-- active subscriptions
-- expired subscriptions
-- provider and plan
-- subscription expiry
-- service status
-- user details page
-- safe enable/disable/renew/manage actions
-- audit-friendly operational history where available
-
-Provider-specific account actions remain inside the provider adapter; the shared user screen should not contain provider-specific SQL or API logic.
+`section=users` is the existing shared Web User Management surface. Telegram Admin must consume the same underlying user/service data and authorization model; it must not create a second Web user-management implementation.
 
 ## Payment Settings
 
-Payment is a first-class shared subsystem, not a RouteBox feature.
+Payment is a shared subsystem. The existing `section=payment-settings` surface is the authoritative configuration location.
 
-The panel should prepare for:
+Card-to-card is the first manual payment method. The complete Order → Receipt → Review → Approval → Provision lifecycle remains staged until end-to-end validation is complete.
 
-- payment provider configuration
-- currency
-- order lifecycle
-- payment status
-- callback/verification configuration
-- coupons/discounts
-- provider-neutral paid service provisioning
-- admin bypass with auditability where the Telegram Bot Admin roadmap requires it
+Future adapters include ZarinPal and Crypto. Adding a gateway must not require Provider Core changes.
 
-Existing payment abstractions must be preserved and extended rather than duplicated.
+## Telegram Admin
 
-## Extension rule for future providers
+Telegram Admin authorization is independent from IBSng `owner` / `owner_name` and uses Telegram Numeric IDs. Multiple Admins and future roles are supported.
 
-Adding a provider such as V2Ray should normally require:
+Admin operations must use the existing Worker and existing Provider/service layer. No second Worker and no duplicate Provider provisioning are allowed.
+
+## MirzaBot reference policy
+
+MirzaBot is reference-only for feature research. Its source code, schema, naming, UI, menu structure and implementation are not dependencies of ATD Panel.
+
+## Future Provider rule
+
+Adding a Provider should normally require:
 
 ```text
 New Provider
    ├─ integration/client
    ├─ server adapter
-   ├─ plan/provider metadata
-   ├─ provider admin adapter
-   ├─ provider guide
-   └─ provisioning/service adapter
+   ├─ Provider key/metadata
+   ├─ Provider Plans
+   ├─ Provider admin guide
+   ├─ customer usage guide(s)
+   └─ service/provisioning adapter
 
 No redesign of:
-   ├─ sidebar
-   ├─ shared Plan UI
+   ├─ shared section-based UI
    ├─ Users
    ├─ Payment Settings
-   └─ Telegram Bot guide management
+   ├─ Telegram Bot navigation
+   └─ existing Provider integrations
 ```
 
-## Implementation sequence
+## Compatibility requirements
 
-1. Freeze current stable behavior on `ATD-Panel`.
-2. Introduce provider-admin contract/registry (foundation).
-3. Build shared visual shell and provider navigation without changing provisioning.
-4. Migrate RouteBox Plans to provider-scoped shared Plan UI.
-5. Migrate IBSng Plans.
-6. Migrate MikroTik Plans.
-7. Add common `price`/currency support to all service plans and enforce payment-state behavior.
-8. Add Telegram Bot multi-service Usage Guides while preserving existing content.
-9. Add provider-specific Admin Guides.
-10. Add Users + User Details.
-11. Add Payment Settings using the existing payment abstractions.
-12. Update README, CHANGELOG and ROADMAP after each stable milestone.
-13. Only then consider additional providers such as V2Ray.
-
-## Non-negotiable compatibility requirements
-
-- Do not break existing RouteBox provisioning.
-- Do not break existing IBSng provisioning.
-- Do not break existing MikroTik WireGuard provisioning.
-- Do not remove existing Telegram Bot guides during migration.
-- Do not duplicate payment logic inside providers.
-- Do not hard-code future provider names into shared plan/user/payment code.
-- Keep provider-specific API/client code isolated from shared Admin Panel components.
+- Do not break RouteBox provisioning.
+- Do not break IBSng provisioning.
+- Do not break MikroTik WireGuard provisioning or IP allocation.
+- Do not create a second Worker.
+- Do not duplicate Provider protocol logic in the Bot.
+- Do not hard-code future Provider names or Plans into shared Bot code.
+- Preserve existing database semantics and user/service ownership boundaries.
