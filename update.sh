@@ -79,7 +79,7 @@ php -l src/RouteBoxClient.php >/dev/null
 php -l public/index.php >/dev/null
 php -l public/update.php >/dev/null
 php -l src/admin_features.php >/dev/null
-bash -n install.sh install-v2.sh update.sh uninstall.sh admin-update.sh setup-routebox-tls.sh backup.sh restore-backup.sh admin-cli.sh
+bash -n install.sh installer-core.sh install-dev.sh install-dev-full.sh update.sh uninstall.sh admin-update.sh setup-routebox-tls.sh backup.sh restore-backup.sh admin-cli.sh
 systemctl restart "$SERVICE"
 sleep 1
 systemctl is-active --quiet "$SERVICE" || { journalctl -u "$SERVICE" -n 80 --no-pager; exit 1; }

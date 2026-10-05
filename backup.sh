@@ -15,7 +15,7 @@ STAMP=$(date '+%Y%m%d-%H%M%S')
 OUT="$BACKUP_DIR/routebox-telegram-bot-v${VERSION}-${STAMP}.tar.gz"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/app" "$TMP/meta"
-tar -C "$APP_DIR" -czf "$TMP/app/source.tar.gz" --exclude='./storage/logs/*' --exclude='./storage/update.offset' --exclude='./.git' VERSION database src public worker.php bot.php config/config.php systemd install.sh install-v2.sh update.sh admin-update.sh setup-routebox-tls.sh uninstall.sh backup.sh restore-backup.sh
+tar -C "$APP_DIR" -czf "$TMP/app/source.tar.gz" --exclude='./storage/logs/*' --exclude='./storage/update.offset' --exclude='./.git' VERSION database src public worker.php bot.php config/config.php systemd install.sh installer-core.sh install-dev.sh install-dev-full.sh update.sh admin-update.sh setup-routebox-tls.sh uninstall.sh backup.sh restore-backup.sh
 cp -a "$APP_DIR/storage/database.sqlite" "$TMP/meta/database.sqlite" 2>/dev/null || true
 cp -a "$APP_DIR/config/config.php" "$TMP/meta/config.php" 2>/dev/null || true
 cp -a "$STATE_DIR" "$TMP/meta/state" 2>/dev/null || true

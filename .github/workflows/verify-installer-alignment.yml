@@ -19,7 +19,12 @@ jobs:
             test -f "$file"
             bash -n "$file"
           done
-      - name: Reject retired installer reference
+      - name: Reject stale active installer references
         run: |
           set -e
-          ! grep -R --line-number --exclude-dir=.git --exclude='verify-installer-alignment.yml' 'install-v2\.sh' .
+          for file in install.sh installer-core.sh install-dev.sh install-dev-full.sh update.sh backup.sh admin-update.sh admin-cli.sh restore-backup.sh uninstall.sh; do
+            if grep -n 'install-v2\.sh' "$file"; then
+              echo "ERROR: stale install-v2.sh reference found in active file: $file"
+              exit 1
+            fi
+          done

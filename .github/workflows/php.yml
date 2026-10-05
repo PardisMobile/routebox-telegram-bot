@@ -60,7 +60,9 @@ jobs:
         run: |
           set -euo pipefail
           bash -n install.sh
-          bash -n install-v2.sh
+          bash -n installer-core.sh
+          bash -n install-dev.sh
+          bash -n install-dev-full.sh
           bash -n update.sh
           bash -n uninstall.sh
 
