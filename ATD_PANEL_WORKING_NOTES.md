@@ -118,45 +118,80 @@ The automatic credentials are currently longer than desired. Next refinement:
 - Do not confuse username prefix with `provider_key` or `provider_plan_key`.
 - Investigate/standardize any `mt` prefix used by MikroTik/WireGuard only after checking all existing code/call sites. The provider key is `mikrotik_wireguard`; do not rename it casually.
 
-## Telegram Bot Admin — next major phase
+## Telegram Bot Admin — implementation state
 
-Not completed yet.
+The independent Telegram Bot Admin foundation and the shared Bot UI navigation are implemented. The full product lifecycle is still being built incrementally.
 
-### Authorization
+### Authorization / UI
 
-- Independent Telegram Bot Admin authentication/authorization.
-- Multiple Telegram numeric IDs.
-- Admin management from Web/Admin Panel.
-- Dedicated Admin menu for authorized users only.
-- Completely separate from IBSng `owner` / `owner_name`.
+- Independent Telegram Numeric ID authorization is implemented.
+- Multiple Admin records and future-ready roles are supported.
+- Web management is available at `public/telegram-admins.php`.
+- Dedicated Admin menu is integrated into the existing Worker; no second Worker was created.
+- Existing `section=bot` remains the shared Bot section.
+- Existing Bot Settings, Bot Buttons and Bot Menu Preview are protected and must not be replaced with a separate page architecture.
+- Customer Bot and Telegram Bot Admin are child destinations within the existing `section=` UI model.
+- Existing `section=users` remains the shared Web User Management surface; do not duplicate it as a second Web user system.
+- Bot Usage Guides are customer-facing service/provider guides and are distinct from Provider Admin Guides and the General Guide.
 
-### Service operations
+### Admin service operations
 
-- Manage services from Telegram as an authorized admin.
-- Create RouteBox service without customer payment.
-- Create IBSng service without customer payment.
-- Provider-neutral payment bypass/authorization path.
-- Audit/admin action records.
+- Authorized Admin service-management foundation is implemented.
+- Admin RouteBox/IBSng provisioning uses the existing provider/service provisioning path.
+- Admin provisioning actions are bound to authorized Admin identity and audit logged.
+- Successful Admin provisioning callbacks are protected against replay.
+- Future provider support must remain dynamic through the existing service catalog/provider architecture.
 
-### Manual card-to-card payment flow
+### Payment / card-to-card state
 
-Primary business flow to support:
+- The existing `section=payment-settings` surface is the correct location for shared payment configuration.
+- Card-to-card settings are now exposed there.
+- Do not create a second payment-settings page.
+- The complete customer Order → Receipt → Admin Review → Approve/Reject → Provision lifecycle remains a staged feature and must be validated end-to-end before being marked complete.
+- Payment architecture must remain provider-neutral and ready for ZarinPal/Crypto adapters.
 
-1. Customer selects service/plan.
-2. Bot provides card-to-card payment instructions.
-3. Customer pays.
-4. Customer sends payment receipt/image.
-5. Admin Bot shows pending receipt/order to authorized admin.
-6. Admin reviews and approves or rejects.
-7. Only after approval, the service is activated/provisioned.
-8. Customer receives the correct service credentials/configuration (RouteBox `.conf`/QR, IBSng credentials, etc.).
-9. Payment/order/provisioning states are auditable.
+## Dynamic Provider / Plan rule — NON-NEGOTIABLE
 
-Design this through the payment/order abstraction so later ZarinPal/crypto gateways do not require a rewrite.
+The Bot must not maintain its own hard-coded provider/plan catalog.
 
-### Feature research reference
+The intended flow is:
 
-The user provided `https://github.com/mahdiMGF2/mirzabot` and a separate WireGuard-only bot screenshot as feature references only. They are not the same project and must not be copied. First perform a feature-gap comparison; implement only after user approval.
+```text
+Provider
+   ↓
+provider_key
+   ↓
+Service Category
+   ↓
+Provider-owned Plans
+   ↓
+Telegram Bot
+```
+
+Examples of current provider keys include:
+
+- `ibsng`
+- `routebox`
+- `mikrotik_wireguard`
+
+A future provider gets its own `provider_key` and provider-specific plan key/metadata. The Bot should discover the provider and its plans through the existing service architecture rather than requiring a Bot rewrite.
+
+For IBSng specifically, the Provider Plan Key is the real IBSng group/plan identifier and is important to provisioning. It must not be confused with Username Prefix.
+
+## MirzaBot reference policy
+
+`https://github.com/mahdiMGF2/mirzabot` is **reference-only**.
+
+Use it only for feature research, user-needs analysis and conceptual workflow comparison. Do not copy its source code, classes, functions, schema, naming, UI, menus, text, architecture or implementation details. Any inspired feature must be redesigned according to ATD Panel's own Provider/Service/Worker/Database architecture.
+
+The current feature-gap priority is:
+
+1. Customer Service Details and complete Service lifecycle.
+2. Customer Renewal using real configured Provider Plans.
+3. Admin Service Management and secure Search.
+4. Notification/expiry lifecycle using the existing Worker.
+5. Complete payment/order/receipt lifecycle and future gateway adapters.
+6. Later: wallet, coupon, referral/affiliate, reseller and other growth features.
 
 ## IBSng management through Bot Admin — pending
 
@@ -164,11 +199,10 @@ The user provided `https://github.com/mahdiMGF2/mirzabot` and a separate WireGua
 - Display account/user information.
 - Persian/Shamsi expiry display.
 - Traffic/quota usage for volume services.
-- Create IBSng user from Bot Admin.
+- Create IBSng user from Bot Admin where existing functionality supports it.
 - Select server and configured plan/group.
-- Renew only from IBSng plans defined in RouteBox Admin Panel.
+- Renew only from IBSng plans defined in the existing ATD Panel catalog.
 - Edit username/password/group/plan where existing provider capabilities safely support it.
-- Move standalone IBSng test tooling into safe panel orchestration where appropriate.
 
 ## Worker management — pending
 
@@ -191,31 +225,9 @@ The user provided `https://github.com/mahdiMGF2/mirzabot` and a separate WireGua
 
 ## Security audit — high priority / pending
 
-Perform a source-wide review of the full application and database layer for:
+Perform a source-wide review of the full application and database layer for SQL Injection, authentication/authorization, CSRF, XSS, IDOR, privilege escalation, SSRF, command injection, path traversal, unsafe uploads, secrets exposure, Telegram callback forgery/replay, rate limiting, session security, credential leakage and database security.
 
-- SQL Injection and dynamic SQL identifiers.
-- Authentication/authorization and privilege escalation.
-- Telegram Admin authorization bypass.
-- CSRF on state-changing Web requests.
-- XSS/output escaping.
-- Session/cookie security.
-- Secrets/credentials exposure in HTML/JS/logs/Git history/errors.
-- Path traversal and local/remote file inclusion.
-- Unsafe file upload/receipt handling.
-- Command injection/shell execution.
-- SSRF in server/provider URL handling.
-- Open redirects.
-- Rate limiting/brute force.
-- Error disclosure.
-- Database/backup permissions.
-- systemd/service privileges and writable paths.
-- TLS/HTTPS and public-port exposure.
-- Telegram token/webhook handling.
-- Password encryption/storage.
-- Audit logging without secret leakage.
-- Dependency/package risks.
-
-For SQL Injection specifically: before changing anything, report whether a real injectable query exists, where it is reachable, and why. Then convert all variable SQL to prepared statements/parameter binding. Do not mark the audit complete until the whole source tree has been checked.
+For SQL Injection specifically: before changing anything, report whether a real injectable query exists, where it is reachable, and why. Then convert variable SQL to prepared statements/parameter binding. Do not mark the audit complete until the whole source tree has been checked.
 
 ## Database safety
 
@@ -224,6 +236,19 @@ For SQL Injection specifically: before changing anything, report whether a real 
 - Do not casually delete/rename existing columns.
 - Keep provider-specific data isolated.
 - Use transactions where payment approval + provisioning state changes must be atomic.
+
+## Installer / deployment state
+
+The installer structure is now:
+
+```text
+install.sh
+installer-core.sh
+install-dev.sh
+install-dev-full.sh
+```
+
+`install-v2.sh` is retired. CI/installer validation must target the current four-file structure. Do not reintroduce references to `install-v2.sh`.
 
 ## Remaining UI follow-up
 
@@ -236,24 +261,14 @@ For SQL Injection specifically: before changing anything, report whether a real 
 
 Read this file and `ROADMAP.md` first. Treat `6026a16` as the last known-good application checkpoint unless a newer commit has been explicitly tested and confirmed by the user. Do not ask the user to re-explain the project; ask only for the missing decision needed for the next task.
 
-## Telegram Bot Admin — implementation slice completed
+## Protected implementation principles
 
-- Independent Telegram Numeric ID authorization is implemented in src/Telegram/AdminBot.php.
-- Multiple Admins and future-ready roles are supported.
-- Web management is available at public/telegram-admins.php.
-- The dedicated Admin menu is integrated into the existing worker.php; no second Worker was created.
-- RouteBox and IBSng admin service creation without customer payment uses the existing ServiceProvisioner.
-- Successful Admin provisioning callbacks cannot provision the same action twice.
-- Admin provisioning actions are audit logged without credentials.
-- Card-to-card Order/Payment/Receipt approval remains the next slice.
-
-## Telegram Bot Control Center — UI slice completed
-
-- Added `src/Admin/TelegramBotSections.php` as a presentation-only layer for the Customer Bot and Telegram Bot Admin overview pages.
-- Added `section=bot-customer` and `section=bot-admin` as child destinations under the existing Telegram Bot navigation.
-- Existing `section=bot` Bot Settings, Bot Buttons and Bot Menu Preview remain intact.
-- Existing Bot Usage Guides remain separate from Provider Admin Guides.
-- General Guide and per-service guides remain conceptually separate.
-- Bot Admin overview links to the existing `public/telegram-admins.php` management surface; it does not create a second authorization implementation.
-- No Provider Core, provisioning, Worker polling, peer/IP allocation or database semantics were changed for this UI slice.
-- The four protected ATD Stats cards were not modified.
+- Existing functionality > refactor.
+- Never duplicate Provider provisioning inside Telegram handlers.
+- Never duplicate MikroTik IP allocation/peer logic inside the Bot.
+- Never change IBSng Group/Provider Plan Key semantics casually.
+- Never confuse Provider ID, `provider_key`, Provider Plan Key and Username Prefix.
+- Never create a parallel Worker for Bot Admin.
+- Never modify the four protected ATD Stats cards without explicit approval.
+- Keep all Bot/Admin UI within the existing `?section=` panel architecture.
+- Documentation-only commits do not become application checkpoints unless the application itself was tested.
