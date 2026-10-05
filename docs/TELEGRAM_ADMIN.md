@@ -1,6 +1,6 @@
-# ATD Panel — Telegram Bot Admin Foundation
+# ATD Panel — Telegram Bot Admin
 
-This document records the first Telegram Bot Admin implementation slice.
+This document records the Telegram Bot Admin foundation and the current implementation boundary.
 
 ## Implemented
 
@@ -8,19 +8,35 @@ This document records the first Telegram Bot Admin implementation slice.
 - Multiple Admin records and future-ready roles.
 - Web management at `public/telegram-admins.php`.
 - Dedicated Admin menu integrated into the existing `worker.php`.
-- RouteBox and IBSng admin provisioning without customer payment through the existing `ServiceProvisioner`.
-- Short-lived Admin-bound action records prevent successful callback replay from provisioning twice.
-- Admin provisioning audit records do not store credentials.
+- Admin service operations reuse the existing Provider/Service provisioning path.
+- Admin actions are bound to the authorized Admin identity and audit logged without credentials.
+- One-time/replay-safe Admin actions prevent successful provisioning callbacks from being executed twice.
+- Customer Bot and Telegram Bot Admin navigation is integrated into the existing `section=bot` UI architecture.
+- Existing Bot Settings, Bot Buttons and Bot Menu Preview remain untouched.
 
-## Not yet complete
+## Existing architecture rules
 
-- Card-to-card Order / Payment / Receipt approval.
-- Full IBSng user search/renewal/edit tools.
-- Worker health/log management.
-- Full security audit.
+- There is one existing Telegram Worker. Do not create a second Worker or polling loop.
+- Provider Core implementations remain protected.
+- Provider/Plan selection is dynamic through the existing service catalog; the Bot must not hard-code a second provider catalog.
+- `provider_key`, Provider Plan Key and Username Prefix are separate concepts.
+- Existing `section=users` remains the shared Web User Management surface.
+- Bot Usage Guides are customer-facing service/provider guides and are separate from Provider Admin Guides and the General Guide.
 
-## Architecture rule
+## Payment / card-to-card boundary
 
-No provider implementation was copied into the Bot. Admin operations call the existing ServiceCatalog/ServiceProvisioner and existing Provider integrations.
+The existing `section=payment-settings` surface is the shared location for card-to-card configuration. The complete customer Order → Receipt → Admin Review → Approve/Reject → Provision lifecycle is still a staged feature and must be validated end-to-end before it is marked complete.
 
-MirzaBot remains reference-only and is not a code or architecture dependency.
+## Remaining Admin features
+
+- Admin User/Search and profile workflow.
+- Admin Service Management and provider-supported actions.
+- IBSng username/account search, Shamsi expiry, quota and renewal.
+- Service renewal with idempotency.
+- Worker health/log/restart controls using the existing Worker.
+- Notifications and expiry lifecycle.
+- Complete payment/order/receipt lifecycle.
+
+## MirzaBot policy
+
+`mahdiMGF2/mirzabot` is reference-only for feature research. No source code, schema, naming, UI, menu structure or implementation is copied into ATD Panel.
