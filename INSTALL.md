@@ -10,324 +10,116 @@ This is the canonical production installation guide. Use `install.sh` for normal
 - Root or sudo access
 - Internet access to GitHub and Telegram
 - PHP 8+
-- A reachable RouteBox Panel URL
-- RouteBox / AmneziaWG configured with a usable server address / public host
+- Reachable RouteBox Panel URL when configuring RouteBox
 
 No Nginx or Apache installation is required for the Bot Admin Panel.
 
 ## 2. Production installation
-
-Run on the target Ubuntu server:
 
 ```bash
 sudo -i
 bash <(curl -fsSL https://raw.githubusercontent.com/PardisMobile/routebox-telegram-bot/main/install.sh)
 ```
 
-The production entrypoint downloads the tested setup wizard and then performs the complete setup.
+`install.sh` is the user-facing production entrypoint. It delegates to the current internal `installer-core.sh`.
 
-## 3. What the installer does
+## 3. Current installer structure
 
-1. Checks Ubuntu 22.04+ and root access.
-2. Installs required runtime packages, including `qrencode`.
-3. Detects PHP 8+.
-4. Downloads or refreshes the current production code.
-5. Creates the application encryption key and first-run Admin password.
-6. Initializes SQLite.
-7. Initializes the modular service schema through the IBSng schema layer.
-8. Prompts for the Telegram Bot Token using silent input.
-9. Validates the token with Telegram `getMe`.
-10. Removes an existing Telegram webhook so long polling can work.
-11. Prompts for one or more RouteBox Panel endpoints and credentials.
-12. Validates RouteBox API connectivity and performs a real AWG create → config → delete smoke test.
-13. Stores RouteBox credentials encrypted.
-14. Installs the systemd Telegram Worker.
-15. Installs the independent PHP Admin Panel on a free TCP port, normally `8090`.
-16. Installs the restricted Admin Panel updater.
-17. Runs web-panel permission and health checks.
-18. Attempts the optional RouteBox TLS certificate reuse flow without changing RouteBox/Apache/Nginx port 80/443 ownership.
-19. Prints the final version, panel port and service information.
-
-## 4. Telegram token
-
-The token is entered silently:
+Exactly four installer files are part of the current structure:
 
 ```text
-Telegram Bot Token:
+install.sh
+installer-core.sh
+install-dev.sh
+install-dev-full.sh
 ```
 
-The installer validates it with Telegram and prints only the Bot username / success state. The full token is never echoed back.
+`install-v2.sh` is retired and must not be referenced by CI, documentation or deployment instructions.
 
-## 5. RouteBox setup
+## 4. What production installation does
 
-For each server:
+The current production installer validates the runtime, initializes application/database state, validates the Telegram token, configures RouteBox, performs the existing RouteBox/AWG smoke test, installs the existing Worker and independent PHP Admin Panel, and runs health/permission checks.
+
+It does not take over existing Apache/Nginx/RouteBox ports `80/443`.
+
+## 5. Development environment
+
+The development installation is isolated under the `routebox-telegram-bot-dev` environment. The current DEV service used by the ATD Panel project is:
 
 ```text
-Server name [RouteBox-1]:
-RouteBox Panel URL:
-RouteBox username [admin]:
-RouteBox password:
-Verify TLS certificate? [Y/n]:
+routebox-telegram-bot-dev.service
 ```
 
-Examples:
+and the development Web Panel commonly uses:
 
 ```text
-https://panel.example.com:8443
-http://192.0.2.10:8080
-https://panel.example.com
-panel.example.com:8443
+routebox-telegram-bot-dev-web@8092.service
 ```
 
-The installer adds `https://` when a scheme is omitted.
+The exact active service should always be checked before restart/reload operations.
 
-The Bot uses the same RouteBox Panel HTTP(S) listener for API requests. There is no separate Bot API port.
+## 6. Admin Panel
 
-## 6. RouteBox validation
+The Web Admin Panel is a shared ATD Panel UI based on `?section=` routes. Important existing surfaces include:
 
-The installer is intentionally stricter than a simple HTTP reachability test.
+- `section=users`
+- `section=payment-settings`
+- `section=bot`
 
-It validates the current RouteBox client integration, including health/status and AWG endpoints, then performs a real temporary peer workflow:
+The protected four-card/status UI must remain intact.
+
+## 7. Telegram Bot / Admin architecture
+
+The project already has an operational Telegram Bot and Worker. Bot Admin is an additive feature inside that Worker; a second Worker must not be created.
+
+Telegram Bot Admin authorization uses Telegram Numeric IDs and is independent from IBSng `owner` / `owner_name`.
+
+Provider and Plan selection remains dynamic through the existing service catalog. New Providers must supply their own `provider_key` and Provider-specific Plan metadata.
+
+## 8. Payment settings
+
+Card-to-card configuration belongs to the existing:
 
 ```text
-POST   /api/awg/peers
-GET    /api/awg/peers/{publicKey}/config
-DELETE /api/awg/peers/{publicKey}
+?section=payment-settings
 ```
 
-The temporary peer is named `rbt-install-test-*`.
+Do not create a second payment settings page. The full Order → Receipt → Admin Review → Provision lifecycle is still staged until it is end-to-end tested.
 
-The server is saved only after the complete test succeeds.
+## 9. Provider safety
 
-## 7. Modular service initialization
+Do not rewrite or duplicate:
 
-The current application contains a provider-independent service catalog and subscription layer.
+- RouteBox provisioning/API integration
+- IBSng authentication/provisioning/group mapping
+- MikroTik WireGuard peer/IP allocation
+- existing Worker polling/lock behavior
+- existing database semantics
 
-The first production boot ensures:
+For IBSng, Provider Plan Key means the actual IBSng group/plan identifier. It is separate from `provider_key` and Username Prefix.
 
-```text
-RouteBox category
-IBSng category
-IBSng servers
-IBSng groups
-Generic service plans
-Service subscriptions
-Orders
-Payment providers
-Coupons
-```
+## 10. Updating
 
-Legacy RouteBox plans remain compatible and are mirrored into the generic service catalog.
+For production use the existing project updater and follow the current deployment documentation. For DEV, update the `ATD-Panel` checkout and validate the relevant PHP/shell files before restarting services.
 
-## 8. IBSng
+Never assume a documentation-only commit is a new tested application checkpoint. The last confirmed healthy application/UI checkpoint is `6026a16` until a newer one is explicitly tested and confirmed.
 
-IBSng support targets the A1.24 Web Panel architecture.
+## 11. Troubleshooting
 
-Configured from the Admin Panel, IBSng supports:
+For Admin Panel repair see `docs/ADMIN_PANEL_REPAIR.md`. For TLS behavior see `docs/HTTPS_REVERSE_PROXY.md`. For provider-specific setup see `docs/providers/` and `docs/MIKROTIK_SETUP_GUIDE.md`.
 
-- server connection testing
-- admin credential storage
-- ISP name
-- manual Plan → Group mapping
-- Telegram provisioning
-- generated Internet Username / Password
-- subscription persistence
-- dynamic exposure of configured IBSng plans
+## 12. Security
 
-IBSng groups are deliberately mapped from RouteBox-defined plans. The production provider does not depend on automatically scraping a slow/broken Group List page.
+Do not publish Telegram tokens, Provider credentials, private keys, real configuration files or database contents. Keep the Admin Panel protected by authentication, CSRF and network policy appropriate to the deployment.
 
-## 9. Admin Panel
+The full source-wide security audit remains a roadmap item and must not be described as complete until actually performed.
 
-First installation generates:
+## 13. Project handoff
 
-```text
-Username: admin
-Password: <generated during installation>
-```
+Before changing ATD Panel, read:
 
-The installer prints the password once on a first install. Store it securely.
+1. `ATD_PANEL_WORKING_NOTES.md`
+2. `ROADMAP.md`
+3. `CHANGELOG.md`
 
-The panel port is stored at:
-
-```text
-/etc/routebox-telegram-bot/web-port
-```
-
-Check it:
-
-```bash
-cat /etc/routebox-telegram-bot/web-port
-```
-
-Check the panel service:
-
-```bash
-PORT=$(cat /etc/routebox-telegram-bot/web-port)
-systemctl status routebox-telegram-bot-web@$PORT
-```
-
-Open:
-
-```text
-http://YOUR_SERVER_IP:<PORT>/
-```
-
-## 10. HTTP / HTTPS behavior
-
-The normal Admin Panel uses PHP's built-in HTTP listener on its own port.
-
-The optional TLS integration can reuse the active RouteBox panel certificate and expose **HTTP and HTTPS on the same Bot panel port** through the Bot-owned multiplexer.
-
-It does not:
-
-- bind ports 80/443
-- run Certbot / ACME for the Bot
-- rewrite existing Apache/Nginx configuration
-- replace RouteBox
-
-If the RouteBox panel certificate is not available at the expected path, the Admin Panel remains HTTP-only.
-
-## 11. Service management
-
-Worker:
-
-```bash
-systemctl status routebox-telegram-bot
-systemctl restart routebox-telegram-bot
-journalctl -u routebox-telegram-bot -f
-```
-
-Admin Panel:
-
-```bash
-PORT=$(cat /etc/routebox-telegram-bot/web-port)
-systemctl status routebox-telegram-bot-web@$PORT
-journalctl -u routebox-telegram-bot-web@$PORT -f
-```
-
-## 12. Updating
-
-Command-line update:
-
-```bash
-sudo bash /opt/routebox-telegram-bot/update.sh
-```
-
-The Admin Panel can also start the update flow when a newer GitHub version is detected.
-
-The updater:
-
-- creates a pre-update backup
-- pulls `origin/main`
-- refreshes systemd / updater files
-- runs PHP and shell syntax checks
-- restarts the Worker and Admin Panel
-- preserves the existing SQLite/config state
-
-## 13. Production vs development installers
-
-There are four installer-related files:
-
-```text
-install.sh           → canonical production entrypoint
-install-v2.sh        → production setup implementation
-install-dev.sh       → development entrypoint
-install-dev-full.sh  → development implementation
-```
-
-Normal production deployments should use:
-
-```bash
-bash install.sh
-```
-
-The DEV installers use isolated `routebox-telegram-bot-dev` paths and the `feature/modular-services-ibsng` branch.
-
-## 14. Troubleshooting
-
-### Telegram token rejected
-
-Check network access:
-
-```bash
-curl -I https://api.telegram.org
-```
-
-Then verify the token in @BotFather.
-
-### RouteBox validation failed
-
-Use the exact URL that opens the RouteBox panel and check reachability:
-
-```bash
-curl -vk https://YOUR_ROUTEBOX_HOST:8443/api/health
-curl -v http://YOUR_ROUTEBOX_HOST:8080/api/health
-```
-
-A reachable panel is not enough; the full AWG smoke test must also succeed.
-
-### Admin Panel returns 503
-
-Run:
-
-```bash
-sudo bash /opt/routebox-telegram-bot/repair-web.sh
-```
-
-Then inspect:
-
-```bash
-PORT=$(cat /etc/routebox-telegram-bot/web-port)
-journalctl -u routebox-telegram-bot-web@$PORT -n 80 --no-pager
-```
-
-### Telegram token input appears blank
-
-This is intentional. Token input is hidden to reduce accidental disclosure.
-
-### AWG config export fails
-
-Check the RouteBox AmneziaWG **Server address / Public host**. The Bot asks RouteBox to render the client config; it does not invent that endpoint.
-
-### A smoke-test peer remains
-
-If installation was interrupted during cleanup, look only for the uniquely named `rbt-install-test-*` peer and remove that test peer from RouteBox.
-
-## 15. Security recommendations
-
-- Never publish Bot Tokens, RouteBox passwords or IBSng credentials.
-- Never publish private keys or real `.conf` files.
-- Use HTTPS for public Admin Panel access.
-- Restrict the Admin Panel port with firewall/network policy.
-- Keep SQLite and `config/config.php` outside the public web root.
-- Keep Ubuntu, RouteBox and PHP packages current.
-- Sanitize logs before sharing them.
-
-## 16. Uninstall
-
-```bash
-sudo bash /opt/routebox-telegram-bot/uninstall.sh
-```
-
-The uninstall script removes the Bot application/services/state. It does not remove RouteBox, Apache, Nginx or unrelated system packages.
-
-## 17. Future payment and subscription work
-
-The database and abstraction layer already contain the foundation for:
-
-- order lifecycle
-- coupons
-- payment providers
-- verified-payment provisioning
-- invoices / payment history
-
-Planned gateways include:
-
-- Iranian Rial gateway adapter
-- Crypto gateway adapter
-
-These are **planned**, not currently live production payment gateways.
-
-## 18. Compatibility
-
-The Bot is tied to the current RouteBox API architecture. RouteBox API behavior may change between releases, so the full integration smoke test against the exact RouteBox installation is mandatory before real users are onboarded.
+Then inspect the actual source/call chain before touching Provider Core, Worker or database behavior.
