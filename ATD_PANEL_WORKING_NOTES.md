@@ -246,3 +246,14 @@ Read this file and `ROADMAP.md` first. Treat `6026a16` as the last known-good ap
 - Successful Admin provisioning callbacks cannot provision the same action twice.
 - Admin provisioning actions are audit logged without credentials.
 - Card-to-card Order/Payment/Receipt approval remains the next slice.
+
+## Telegram Bot Control Center — UI slice completed
+
+- Added `src/Admin/TelegramBotSections.php` as a presentation-only layer for the Customer Bot and Telegram Bot Admin overview pages.
+- Added `section=bot-customer` and `section=bot-admin` as child destinations under the existing Telegram Bot navigation.
+- Existing `section=bot` Bot Settings, Bot Buttons and Bot Menu Preview remain intact.
+- Existing Bot Usage Guides remain separate from Provider Admin Guides.
+- General Guide and per-service guides remain conceptually separate.
+- Bot Admin overview links to the existing `public/telegram-admins.php` management surface; it does not create a second authorization implementation.
+- No Provider Core, provisioning, Worker polling, peer/IP allocation or database semantics were changed for this UI slice.
+- The four protected ATD Stats cards were not modified.
