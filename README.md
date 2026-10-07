@@ -174,6 +174,7 @@ install-dev-full.sh
 ## Documentation
 
 - [Persistent Working Notes](./ATD_PANEL_WORKING_NOTES.md)
+- [Persistent New-Chat Handoff — 2026-10-07](./docs/ATD_PANEL_HANDOFF_2026-10-07.md)
 - [Roadmap](./ROADMAP.md)
 - [Current State / New-Chat Handoff](./docs/ATD_PANEL_CURRENT_STATE.md)
 - [Changelog](./CHANGELOG.md)
