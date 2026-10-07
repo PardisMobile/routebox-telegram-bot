@@ -272,3 +272,45 @@ Read this file and `ROADMAP.md` first. Treat `6026a16` as the last known-good ap
 - Never modify the four protected ATD Stats cards without explicit approval.
 - Keep all Bot/Admin UI within the existing `?section=` panel architecture.
 - Documentation-only commits do not become application checkpoints unless the application itself was tested.
+
+
+## 2026-10-07 continuity update
+
+The detailed persistent handoff is now also stored at:
+
+- `docs/ATD_PANEL_HANDOFF_2026-10-07.md`
+
+Latest prepared GitHub commit:
+
+- `5fdbbe4ede6d27dd64bca576253dfa011e1c0b1a` — `feat(ui): unify users trial search and add table pagination`
+
+Important deployment state:
+
+- This commit is on `ATD-Panel`.
+- The user has NOT yet applied it to `/opt/routebox-telegram-bot-dev`.
+- It has NOT yet been accepted as a server-tested application checkpoint.
+- Do not claim its pagination/search changes are runtime-tested until the user deploys and verifies them.
+
+The commit changes only `src/Admin/TrialAdminPanel.php` and:
+
+- visually unifies Users Search with the Trial Search;
+- keeps `trial_q` independent from the existing Users `q` search;
+- adds 20-row client-side pagination to the Users and Trial tables only when more than 20 rows exist;
+- preserves the existing Users query and Trial/provider logic;
+- does not modify Provider Core, ServiceProvisioner, Worker, MikroTik allocation or IBSng provisioning.
+
+### Immediate validation checklist
+
+After deployment, verify:
+
+1. Users search still works.
+2. Trial search still works independently.
+3. Users pagination works with >20 rows.
+4. Trial pagination works with >20 rows.
+5. Search + pagination do not break each other.
+6. Mobile layout remains correct.
+7. Existing Bot/Users/Trial UI remains intact.
+
+Until these checks pass, keep `6026a16` as the documented last known-good application checkpoint and treat `5fdbbe4` as pending validation.
+
+For full continuity, read `docs/ATD_PANEL_HANDOFF_2026-10-07.md` first in a new chat, then this file and `ROADMAP.md`.
