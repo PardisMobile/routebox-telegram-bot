@@ -201,3 +201,31 @@ install-dev-full.sh
 5. Complete card-to-card Order/Receipt/Approval/Provision lifecycle.
 6. ZarinPal/Crypto adapters.
 7. Later: wallet, coupon, referral/affiliate, reseller and growth features.
+
+
+## 2026-10-07 update
+
+### Latest prepared UI commit
+
+`5fdbbe4ede6d27dd64bca576253dfa011e1c0b1a` — `feat(ui): unify users trial search and add table pagination`
+
+Status: prepared on GitHub, not yet deployed to the development server and therefore not yet accepted as a runtime-tested checkpoint.
+
+Changes:
+- Users Search and Trials Search use the same visual treatment.
+- Users table pagination: 20 rows/page, shown only when needed.
+- Trials table pagination: 20 rows/page, shown only when needed.
+- Trial search remains independent through `trial_q`.
+- Existing Users query and Provider/Trial logic remain unchanged.
+
+### Current deployment boundary
+
+Development server: `/opt/routebox-telegram-bot-dev`
+
+Web service: `routebox-telegram-bot-dev-web@8092.service`
+
+Do not restart/replace the existing Worker for this UI change.
+
+### New persistent handoff
+
+See `docs/ATD_PANEL_HANDOFF_2026-10-07.md` for the complete new-chat continuity record, including protected architecture, completed work, tested vs pending status, deployment instructions and next validation checklist.
