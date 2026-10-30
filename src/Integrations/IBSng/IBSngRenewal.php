@@ -44,6 +44,22 @@ final class IBSngRenewal
         if ($idempotencyKey === '' || strlen($idempotencyKey) > 200) {
             throw new RuntimeException('A valid IBSng renewal idempotency key is required.');
         }
+
+        // A failed request may have reached IBSng before its HTTP response was
+        // lost. Require manual reconciliation instead of risking a second grant.
+        $unresolved = $this->db->prepare(
+            "SELECT idempotency_key,status FROM ibsng_renewals
+             WHERE ibsng_server_id=? AND ibsng_user_id=? AND status IN ('pending','failed')
+             LIMIT 1"
+        );
+        $unresolved->execute([$serverId, (string)$userId]);
+        $unresolvedRow = $unresolved->fetch(PDO::FETCH_ASSOC);
+        if (is_array($unresolvedRow)) {
+            throw new RuntimeException(
+                'This IBSng user has an unresolved renewal operation; reconcile it before starting another renewal.'
+            );
+        }
+
         if (!array_key_exists('expired', $accountState) || !is_bool($accountState['expired'])) {
             throw new RuntimeException('IBSng account state has not been verified.');
         }
@@ -168,7 +184,7 @@ final class IBSngRenewal
                 "UPDATE ibsng_renewals SET status='failed',error_text=?,updated_at=?
                  WHERE idempotency_key=? AND status='pending'"
             );
-            $fail->execute([mb_substr($e->getMessage(), 0, 1000), time(), $idempotencyKey]);
+            $fail->execute([substr($e->getMessage(), 0, 1000), time(), $idempotencyKey]);
             throw $e;
         }
     }
