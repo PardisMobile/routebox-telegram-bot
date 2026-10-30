@@ -45,8 +45,31 @@ final class IBSngProvider implements ServiceProviderInterface
     public function renewSubscription(array $context, array $plan): array
     {
         $userId = $context['provider_reference'] ?? $context['user_id'] ?? null;
-        if ($userId === null) throw new RuntimeException('IBSng user reference is required.');
-        $result = $this->client->renewUser($userId, (string)($context['comment'] ?? 'RouteBox renewal'));
+        $username = trim((string)($context['username'] ?? ''));
+        if ($userId === null || $username === '') {
+            throw new RuntimeException('IBSng user reference and username are required for renewal.');
+        }
+
+        if (!array_key_exists('relative_expiration', $context)
+            || !array_key_exists('reset_first_login', $context)) {
+            throw new RuntimeException(
+                'IBSng renewal attributes must be derived from the actual Web Panel user information first.'
+            );
+        }
+
+        $relativeExpiration = $context['relative_expiration'] === null
+            ? null
+            : (int)$context['relative_expiration'];
+        $resetFirstLogin = (bool)$context['reset_first_login'];
+
+        $result = $this->client->renewUser(
+            $userId,
+            $username,
+            $relativeExpiration,
+            $resetFirstLogin,
+            (string)($context['comment'] ?? 'RouteBox renewal')
+        );
+
         return ['provider_reference' => (string)$userId, 'raw' => $result];
     }
 
