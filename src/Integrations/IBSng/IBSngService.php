@@ -187,9 +187,38 @@ final class IBSngService
         return $this->client($serverId)->getUserInfoByUsername($username);
     }
 
+    /**
+     * Legacy renewal entry point retained for compatibility. The old adapter
+     * had no verified renewal workflow; do not bypass the central policy module.
+     */
     public function renew(int $serverId, string $userId, string $comment = ''): mixed
     {
         return $this->client($serverId)->renewUser($userId, $comment);
+    }
+
+    /**
+     * Run renewal only after the caller has obtained verified account state
+     * from the IBSng A1.24 Web Panel.
+     *
+     * @param array{expired:bool,remaining_days?:int} $accountState
+     */
+    public function renewWithVerifiedState(
+        int $serverId,
+        string|int $userId,
+        string $username,
+        int $planId,
+        array $accountState,
+        string $idempotencyKey
+    ): array {
+        return (new IBSngRenewal($this->db))->renew(
+            $this->client($serverId),
+            $serverId,
+            $userId,
+            $username,
+            $planId,
+            $accountState,
+            $idempotencyKey
+        );
     }
 
     public function changeGroup(int $serverId, string $userId, string $group): mixed
