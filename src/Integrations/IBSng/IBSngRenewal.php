@@ -19,6 +19,43 @@ use Throwable;
  */
 final class IBSngRenewal
 {
+    /**
+     * Client-facing renewal implementation. IBSngClient::renewUser() delegates
+     * here, while this module uses a distinct low-level transport method to
+     * avoid recursion.
+     */
+    public static function executeClientRenewal(
+        IBSngClient $client,
+        string|int $userId,
+        string $username = '',
+        ?int $relativeExpiration = null,
+        bool $resetFirstLogin = false,
+        string $comment = '',
+        string|int $groupId = '',
+        string $groupName = ''
+    ): array {
+        if (
+            trim($username) === ''
+            || ($relativeExpiration === null && !$resetFirstLogin)
+            || (string)$groupId === ''
+            || trim($groupName) === ''
+        ) {
+            throw new RuntimeException(
+                'IBSng renewal requires verified account state and a mapped IBSng group.'
+            );
+        }
+
+        return $client->submitRenewalAttributes(
+            $userId,
+            $username,
+            $relativeExpiration,
+            $resetFirstLogin,
+            $comment,
+            $groupId,
+            $groupName
+        );
+    }
+
     public function __construct(private readonly PDO $db)
     {
         IBSngSchema::ensure($db);
