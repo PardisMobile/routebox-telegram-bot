@@ -247,3 +247,15 @@
 - **در مرحلهٔ فعلی Worker خارج از محدوده است و نباید تغییر کند.** هیچ Worker، سرویس، تایمر یا اجرای پس‌زمینه‌ای برای این کار اضافه نشود. تمرکز فعلی فقط بر تکمیل تمدید از پنل وب است.
 - نام و مسیر فایل مرکزی (از جمله نام پیشنهادی `ibsng-renewal.php`) باید با ساختار واقعی پروژه تطبیق داده شود. ثبت این تصمیم به معنی وجود یا تکمیل کد آن فایل نیست.
 
+
+
+## Implementation trace (in progress)
+
+The first implementation slice is now on `atd-panel-ibsng-renewal`:
+
+- `IBSngSchema::ensure()`: adds nullable `service_plans.ibsng_validity_days` without deriving it from generic `duration_days`; creates a persistent renewal ledger with a unique idempotency key; stores gift-day policy separately.
+- `IBSngService`: validates and persists per-plan IBSng validity (1–36500 days) and configurable gift days (0–3650).
+- `IBSngAdmin::viewData()` and `IBSngSection::render()`: expose the plan-validity and gift-day configuration in the existing IBSng admin section.
+- `IBSngClient::renewUser()`: starts the native A1.24 edit-user POST flow and is designed to preserve Absolute Expiration by not submitting that attribute.
+
+**Not yet complete / must not be treated as release-ready:** the renewal action still needs its admin username lookup and plan-selection workflow, reliable account-state/remaining-validity extraction from the actual A1.24 user-info page, ledger state transitions/retry recovery, and regression tests against an IBSng A1.24 instance. Until those are implemented and verified, do not use this feature to renew production accounts. The existing generic RouteBox duration remains unchanged.
