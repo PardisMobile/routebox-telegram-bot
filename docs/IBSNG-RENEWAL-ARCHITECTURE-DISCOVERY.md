@@ -192,6 +192,7 @@
 
 - مسیر عمومی مشاهده‌شده برای ویرایش attributeها: `/IBSng/inc/attr_update.php` و سازوکار updaterهای پنل.
 - updater و نام فیلدها باید برای هر attribute از قالب و سورس A1.24 استخراج شوند؛ فرم ممکن است hidden fields یا چند درخواست وابسته داشته باشد.
+- از سورس `interface/IBSng/inc/attrs.php` (خروجی موجود در Library) مشخص است که `UpdateAttrsHelper` به وجود `group_id`، `group_name`، `owner_name` و `comment` در request نیاز دارد (`mustBeInRequest`). بنابراین POST فعلی `renewUser()` که این چهار فیلد را ارسال نمی‌کند، هنوز یک فرم کامل/تأییدشده نیست و نباید برای تمدید واقعی حساب استفاده شود. باید مقادیر معتبر از HTML فرم یا user/group info همان نشست استخراج شوند؛ مقدار حدسی یا خالی پذیرفته نیست.
 - سرنخ‌های ثبت‌شده در بخش سورس:
   - First Login updater: `firstLogin`
   - فیلد reset: `reset_first_login=t`
