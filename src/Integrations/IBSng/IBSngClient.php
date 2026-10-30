@@ -496,8 +496,26 @@ final class IBSngClient
         $response = $this->request('/admin/plugins/edit.php', $post, false);
         $text = $this->textFromHtml($response['body']);
 
-        if (preg_match('/\b(INCOMPLETE_REQUEST|INVALID_INPUT|error)\b/i', $text)) {
-            throw new RuntimeException('IBSng did not confirm the renewal attribute update.');
+        /*
+         * A1.24 edit_funcs.php calls updateTargetAttrs(FALSE): successful
+         * updates redirect to the target user info page; failed updates render
+         * the edit form again. Do not infer success from a generic body string.
+         */
+        $location = $this->firstMatch('/^Location:\s*([^\r\n]+)/mi', $response['headers']);
+        $redirectQuery = [];
+        if ($location !== null) {
+            parse_str((string)parse_url($location, PHP_URL_QUERY), $redirectQuery);
+        }
+        if (
+            $response['code'] < 300
+            || $response['code'] >= 400
+            || $location === null
+            || stripos($location, 'user_info.php') === false
+            || (string)($redirectQuery['user_id'] ?? '') !== (string)$userId
+        ) {
+            throw new RuntimeException(
+                'IBSng did not redirect to the expected user information page after the renewal update.'
+            );
         }
 
         return [
