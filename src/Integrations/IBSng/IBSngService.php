@@ -187,9 +187,27 @@ final class IBSngService
         return $this->client($serverId)->getUserInfoByUsername($username);
     }
 
-    public function renew(int $serverId, string $userId, string $comment = ''): mixed
-    {
-        return $this->client($serverId)->renewUser($userId, $comment);
+    /**
+     * Apply already-derived renewal attributes through IBSng A1.24 HTML Web Panel.
+     *
+     * Account-state detection and remaining-validity calculation belong to the
+     * renewal workflow; this adapter only submits the selected native attributes.
+     */
+    public function renew(
+        int $serverId,
+        string|int $userId,
+        string $username,
+        ?int $relativeExpiration,
+        bool $resetFirstLogin,
+        string $comment = ''
+    ): array {
+        return $this->client($serverId)->renewUser(
+            $userId,
+            $username,
+            $relativeExpiration,
+            $resetFirstLogin,
+            $comment
+        );
     }
 
     public function changeGroup(int $serverId, string $userId, string $group): mixed
