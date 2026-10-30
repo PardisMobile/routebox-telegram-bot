@@ -428,11 +428,18 @@ final class IBSngClient
         string $username = '',
         ?int $relativeExpiration = null,
         bool $resetFirstLogin = false,
-        string $comment = ''
+        string $comment = '',
+        string|int $groupId = '',
+        string $groupName = ''
     ): array {
         // Keep the pre-renewal two-argument contract non-fatal for old callers.
         // The legacy flow was not enabled; it must not accidentally mutate IBSng.
-        if ($username === '' || ($relativeExpiration === null && !$resetFirstLogin)) {
+        if (
+            $username === ''
+            || ($relativeExpiration === null && !$resetFirstLogin)
+            || (string)$groupId === ''
+            || trim($groupName) === ''
+        ) {
             throw new RuntimeException(
                 'IBSng renewal must be invoked through the centralized IBSngRenewal module with verified account state.'
             );
@@ -447,6 +454,12 @@ final class IBSngClient
             'target' => 'user',
             'target_id' => (string)$userId,
             'user_id' => (string)$userId,
+            // IBSng A1.24 attrs.php requires these context fields on every
+            // edit-user attribute update; they are not optional form metadata.
+            'group_id' => (string)$groupId,
+            'group_name' => $groupName,
+            'owner_name' => $this->username,
+            'comment' => $comment,
         ];
 
         // The normal IBSng Relative Expiration edit plugin uses has_rel_exp
