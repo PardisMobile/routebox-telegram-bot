@@ -65,15 +65,24 @@ final class IBSngRenewal
         }
 
         $planQuery = $this->db->prepare(
-            "SELECT ibsng_validity_days FROM service_plans
+            "SELECT ibsng_validity_days,provider_plan_key FROM service_plans
              WHERE id=? AND provider_key='ibsng' AND provider_server_id=?"
         );
         $planQuery->execute([$planId, $serverId]);
-        $validityDays = $planQuery->fetchColumn();
-        if ($validityDays === false || $validityDays === null || (int)$validityDays < 1) {
+        $plan = $planQuery->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($plan) || $plan['ibsng_validity_days'] === null || (int)$plan['ibsng_validity_days'] < 1) {
             throw new RuntimeException('Set a valid IBSng plan duration before renewing this account.');
         }
-        $validityDays = (int)$validityDays;
+        $validityDays = (int)$plan['ibsng_validity_days'];
+        $groupName = trim((string)($plan['provider_plan_key'] ?? ''));
+        if ($groupName === '') {
+            throw new RuntimeException('The selected IBSng plan has no mapped group name.');
+        }
+        $groupInfo = $client->getGroupInfo($groupName);
+        $groupId = $groupInfo['group_id'] ?? null;
+        if ($groupId === null || (string)$groupId === '') {
+            throw new RuntimeException('Could not verify the IBSng group ID from its Web Panel.');
+        }
 
         $settingsQuery = $this->db->query(
             "SELECT setting_key,setting_value FROM ibsng_renewal_settings
@@ -150,7 +159,9 @@ final class IBSngRenewal
                 $username,
                 $relativeExpiration,
                 $expired,
-                'RouteBox renewal ' . $idempotencyKey
+                'RouteBox renewal ' . $idempotencyKey,
+                (string)$groupId,
+                $groupName
             );
             $payload = [
                 'completed' => true,
