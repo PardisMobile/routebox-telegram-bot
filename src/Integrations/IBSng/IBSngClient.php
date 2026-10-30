@@ -425,11 +425,19 @@ final class IBSngClient
      */
     public function renewUser(
         string|int $userId,
-        string $username,
-        ?int $relativeExpiration,
-        bool $resetFirstLogin,
+        string $username = '',
+        ?int $relativeExpiration = null,
+        bool $resetFirstLogin = false,
         string $comment = ''
     ): array {
+        // Keep the pre-renewal two-argument contract non-fatal for old callers.
+        // The legacy flow was not enabled; it must not accidentally mutate IBSng.
+        if ($username === '' || ($relativeExpiration === null && !$resetFirstLogin)) {
+            throw new RuntimeException(
+                'IBSng renewal must be invoked through the centralized IBSngRenewal module with verified account state.'
+            );
+        }
+
         $this->ensureLogin();
 
         $editTemplates = [];
