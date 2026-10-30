@@ -251,11 +251,13 @@
 
 ## Implementation trace (in progress)
 
-The first implementation slice is now on `atd-panel-ibsng-renewal`:
+The implementation slice on `atd-panel-ibsng-renewal` now includes:
 
 - `IBSngSchema::ensure()`: adds nullable `service_plans.ibsng_validity_days` without deriving it from generic `duration_days`; creates a persistent renewal ledger with a unique idempotency key; stores gift-day policy separately.
-- `IBSngService`: validates and persists per-plan IBSng validity (1–36500 days) and configurable gift days (0–3650).
-- `IBSngAdmin::viewData()` and `IBSngSection::render()`: expose the plan-validity and gift-day configuration in the existing IBSng admin section.
-- `IBSngClient::renewUser()`: starts the native A1.24 edit-user POST flow and is designed to preserve Absolute Expiration by not submitting that attribute.
+- `IBSngService`: validates/persists plan validity and gift-day settings; exposes `renewWithVerifiedState()` as the integration entry to the central policy.
+- `IBSngRenewal.php` / `IBSngRenewal`: centralizes policy, gift selection, idempotency reservation, and ledger completion/failure. It fails closed if verified account state is missing.
+- `IBSngModule.php`: loads the central module.
+- `IBSngClient::renewUser()`: remains the HTTP/session adapter. The legacy two-argument call is now non-fatal but rejected safely unless a complete, verified renewal request is supplied.
+- `IBSngProvider::renewSubscription()`: does not bypass the central policy because the generic provider contract lacks the verified IBSng account state and idempotency key.
 
-**Not yet complete / must not be treated as release-ready:** the renewal action still needs its admin username lookup and plan-selection workflow, reliable account-state/remaining-validity extraction from the actual A1.24 user-info page, ledger state transitions/retry recovery, and regression tests against an IBSng A1.24 instance. Until those are implemented and verified, do not use this feature to renew production accounts. The existing generic RouteBox duration remains unchanged.
+**Not release-ready:** account-state/remaining-validity extraction from the actual A1.24 user-info page, an admin username/plan renewal form and action, and integration/regression tests against a real IBSng A1.24 instance remain incomplete. Do not renew production accounts with this feature until those are implemented and verified. The existing generic RouteBox duration and provisioning flow remain unchanged.
