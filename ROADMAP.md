@@ -15,6 +15,7 @@
 - Existing `section=users` remains the shared Web User Management surface.
 - Bot Usage Guides, General Guide and Provider Administration Guides are distinct concepts.
 - MirzaBot is reference-only and must never be copied as code, schema, naming, UI or architecture.
+- **RouteBox and MirzaBot both communicate with IBSng by processing/parsing HTML. This is shared behavior, not a difference between the projects. MirzaBot has a broader set of commands/features; some of those capabilities have not yet been implemented in RouteBox. Use MirzaBot only to identify feature gaps, while preserving RouteBox's existing behavior and architecture.**
 
 ## Stable application checkpoint
 
@@ -132,6 +133,7 @@ Future:
 - [ ] Renewal using existing ATD/IBSng Plans and real Provider Plan Key.
 - [ ] Edit only Provider-supported fields.
 - [ ] Existing IBSng creation/test-user functionality reused, not duplicated.
+- [ ] Compare the RouteBox IBSng command/feature coverage against MirzaBot's broader feature set; implement only the missing, explicitly selected features using RouteBox's existing architecture and behavior.
 
 ## 🟠 Phase 4 — Username / Password Generation
 
