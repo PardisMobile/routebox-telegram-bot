@@ -190,8 +190,9 @@
 
 ### 11.5 به‌روزرسانی Attributeها
 
-- مسیر عمومی مشاهده‌شده برای ویرایش attributeها: `/IBSng/inc/attr_update.php` و سازوکار updaterهای پنل.
-- updater و نام فیلدها باید برای هر attribute از قالب و سورس A1.24 استخراج شوند؛ فرم ممکن است hidden fields یا چند درخواست وابسته داشته باشد.
+- مسیر POST ویرایش attributeها: `/IBSng/admin/plugins/edit.php`؛ در سورس `edit.php`، شاخهٔ `update/edit_tpl_cs/target/target_id` به `intUpdateAttrs()` می‌رسد و `edit_funcs.php`، `updateTargetAttrs(FALSE)` را اجرا می‌کند.
+- طبق سورس `attrs.php` و `UpdateAttrsHelper::mustBeInRequest()`، فیلدهای زمینه‌ای `group_id`، `group_name`، `owner_name` و `comment` برای update لازم‌اند. Client اکنون این فیلدها را در renewal POST می‌فرستد؛ `group_id` از صفحهٔ واقعی IBSng Group استخراج می‌شود و owner از ادمین متصل.
+- موفقیت در مسیر Web Panel با redirect به صفحهٔ اطلاعات همان کاربر انجام می‌شود؛ Client اکنون این redirect و تطابق `user_id` را بررسی می‌کند، نه صرفاً وجود/عدم وجود واژهٔ `error` در body.
 - سرنخ‌های ثبت‌شده در بخش سورس:
   - First Login updater: `firstLogin`
   - فیلد reset: `reset_first_login=t`
