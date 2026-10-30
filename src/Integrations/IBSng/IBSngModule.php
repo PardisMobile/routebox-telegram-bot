@@ -8,6 +8,7 @@ use PDO;
 
 require_once __DIR__ . '/IBSngSchema.php';
 require_once __DIR__ . '/IBSngClient.php';
+require_once __DIR__ . '/IBSngRenewal.php';
 require_once __DIR__ . '/IBSngService.php';
 require_once __DIR__ . '/IBSngAdmin.php';
 require_once __DIR__ . '/IBSngSection.php';
