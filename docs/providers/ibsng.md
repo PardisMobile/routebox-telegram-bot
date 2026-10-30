@@ -5,16 +5,16 @@
 ## 1. پیش‌نیازها
 
 - نصب و دسترسی مدیریتی به IBSng برقرار باشد.
-- ATD Panel بتواند به API/endpoint مورد استفاده IBSng دسترسی داشته باشد.
+- ATD Panel بتواند به HTML Web Panel مورد استفاده IBSng دسترسی داشته باشد.
 - اطلاعات Authentication و Group/Service مورد نیاز Provisioning مشخص باشد.
 
 ## 2. آماده‌سازی IBSng
 
-دسترسی API را طبق نسخه IBSng خود فعال کنید و در Firewall فقط IP سرور ATD Panel را مجاز کنید.
+دسترسی HTTP(S) به Web Panel واقعی IBSng A1.24 را فراهم کنید و در Firewall فقط IP سرور ATD Panel را مجاز کنید. هیچ API فرضی، XML-RPC یا RADIUS برای این ارتباط استفاده نمی‌شود.
 
 ## 3. افزودن در ATD Panel
 
-در **IBSng Servers** سرور را اضافه کنید و Host، API Port، Username، Password و تنظیمات TLS/Connection را وارد کنید.
+در **IBSng Servers** سرور را اضافه کنید و Host، Web Panel port، Admin Username، Admin Password و تنظیمات HTTP/HTTPS را وارد کنید.
 
 ## 4. تست اتصال
 
@@ -29,4 +29,4 @@
 - Authentication failed: حساب API و دسترسی‌های آن را بررسی کنید.
 - Timeout: Firewall، DNS و مسیر شبکه را بررسی کنید.
 - Group/service error: mapping گروه و سرویس مورد استفاده Plan را بررسی کنید.
-- Provisioning error: لاگ Worker و پاسخ API را بررسی کنید.
+- Provisioning error: لاگ عملیات پنل و پاسخ HTML IBSng را بررسی کنید.
