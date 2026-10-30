@@ -44,10 +44,12 @@ final class IBSngProvider implements ServiceProviderInterface
 
     public function renewSubscription(array $context, array $plan): array
     {
-        $userId = $context['provider_reference'] ?? $context['user_id'] ?? null;
-        if ($userId === null) throw new RuntimeException('IBSng user reference is required.');
-        $result = $this->client->renewUser($userId, (string)($context['comment'] ?? 'RouteBox renewal'));
-        return ['provider_reference' => (string)$userId, 'raw' => $result];
+        // The generic provider contract does not carry verified IBSng account
+        // state, a selected IBSng validity plan, or an idempotency key. Calling
+        // the low-level client here would bypass the central renewal policy.
+        throw new RuntimeException(
+            'IBSng renewals must be processed by IBSngService::renewWithVerifiedState().'
+        );
     }
 
     public function getSubscription(array $context): array
