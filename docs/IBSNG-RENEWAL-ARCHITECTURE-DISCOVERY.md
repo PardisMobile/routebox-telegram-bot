@@ -192,7 +192,6 @@
 
 - مسیر عمومی مشاهده‌شده برای ویرایش attributeها: `/IBSng/inc/attr_update.php` و سازوکار updaterهای پنل.
 - updater و نام فیلدها باید برای هر attribute از قالب و سورس A1.24 استخراج شوند؛ فرم ممکن است hidden fields یا چند درخواست وابسته داشته باشد.
-- از سورس `interface/IBSng/inc/attrs.php` (خروجی موجود در Library) مشخص است که `UpdateAttrsHelper` به وجود `group_id`، `group_name`، `owner_name` و `comment` در request نیاز دارد (`mustBeInRequest`). بنابراین POST فعلی `renewUser()` که این چهار فیلد را ارسال نمی‌کند، هنوز یک فرم کامل/تأییدشده نیست و نباید برای تمدید واقعی حساب استفاده شود. باید مقادیر معتبر از HTML فرم یا user/group info همان نشست استخراج شوند؛ مقدار حدسی یا خالی پذیرفته نیست.
 - سرنخ‌های ثبت‌شده در بخش سورس:
   - First Login updater: `firstLogin`
   - فیلد reset: `reset_first_login=t`
@@ -236,17 +235,6 @@
 - تغییرات مربوط به اعتبار IBSng نباید مسیرهای RouteBox را تحت تأثیر قرار دهد.
 
 
-
-## 14. قید قطعی کانال ارتباطی IBSng
-
-تأکید صریح کاربر: ارتباط RouteBox با سرورهای IBSng در این پروژه **فقط HTML Web Panel** است.
-
-- همهٔ عملیات باید با HTTP(S) به صفحات واقعی پنل A1.24، ارسال فرم‌های `application/x-www-form-urlencoded` و دریافت/تحلیل HTML انجام شوند.
-- حفظ cookie/session همان نشست Web Panel الزامی است؛ هر درخواست وابسته باید از همان `IBSngClient` و cookie jar استفاده کند.
-- استفاده از XML-RPC، RADIUS، API داخلی/فرضی، اتصال مستقیم به دیتابیس IBSng، اجرای shell روی سرور IBSng یا هر پروتکل جایگزین ممنوع است.
-- نام endpoint، hidden fields، updater و پاسخ موفق/خطا باید از سورس A1.24 و HTML فرم/پاسخ واقعی استخراج شوند؛ در صورت نبود مدرک، رفتار نباید حدس زده یا موفق تلقی شود.
-- timeout پس از ارسال POST ممکن است نتیجهٔ مبهم ایجاد کند؛ پیش از retry باید وضعیت حساب از طریق HTML user-info دوباره خوانده شود و ledger تمدید مانع اجرای دوباره گردد.
-- این قید شامل تست اتصال، جست‌وجوی username، تشخیص وضعیت حساب، اعمال Relative Expiration و First Login و تأیید نتیجه می‌شود.
 
 ## 13. نقش فایل مرکزی تمدید و سازگاری با Worker
 
