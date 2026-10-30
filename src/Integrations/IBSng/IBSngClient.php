@@ -423,14 +423,15 @@ final class IBSngClient
      * IBSng A1.24 routes edit form updates through edit.php -> attrs.php ->
      * UpdateAttrsHelper -> user.updateUserAttrs.
      */
-    public function renewUser(
+    /** Low-level IBSng A1.24 edit-user request; renewal policy lives in IBSngRenewal. */
+    public function submitRenewalAttributes(
         string|int $userId,
-        string $username = '',
-        ?int $relativeExpiration = null,
-        bool $resetFirstLogin = false,
-        string $comment = '',
-        string|int $groupId = '',
-        string $groupName = ''
+        string $username,
+        ?int $relativeExpiration,
+        bool $resetFirstLogin,
+        string $comment,
+        string|int $groupId,
+        string $groupName
     ): array {
         // Keep the pre-renewal two-argument contract non-fatal for old callers.
         // The legacy flow was not enabled; it must not accidentally mutate IBSng.
@@ -529,6 +530,32 @@ final class IBSngClient
             'url' => $response['url'],
             'code' => $response['code'],
         ];
+
+    }
+
+    /**
+     * Compatibility entry point. Renewal implementation is delegated to the
+     * dedicated IBSngRenewal module; existing non-renewal client behavior stays unchanged.
+     */
+    public function renewUser(
+        string|int $userId,
+        string $username = '',
+        ?int $relativeExpiration = null,
+        bool $resetFirstLogin = false,
+        string $comment = '',
+        string|int $groupId = '',
+        string $groupName = ''
+    ): array {
+        return IBSngRenewal::executeClientRenewal(
+            $this,
+            $userId,
+            $username,
+            $relativeExpiration,
+            $resetFirstLogin,
+            $comment,
+            $groupId,
+            $groupName
+        );
     }
 
     public function changeUserGroup(string|int $userId, string $groupName): mixed
