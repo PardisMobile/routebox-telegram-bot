@@ -148,7 +148,28 @@ final class IBSngSection
 
         $serverList = '<section class="card"><div class="section-head"><div class="section-title"><div class="section-icon">▤</div><div><h2>' . $h($T['servers']) . '</h2><p>' . $h($T['servers_hint']) . '</p></div></div></div>' . $cards . '</section>';
 
-        return $flash . $serverList . $addServer
+        $renewalSettings = is_array($data['renewal_settings'] ?? null) ? $data['renewal_settings'] : [];
+        $planValidity = '';
+        foreach (($data['plans'] ?? []) as $plan) {
+            $planId = (int)($plan['id'] ?? 0);
+            $planName = (string)($plan['display_name_fa'] ?? $plan['display_name_en'] ?? $plan['provider_plan_key'] ?? '');
+            $days = (int)($plan['ibsng_validity_days'] ?? 0);
+            $planValidity .= '<form method="post" class="atd-ibsng-validity-row">'
+                . '<input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="set_plan_validity"><input type="hidden" name="section" value="ibsng"><input type="hidden" name="plan_id" value="' . $planId . '">'
+                . '<span>' . $h($planName) . ' <small dir="ltr">(' . $h((string)($plan['provider_plan_key'] ?? '')) . ')</small></span>'
+                . '<label>' . $h($fa ? 'اعتبار (روز)' : 'Validity (days)') . '<input type="number" name="ibsng_validity_days" min="1" max="36500" required value="' . ($days > 0 ? $days : '') . '" placeholder="' . $h($fa ? 'الزامی' : 'Required') . '"></label>'
+                . '<button class="btn btn-secondary" type="submit">' . $h($fa ? 'ذخیره' : 'Save') . '</button></form>';
+        }
+        $planValidity = $planValidity !== '' ? $planValidity : '<p class="help">' . $h($fa ? 'ابتدا پلن IBSng تعریف کنید.' : 'Add an IBSng plan first.') . '</p>';
+        $renewalConfig = '<section class="card atd-ibsng-renewal-config"><div class="section-head"><div class="section-title"><div class="section-icon">↻</div><div><h2>' . $h($fa ? 'تنظیمات تمدید IBSng' : 'IBSng Renewal Settings') . '</h2><p>' . $h($fa ? 'اعتبار IBSng مستقل از Duration عمومی RouteBox تنظیم می‌شود.' : 'IBSng validity is independent from RouteBox generic duration_days.') . '</p></div></div></div>'
+            . $planValidity
+            . '<form method="post" class="atd-ibsng-gift-form"><input type="hidden" name="csrf_token" value="' . $h($csrf) . '"><input type="hidden" name="action" value="save_renewal_settings"><input type="hidden" name="section" value="ibsng"><div class="grid">'
+            . '<div class="field"><label>' . $h($fa ? 'روز هدیه تمدید اول' : 'Gift days for first renewal') . '</label><input type="number" name="gift_days_first" min="0" max="3650" required value="' . (int)($renewalSettings['gift_days_first'] ?? 1) . '"></div>'
+            . '<div class="field"><label>' . $h($fa ? 'روز هدیه تمدیدهای بعدی' : 'Gift days for subsequent renewals') . '</label><input type="number" name="gift_days_repeat" min="0" max="3650" required value="' . (int)($renewalSettings['gift_days_repeat'] ?? 5) . '"></div>'
+            . '</div><div class="form-actions"><button class="btn btn-primary" type="submit">' . $h($fa ? 'ذخیره تنظیمات هدیه' : 'Save gift settings') . '</button></div></form></section>';
+
+        return $flash . $renewalConfig . $serverList . $addServer
+            . '<style>.atd-ibsng-validity-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(130px,220px) auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}.atd-ibsng-validity-row label{display:flex;align-items:center;gap:8px}.atd-ibsng-validity-row input{max-width:100px}.atd-ibsng-gift-form{margin-top:16px}@media(max-width:600px){.atd-ibsng-validity-row{grid-template-columns:1fr}.atd-ibsng-validity-row label{justify-content:space-between}}</style>'
             . '<style>.atd-ibsng-server-actions{display:flex;gap:8px;flex-wrap:wrap}.atd-ibsng-action{min-height:40px!important;padding:10px 14px!important;border-radius:11px!important;font-weight:750!important;cursor:pointer;list-style:none!important}.atd-ibsng-action::-webkit-details-marker{display:none}.atd-ibsng-edit>summary{display:inline-flex}.atd-ibsng-small-action{min-height:36px!important;padding:8px 11px!important;border-radius:10px!important;font-size:12px!important;cursor:pointer;list-style:none!important}.atd-ibsng-small-action::-webkit-details-marker{display:none}.atd-ibsng-danger{color:var(--red)!important;border-color:rgba(255,80,80,.35)!important}@media(max-width:700px){.atd-ibsng-server-actions{justify-content:flex-start}}</style>';
     }
 
