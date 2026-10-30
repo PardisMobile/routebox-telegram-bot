@@ -44,12 +44,46 @@ final class IBSngProvider implements ServiceProviderInterface
 
     public function renewSubscription(array $context, array $plan): array
     {
-        // The generic provider contract does not carry verified IBSng account
-        // state, a selected IBSng validity plan, or an idempotency key. Calling
-        // the low-level client here would bypass the central renewal policy.
-        throw new RuntimeException(
-            'IBSng renewals must be processed by IBSngService::renewWithVerifiedState().'
+        // Keep the provider contract available. Callers must pass account state
+        // already verified from IBSng A1.24 and the mapped group context.
+        $userId = $context['user_id'] ?? $context['provider_reference'] ?? null;
+        if ($userId === null || (string)$userId === '') {
+            throw new RuntimeException('IBSng user ID is required for renewal.');
+        }
+
+        $username = trim((string)($context['username'] ?? ''));
+        $accountState = $context['account_state'] ?? [];
+        if (!is_array($accountState) || !isset($accountState['expired']) || !is_bool($accountState['expired'])) {
+            throw new RuntimeException('Verified IBSng account state is required for renewal.');
+        }
+
+        $groupName = trim((string)($plan['provider_plan_key'] ?? $plan['group_name'] ?? ''));
+        $groupId = $context['group_id'] ?? '';
+        $validityDays = (int)($plan['ibsng_validity_days'] ?? $context['validity_days'] ?? 0);
+        if ($groupName === '' || (string)$groupId === '' || $validityDays < 1) {
+            throw new RuntimeException('IBSng renewal requires a mapped group and positive validity duration.');
+        }
+
+        $expired = $accountState['expired'];
+        $relativeExpiration = $expired
+            ? null
+            : (int)($accountState['remaining_days'] ?? -1) + $validityDays + (int)($context['gift_days'] ?? 0);
+        if (!$expired && (int)($accountState['remaining_days'] ?? -1) < 0) {
+            throw new RuntimeException('Remaining validity for this active IBSng account is not verified.');
+        }
+
+        $result = IBSngRenewal::executeClientRenewal(
+            $this->client,
+            $userId,
+            $username,
+            $relativeExpiration,
+            $expired,
+            (string)($context['comment'] ?? 'RouteBox renewal'),
+            $groupId,
+            $groupName
         );
+
+        return ['provider_reference' => (string)$userId, 'user_id' => (string)$userId, 'raw' => $result];
     }
 
     public function getSubscription(array $context): array
