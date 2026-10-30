@@ -37,6 +37,8 @@ final class IBSngSchema
         // Durable renewal ledger: the unique idempotency key prevents duplicate
         // admin submissions/retries from applying the same renewal twice.
         $db->exec("CREATE TABLE IF NOT EXISTS ibsng_renewals (id INTEGER PRIMARY KEY AUTOINCREMENT, idempotency_key TEXT NOT NULL UNIQUE, ibsng_server_id INTEGER NOT NULL, ibsng_user_id TEXT NOT NULL, username TEXT NOT NULL, plan_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', account_state TEXT, validity_days INTEGER NOT NULL DEFAULT 0, gift_days INTEGER NOT NULL DEFAULT 0, result_json TEXT NOT NULL DEFAULT '{}', error_text TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, completed_at INTEGER, FOREIGN KEY(ibsng_server_id) REFERENCES ibsng_servers(id), FOREIGN KEY(plan_id) REFERENCES service_plans(id))");
+        // Only one unresolved external mutation may exist per IBSng user.
+        $db->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_ibsng_renewal_one_pending_per_user ON ibsng_renewals(ibsng_server_id,ibsng_user_id) WHERE status='pending'");
 
         // Gift-day policy and successful renewal count are configurable per panel.
         $db->exec("CREATE TABLE IF NOT EXISTS ibsng_renewal_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL, updated_at INTEGER NOT NULL)");
