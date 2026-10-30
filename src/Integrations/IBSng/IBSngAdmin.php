@@ -165,6 +165,17 @@ final class IBSngAdmin
                 $this->service->deleteGroup((int)($post['id'] ?? 0));
                 $_SESSION['ibsng_flash'] = '✓ گروه IBSng و پلن ربات حذف شد.';
                 $_SESSION['ibsng_error'] = false;
+            } elseif ($action === 'set_plan_validity') {
+                $this->service->setPlanValidity((int)($post['plan_id'] ?? 0), (int)($post['ibsng_validity_days'] ?? 0));
+                $_SESSION['ibsng_flash'] = '✓ اعتبار پلن IBSng ذخیره شد.';
+                $_SESSION['ibsng_error'] = false;
+            } elseif ($action === 'save_renewal_settings') {
+                $this->service->saveRenewalSettings(
+                    (int)($post['gift_days_first'] ?? 0),
+                    (int)($post['gift_days_repeat'] ?? 0)
+                );
+                $_SESSION['ibsng_flash'] = '✓ تنظیمات روز هدیه تمدید ذخیره شد.';
+                $_SESSION['ibsng_error'] = false;
             } else {
                 throw new RuntimeException('عملیات IBSng ناشناخته است.');
             }
@@ -185,10 +196,24 @@ final class IBSngAdmin
             $servers[] = $row;
         }
 
+        $plans = $this->db->query("SELECT id,provider_server_id,provider_plan_key,display_name_fa,display_name_en,ibsng_validity_days FROM service_plans WHERE provider_key='ibsng' ORDER BY provider_server_id,id")->fetchAll(PDO::FETCH_ASSOC);
+        $settings = [];
+        $settingsRows = $this->db->query('SELECT setting_key,setting_value FROM ibsng_renewal_settings')->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($settingsRows as $setting) $settings[(string)$setting['setting_key']] = (int)$setting['setting_value'];
+
         $flash = (string)($_SESSION['ibsng_flash'] ?? '');
         $error = (bool)($_SESSION['ibsng_error'] ?? false);
         unset($_SESSION['ibsng_flash'], $_SESSION['ibsng_error']);
 
-        return ['servers' => $servers, 'flash' => $flash, 'error' => $error];
+        return [
+            'servers' => $servers,
+            'plans' => $plans,
+            'renewal_settings' => [
+                'gift_days_first' => $settings['gift_days_first'] ?? 1,
+                'gift_days_repeat' => $settings['gift_days_repeat'] ?? 5,
+            ],
+            'flash' => $flash,
+            'error' => $error,
+        ];
     }
 }
