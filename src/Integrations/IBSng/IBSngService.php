@@ -197,6 +197,35 @@ final class IBSngService
         return $this->client($serverId)->changeUserGroup($userId, $group);
     }
 
+    public function setPlanValidity(int $planId, int $validityDays): void
+    {
+        if ($validityDays < 1 || $validityDays > 36500) {
+            throw new RuntimeException('IBSng validity must be between 1 and 36500 days.');
+        }
+        $q = $this->db->prepare("UPDATE service_plans SET ibsng_validity_days=?,updated_at=? WHERE id=? AND provider_key='ibsng'");
+        $q->execute([$validityDays, time(), $planId]);
+        if ($q->rowCount() < 1) {
+            $exists = $this->db->prepare("SELECT COUNT(*) FROM service_plans WHERE id=? AND provider_key='ibsng'");
+            $exists->execute([$planId]);
+            if ((int)$exists->fetchColumn() < 1) {
+                throw new RuntimeException('IBSng service plan not found.');
+            }
+        }
+    }
+
+    public function saveRenewalSettings(int $firstGiftDays, int $repeatGiftDays): void
+    {
+        foreach ([$firstGiftDays, $repeatGiftDays] as $days) {
+            if ($days < 0 || $days > 3650) {
+                throw new RuntimeException('Gift days must be between 0 and 3650.');
+            }
+        }
+        $st = $this->db->prepare('INSERT INTO ibsng_renewal_settings(setting_key,setting_value,updated_at) VALUES(?,?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_at=excluded.updated_at');
+        $now = time();
+        $st->execute(['gift_days_first', (string)$firstGiftDays, $now]);
+        $st->execute(['gift_days_repeat', (string)$repeatGiftDays, $now]);
+    }
+
     public function savePlan(array $data): int
     {
         return $this->syncServicePlan(
