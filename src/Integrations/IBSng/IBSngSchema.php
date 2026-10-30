@@ -31,6 +31,18 @@ final class IBSngSchema
         $db->exec("CREATE TABLE IF NOT EXISTS coupons (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE NOT NULL, discount_type TEXT NOT NULL, discount_value INTEGER NOT NULL, max_uses INTEGER NOT NULL DEFAULT 0, used_count INTEGER NOT NULL DEFAULT 0, per_user_limit INTEGER NOT NULL DEFAULT 1, min_amount_minor INTEGER NOT NULL DEFAULT 0, starts_at INTEGER, expires_at INTEGER, enabled INTEGER NOT NULL DEFAULT 1, metadata_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
         $db->exec("CREATE TABLE IF NOT EXISTS coupon_redemptions (id INTEGER PRIMARY KEY AUTOINCREMENT, coupon_id INTEGER NOT NULL, telegram_user_id INTEGER NOT NULL, order_id INTEGER NOT NULL, discount_minor INTEGER NOT NULL, created_at INTEGER NOT NULL, UNIQUE(coupon_id, telegram_user_id, order_id), FOREIGN KEY(coupon_id) REFERENCES coupons(id) ON DELETE CASCADE, FOREIGN KEY(telegram_user_id) REFERENCES telegram_users(id) ON DELETE CASCADE, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE)");
 
+        // IBSng validity is intentionally separate from RouteBox duration_days.
+        self::ensureColumn($db, 'service_plans', 'ibsng_validity_days', 'INTEGER DEFAULT NULL');
+
+        // Durable renewal ledger: the unique idempotency key prevents duplicate
+        // admin submissions/retries from applying the same renewal twice.
+        $db->exec("CREATE TABLE IF NOT EXISTS ibsng_renewals (id INTEGER PRIMARY KEY AUTOINCREMENT, idempotency_key TEXT NOT NULL UNIQUE, ibsng_server_id INTEGER NOT NULL, ibsng_user_id TEXT NOT NULL, username TEXT NOT NULL, plan_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', account_state TEXT, validity_days INTEGER NOT NULL DEFAULT 0, gift_days INTEGER NOT NULL DEFAULT 0, result_json TEXT NOT NULL DEFAULT '{}', error_text TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, completed_at INTEGER, FOREIGN KEY(ibsng_server_id) REFERENCES ibsng_servers(id), FOREIGN KEY(plan_id) REFERENCES service_plans(id))");
+
+        // Gift-day policy and successful renewal count are configurable per panel.
+        $db->exec("CREATE TABLE IF NOT EXISTS ibsng_renewal_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL, updated_at INTEGER NOT NULL)");
+        $db->prepare("INSERT OR IGNORE INTO ibsng_renewal_settings(setting_key,setting_value,updated_at) VALUES('gift_days_first','1',?),('gift_days_repeat','5',?)")
+            ->execute([time(), time()]);
+
         // Manual IBSng plan/group mapping. Existing installations are upgraded
         // in-place without dropping their current groups.
         self::ensureColumn($db, 'ibsng_groups', 'plan_name', "TEXT NOT NULL DEFAULT ''");
