@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace RouteBox\\Integrations\\IBSng;
+namespace RouteBox\Integrations\IBSng;
 
 use PDO;
 use RuntimeException;
