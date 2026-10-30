@@ -415,9 +415,81 @@ final class IBSngClient
         ];
     }
 
-    public function renewUser(string|int $userId, string $comment = ''): mixed
-    {
-        throw new RuntimeException('IBSng renewal is not enabled in this first Web Panel adapter yet.');
+    /**
+     * Apply the IBSng A1.24 edit-user attributes through the same Web Panel
+     * endpoint used by the native edit form. Caller supplies the verified
+     * renewal attributes; this method never edits Absolute Expiration.
+     *
+     * IBSng A1.24 routes edit form updates through edit.php -> attrs.php ->
+     * UpdateAttrsHelper -> user.updateUserAttrs.
+     */
+    public function renewUser(
+        string|int $userId,
+        string $username,
+        ?int $relativeExpiration,
+        bool $resetFirstLogin,
+        string $comment = ''
+    ): array {
+        $this->ensureLogin();
+
+        $editTemplates = [];
+        $methods = [];
+        $post = [
+            'update' => '1',
+            'target' => 'user',
+            'target_id' => (string)$userId,
+            'user_id' => (string)$userId,
+        ];
+
+        // The normal IBSng Relative Expiration edit plugin uses has_rel_exp
+        // to decide whether rel_exp is updated or deleted.
+        if ($relativeExpiration !== null) {
+            $editTemplates[] = 'rel_exp';
+            $methods[] = 'relExp';
+            $post['has_rel_exp'] = 't';
+            $post['rel_exp'] = (string)$relativeExpiration;
+        }
+
+        // IBSng's native First Login control is a reset checkbox. Only send
+        // this flag for expired accounts; active accounts retain First Login.
+        if ($resetFirstLogin) {
+            $editTemplates[] = 'first_login';
+            $methods[] = 'firstLogin';
+            $post['reset_first_login'] = 't';
+        }
+
+        if ($editTemplates === []) {
+            throw new RuntimeException('No IBSng renewal attributes were selected.');
+        }
+
+        $post['edit_tpl_cs'] = implode(',', $editTemplates);
+        foreach ($methods as $index => $method) {
+            $post['attr_update_method_' . $index] = $method;
+        }
+
+        $this->request(
+            '/admin/plugins/edit.php?edit_user=1&user_id=' . rawurlencode((string)$userId),
+            [],
+            false
+        );
+        $response = $this->request('/admin/plugins/edit.php', $post, false);
+        $text = $this->textFromHtml($response['body']);
+
+        if (preg_match('/\b(INCOMPLETE_REQUEST|INVALID_INPUT|error)\b/i', $text)) {
+            throw new RuntimeException('IBSng did not confirm the renewal attribute update.');
+        }
+
+        return [
+            'updated' => true,
+            'user_id' => (string)$userId,
+            'username' => $username,
+            'relative_expiration' => $relativeExpiration,
+            'first_login_reset' => $resetFirstLogin,
+            'comment' => $comment,
+            'text' => $text,
+            'url' => $response['url'],
+            'code' => $response['code'],
+        ];
     }
 
     public function changeUserGroup(string|int $userId, string $groupName): mixed
