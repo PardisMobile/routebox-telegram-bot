@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RouteBox\Integrations\IBSng;
 
 use RouteBox\Integrations\ServiceProviderInterface;
+use PDO;
 use RuntimeException;
 
 /** IBSng service adapter. Provider-specific Web Panel details stay in IBSngClient. */
