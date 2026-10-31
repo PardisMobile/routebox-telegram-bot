@@ -188,6 +188,56 @@ final class IBSngService
     }
 
     /**
+     * Complete renewal entry point for the IBSng integration layer.
+     *
+     * It looks up the username in the authenticated A1.24 Web Panel, derives
+     * expiry state from the verified user-info page, then sends that state to
+     * the centralized renewal policy. No Telegram/My Services context is used.
+     */
+    public function renewByUsername(
+        int $serverId,
+        string $username,
+        int $planId,
+        string $idempotencyKey
+    ): array {
+        $username = trim($username);
+        if ($serverId < 1 || $username === '' || $planId < 1 || trim($idempotencyKey) === '') {
+            throw new RuntimeException(
+                'IBSng renewal requires server, username, plan and idempotency key.'
+            );
+        }
+
+        $client = $this->client($serverId);
+        $accountState = $client->getUserRenewalStateByUsername($username);
+        $userId = (string)($accountState['user_id'] ?? '');
+        if ($userId === '') {
+            throw new IBSngUserNotFoundException('IBSng user was not found.');
+        }
+
+        return (new IBSngRenewal($this->db))->renew(
+            $client,
+            $serverId,
+            $userId,
+            $username,
+            $planId,
+            $accountState,
+            trim($idempotencyKey)
+        );
+    }
+
+    /**
+     * Get the verified state used by the renewal calculator without changing
+     * the account. Useful for an admin preview or later bot integration.
+     */
+    public function renewalStateByUsername(int $serverId, string $username): array
+    {
+        if ($serverId < 1 || trim($username) === '') {
+            throw new RuntimeException('IBSng server and username are required.');
+        }
+        return $this->client($serverId)->getUserRenewalStateByUsername(trim($username));
+    }
+
+    /**
      * Compatibility entry point for existing renewal callers.
      *
      * When the complete renewal context is supplied, this method forwards
