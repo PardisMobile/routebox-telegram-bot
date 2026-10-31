@@ -9,6 +9,14 @@ use RuntimeException;
 require_once __DIR__ . '/IBSngRenewal.php';
 
 /**
+ * A definitive IBSng account lookup miss. Keep this distinct from transport,
+ * authentication, or malformed-response errors so callers can report it.
+ */
+final class IBSngUserNotFoundException extends RuntimeException
+{
+}
+
+/**
  * IBSng A1.24 Free Edition Web Panel adapter.
  *
  * This adapter deliberately uses the actual A1.24 Apache Web Panel entry
@@ -247,6 +255,248 @@ final class IBSngClient
         }
 
         return ['group_name' => $groupName, 'group_id' => $groupId, 'html' => $html];
+    }
+
+    /**
+     * Read a displayed value from the IBSng A1.24 user-information page using
+     * the same label/value-cell structure as the verified reference parser.
+     */
+    private function displayedLabelValue(string $html, string $wantedLabel): ?string
+    {
+        if (!class_exists('DOMDocument')) {
+            throw new RuntimeException('PHP DOM extension is required to parse IBSng A1.24 user information.');
+        }
+
+        $previous = libxml_use_internal_errors(true);
+        try {
+            $dom = new \\DOMDocument();
+            $dom->loadHTML('<?xml encoding="UTF-8">' . $html);
+            $xpath = new \\DOMXPath($dom);
+            $cells = $xpath->query('//td');
+            if (!$cells) {
+                return null;
+            }
+
+            foreach ($cells as $cell) {
+                if (!$cell instanceof \\DOMElement) {
+                    continue;
+                }
+                $label = trim($this->textFromHtml($cell->textContent), " \\t\\n\\r\\0\\x0B:");
+                if (strcasecmp($label, $wantedLabel) !== 0) {
+                    continue;
+                }
+                $row = $cell->parentNode;
+                if (!$row instanceof \\DOMElement || strtolower($row->tagName) !== 'tr') {
+                    continue;
+                }
+
+                $seenLabel = false;
+                foreach ($row->childNodes as $sibling) {
+                    if (!$sibling instanceof \\DOMElement || strtolower($sibling->tagName) !== 'td') {
+                        continue;
+                    }
+                    if ($sibling->isSameNode($cell)) {
+                        $seenLabel = true;
+                        continue;
+                    }
+                    if (!$seenLabel) {
+                        continue;
+                    }
+                    $class = $sibling->getAttribute('class');
+                    if (
+                        strpos($class, 'Form_Content_Row_Right') === false
+                        && strpos($class, 'Form_Content_Row_Right_Textarea') === false
+                    ) {
+                        continue;
+                    }
+
+                    $textarea = $xpath->query('.//textarea', $sibling);
+                    if ($textarea && $textarea->length > 0) {
+                        return $this->textFromHtml((string)$textarea->item(0)->textContent);
+                    }
+                    $select = $xpath->query('.//select', $sibling);
+                    if ($select && $select->length > 0) {
+                        $selected = $xpath->query('.//option[@selected]', $select->item(0));
+                        return $this->textFromHtml((string)(($selected && $selected->length > 0)
+                            ? $selected->item(0)->textContent
+                            : $select->item(0)->textContent));
+                    }
+                    $input = $xpath->query('.//input[not(@type="checkbox") and not(@type="hidden")]', $sibling);
+                    if ($input && $input->length > 0 && $input->item(0) instanceof \\DOMElement) {
+                        return $this->textFromHtml($input->item(0)->getAttribute('value'));
+                    }
+                    return $this->textFromHtml($sibling->textContent);
+                }
+            }
+            return null;
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+    }
+
+    /**
+     * Extract the value associated with an IBSng attribute checkbox. This
+     * follows the nested-table traversal used by the A1.24 reference script.
+     */
+    private function attributeValue(string $html, string $attributeName): ?string
+    {
+        if (!class_exists('DOMDocument')) {
+            throw new RuntimeException('PHP DOM extension is required to parse IBSng A1.24 user information.');
+        }
+
+        $previous = libxml_use_internal_errors(true);
+        try {
+            $dom = new \\DOMDocument();
+            $dom->loadHTML('<?xml encoding="UTF-8">' . $html);
+            $xpath = new \\DOMXPath($dom);
+            $checkboxes = $xpath->query('//input[starts-with(@name, "attr_edit_checkbox_")]');
+            if (!$checkboxes) {
+                return null;
+            }
+
+            foreach ($checkboxes as $checkbox) {
+                if (!$checkbox instanceof \\DOMElement
+                    || trim($checkbox->getAttribute('value')) !== $attributeName) {
+                    continue;
+                }
+
+                $rows = $xpath->query('ancestor::tr', $checkbox);
+                if (!$rows || $rows->length === 0) {
+                    continue;
+                }
+
+                $valueCell = null;
+                $bestScore = -1;
+                foreach ($rows as $row) {
+                    $cells = $xpath->query('./td', $row);
+                    if (!$cells || $cells->length < 2) {
+                        continue;
+                    }
+
+                    $checkboxCellIndex = -1;
+                    $labelCell = null;
+                    foreach ($cells as $index => $cell) {
+                        $matches = $xpath->query(
+                            './/input[@name="' . $checkbox->getAttribute('name') . '"]',
+                            $cell
+                        );
+                        if ($matches && $matches->length > 0) {
+                            $checkboxCellIndex = (int)$index;
+                            $labelCell = $cell;
+                            break;
+                        }
+                    }
+                    if ($checkboxCellIndex < 0 || !$labelCell) {
+                        continue;
+                    }
+
+                    for ($i = $checkboxCellIndex + 1; $i < $cells->length; $i++) {
+                        $cell = $cells->item($i);
+                        $class = $cell instanceof \\DOMElement ? $cell->getAttribute('class') : '';
+                        if (
+                            strpos($class, 'Form_Content_Row_Right') === false
+                            && strpos($class, 'Form_Content_Row_Right_Textarea') === false
+                        ) {
+                            continue;
+                        }
+                        $score = strpos($labelCell->getAttribute('class'), 'Form_Content_Row_Left') !== false ? 120 : 100;
+                        if ($score > $bestScore) {
+                            $bestScore = $score;
+                            $valueCell = $cell;
+                        }
+                        break;
+                    }
+                }
+
+                if (!$valueCell) {
+                    return null;
+                }
+
+                $textarea = $xpath->query('.//textarea', $valueCell);
+                if ($textarea && $textarea->length > 0) {
+                    return $this->textFromHtml((string)$textarea->item(0)->textContent);
+                }
+                $select = $xpath->query('.//select', $valueCell);
+                if ($select && $select->length > 0) {
+                    $selected = $xpath->query('.//option[@selected]', $select->item(0));
+                    return $this->textFromHtml((string)(($selected && $selected->length > 0)
+                        ? $selected->item(0)->textContent
+                        : $select->item(0)->textContent));
+                }
+                $input = $xpath->query('.//input[not(@type="checkbox") and not(@type="hidden")]', $valueCell);
+                if ($input && $input->length > 0 && $input->item(0) instanceof \\DOMElement) {
+                    return $this->textFromHtml($input->item(0)->getAttribute('value'));
+                }
+                return $this->textFromHtml($valueCell->textContent);
+            }
+            return null;
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+    }
+
+    /**
+     * Fetch and normalize the verified account state required by the renewal
+     * policy. Nearest Expiration Date is read as IBSng displays it; dates are
+     * never guessed from Relative/Absolute Expiration labels.
+     *
+     * @return array{user_id:string,expired:bool,remaining_days:int,first_login:?string,nearest_exp_date:?string}
+     */
+    public function getUserRenewalStateByUsername(string $username): array
+    {
+        $info = $this->getUserInfoByUsername($username);
+        $html = (string)$info['html'];
+        $userId = trim((string)($info['user_id'] ?? ''));
+        if ($userId === '') {
+            throw new IBSngUserNotFoundException('IBSng user was not found.');
+        }
+
+        $firstLogin = trim((string)($this->attributeValue($html, 'first_login') ?? ''));
+        $relativeExpiration = trim((string)($this->attributeValue($html, 'rel_exp') ?? ''));
+        $nearestExpiration = trim((string)($this->displayedLabelValue($html, 'Nearest Expiration Date') ?? ''));
+
+        $emptyValues = ['', '---------------', 'N/A', '-'];
+        $firstLoginValue = in_array($firstLogin, $emptyValues, true) ? null : $firstLogin;
+        $nearestValue = in_array($nearestExpiration, $emptyValues, true) ? null : $nearestExpiration;
+
+        // An account that has not had its First Login yet has not started its
+        // relative-expiration countdown. Preserve the configured remaining
+        // relative duration when renewing such an account.
+        if ($firstLoginValue === null && $nearestValue === null) {
+            if (!preg_match('/^\\s*(\\d+)\\s*(?:days?|روز)?\\s*$/iu', $relativeExpiration, $m)) {
+                throw new RuntimeException('IBSng account expiry state could not be verified from its user-information page.');
+            }
+            return [
+                'user_id' => $userId,
+                'expired' => false,
+                'remaining_days' => (int)$m[1],
+                'first_login' => null,
+                'nearest_exp_date' => null,
+            ];
+        }
+
+        if ($nearestValue === null) {
+            throw new RuntimeException('IBSng nearest expiration date is missing; renewal was stopped safely.');
+        }
+
+        $expiryTimestamp = strtotime($nearestValue);
+        if ($expiryTimestamp === false) {
+            throw new RuntimeException('IBSng nearest expiration date could not be parsed; renewal was stopped safely.');
+        }
+
+        $remainingSeconds = $expiryTimestamp - time();
+        $expired = $remainingSeconds <= 0;
+        $remainingDays = $expired ? 0 : (int)ceil($remainingSeconds / 86400);
+
+        return [
+            'user_id' => $userId,
+            'expired' => $expired,
+            'remaining_days' => $remainingDays,
+            'first_login' => $firstLoginValue,
+            'nearest_exp_date' => $nearestValue,
+        ];
     }
 
     public function getUserInfoByUsername(string $username): array
