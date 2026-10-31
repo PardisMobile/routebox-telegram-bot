@@ -6,6 +6,8 @@ namespace RouteBox\Integrations\IBSng;
 
 use RuntimeException;
 
+require_once __DIR__ . '/IBSngRenewal.php';
+
 /**
  * IBSng A1.24 Free Edition Web Panel adapter.
  *
