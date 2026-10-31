@@ -188,16 +188,43 @@ final class IBSngService
     }
 
     /**
-     * Legacy signature cannot safely renew because it lacks the selected plan,
-     * verified account state and idempotency key. Keep it fail-closed rather
-     * than passing its comment as a username to the IBSng HTTP adapter.
+     * Compatibility entry point for existing renewal callers.
      *
-     * Use renewWithVerifiedState() for the central policy and ledger workflow.
+     * When the complete renewal context is supplied, this method forwards
+     * directly to the central IBSngRenewal module via
+     * renewWithVerifiedState(). The historical three-argument call is
+     * intentionally rejected because it has no plan, verified account state,
+     * or idempotency key and cannot safely renew an account.
      */
-    public function renew(int $serverId, string $userId, string $comment = ''): mixed
-    {
-        throw new RuntimeException(
-            'IBSng renewal requires verified account state, a configured plan and an idempotency key; use renewWithVerifiedState().'
+    public function renew(
+        int $serverId,
+        string|int $userId,
+        string $username = '',
+        int $planId = 0,
+        ?array $accountState = null,
+        string $idempotencyKey = '',
+        string $comment = ''
+    ): array {
+        if (
+            $serverId < 1
+            || (string)$userId === ''
+            || trim($username) === ''
+            || $planId < 1
+            || !is_array($accountState)
+            || trim($idempotencyKey) === ''
+        ) {
+            throw new RuntimeException(
+                'IBSng renewal requires user ID, username, plan, verified account state and an idempotency key.'
+            );
+        }
+
+        return $this->renewWithVerifiedState(
+            $serverId,
+            $userId,
+            trim($username),
+            $planId,
+            $accountState,
+            trim($idempotencyKey)
         );
     }
 
