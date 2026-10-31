@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../src/Integrations/IBSng/IBSngRenewal.php';
 
-use RouteBox\\Integrations\\IBSng\\IBSngRenewal;
 
 $cases = [
     [
@@ -25,7 +24,7 @@ $cases = [
 ];
 
 foreach ($cases as $case) {
-    $actual = IBSngRenewal::calculateRelativeExpiration(...$case['input']);
+    $actual = \\RouteBox\\Integrations\\IBSng\\IBSngRenewal::calculateRelativeExpiration(...$case['input']);
     if ($actual !== $case['expected']) {
         fwrite(STDERR, $case['name'] . " failed: " . json_encode($actual) . PHP_EOL);
         exit(1);
