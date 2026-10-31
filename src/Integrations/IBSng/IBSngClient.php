@@ -532,7 +532,7 @@ final class IBSngClient
         $hasUserInfoPage = stripos($plain, 'User Information') !== false
             || stripos($plain, 'User Informations') !== false;
         $userId = $this->firstMatch(
-            "/name=[\\"']user_id[\\"'][^>]*value=[\\"']([^\\"']+)[\\"']/i",
+            '/name="user_id"[^>]*value="([^"]+)"/i',
             $html
         );
 
