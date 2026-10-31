@@ -73,6 +73,40 @@ if ($expired['expired'] !== true || $expired['remaining_days'] !== 0) {
 }
 echo "PASS: expired account state is detected" . PHP_EOL;
 
+
+$fixture = <<<'HTML'
+<table>
+  <tr>
+    <td class="Form_Content_Row_Left"><input type="checkbox" name="attr_edit_checkbox_1" value="rel_exp"></td>
+    <td class="Form_Content_Row_Right"><input type="text" value="30 Days"></td>
+  </tr>
+  <tr>
+    <td class="Form_Content_Row_Left"><input type="checkbox" name="attr_edit_checkbox_2" value="first_login"></td>
+    <td class="Form_Content_Row_Right"><input type="text" value="2026-12-30 00:00"></td>
+  </tr>
+  <tr>
+    <td>Nearest Expiration Date:</td>
+    <td class="Form_Content_Row_Right">2027-01-03 00:00</td>
+  </tr>
+</table>
+HTML;
+
+$client = new \RouteBox\Integrations\IBSng\IBSngClient('127.0.0.1', 'admin', 'unused');
+$attributeParser = new ReflectionMethod(\RouteBox\Integrations\IBSng\IBSngClient::class, 'attributeValue');
+$attributeParser->setAccessible(true);
+$relativeValue = $attributeParser->invoke($client, $fixture, 'rel_exp');
+$firstLoginValue = $attributeParser->invoke($client, $fixture, 'first_login');
+$labelParser = new ReflectionMethod(\RouteBox\Integrations\IBSng\IBSngClient::class, 'displayedLabelValue');
+$labelParser->setAccessible(true);
+$nearestValue = $labelParser->invoke($client, $fixture, 'Nearest Expiration Date');
+
+if ($relativeValue !== '30 Days' || $firstLoginValue !== '2026-12-30 00:00' || $nearestValue !== '2027-01-03 00:00') {
+    fwrite(STDERR, "IBSng A1.24 attribute and nearest-expiry parsing fixture failed." . PHP_EOL);
+    exit(1);
+}
+echo "PASS: IBSng A1.24 relative, First Login and nearest-expiry fields are parsed" . PHP_EOL;
+unset($client);
+
 try {
     \RouteBox\Integrations\IBSng\IBSngRenewal::calculateRelativeExpiration(false, -1, 30, 0);
     fwrite(STDERR, "Invalid negative remaining days were accepted." . PHP_EOL);
