@@ -259,6 +259,6 @@ The implementation slice on `atd-panel-ibsng-renewal` now includes:
 - `IBSngRenewal.php` / `IBSngRenewal`: centralizes policy, gift selection, idempotency reservation, and ledger completion/failure. It fails closed if verified account state is missing.
 - `IBSngModule.php`: loads the central module.
 - `IBSngClient::renewUser()`: remains the HTTP/session adapter. The legacy two-argument call is now non-fatal but rejected safely unless a complete, verified renewal request is supplied.
-- `IBSngProvider::renewSubscription()`: does not bypass the central policy because the generic provider contract lacks the verified IBSng account state and idempotency key.
+- `IBSngProvider::renewSubscription()`: now delegates to `IBSngService::renewWithVerifiedState()` and therefore uses the central renewal policy/ledger. Its caller must provide verified account state and an idempotency key; this input is not yet sourced automatically from the A1.24 user-info page.
 
 **Not release-ready:** account-state/remaining-validity extraction from the actual A1.24 user-info page, an admin username/plan renewal form and action, and integration/regression tests against a real IBSng A1.24 instance remain incomplete. Do not renew production accounts with this feature until those are implemented and verified. The existing generic RouteBox duration and provisioning flow remain unchanged.
