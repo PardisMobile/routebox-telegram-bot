@@ -10,7 +10,10 @@ use RuntimeException;
 /** IBSng service adapter. Provider-specific Web Panel details stay in IBSngClient. */
 final class IBSngProvider implements ServiceProviderInterface
 {
-    public function __construct(private readonly IBSngClient $client) {}
+    public function __construct(
+        private readonly IBSngClient $client,
+        private readonly ?PDO $db = null
+    ) {}
 
     public function key(): string { return 'ibsng'; }
 
@@ -44,46 +47,43 @@ final class IBSngProvider implements ServiceProviderInterface
 
     public function renewSubscription(array $context, array $plan): array
     {
-        // Keep the provider contract available. Callers must pass account state
-        // already verified from IBSng A1.24 and the mapped group context.
-        $userId = $context['user_id'] ?? $context['provider_reference'] ?? null;
-        if ($userId === null || (string)$userId === '') {
-            throw new RuntimeException('IBSng user ID is required for renewal.');
+        // Renewal policy, plan validity, gift days and idempotency belong to
+        // IBSngRenewal. The provider only adapts the generic provider contract.
+        if ($this->db === null) {
+            throw new RuntimeException('IBSng renewal requires the application database so the central renewal ledger can be used.');
         }
 
+        $userId = $context['user_id'] ?? $context['provider_reference'] ?? null;
+        $serverId = (int)($context['provider_server_id'] ?? $context['server_id'] ?? $plan['provider_server_id'] ?? 0);
+        $planId = (int)($context['plan_id'] ?? $plan['id'] ?? 0);
         $username = trim((string)($context['username'] ?? ''));
-        $accountState = $context['account_state'] ?? [];
-        if (!is_array($accountState) || !isset($accountState['expired']) || !is_bool($accountState['expired'])) {
+        $accountState = $context['account_state'] ?? null;
+        $idempotencyKey = trim((string)($context['idempotency_key'] ?? ''));
+
+        if ($userId === null || (string)$userId === '' || $serverId < 1 || $planId < 1 || $username === '') {
+            throw new RuntimeException('IBSng renewal requires the linked user, server, plan and username.');
+        }
+        if (!is_array($accountState)) {
             throw new RuntimeException('Verified IBSng account state is required for renewal.');
         }
-
-        $groupName = trim((string)($plan['provider_plan_key'] ?? $plan['group_name'] ?? ''));
-        $groupId = $context['group_id'] ?? '';
-        $validityDays = (int)($plan['ibsng_validity_days'] ?? $context['validity_days'] ?? 0);
-        if ($groupName === '' || (string)$groupId === '' || $validityDays < 1) {
-            throw new RuntimeException('IBSng renewal requires a mapped group and positive validity duration.');
+        if ($idempotencyKey === '') {
+            throw new RuntimeException('A unique IBSng renewal idempotency key is required.');
         }
 
-        $expired = $accountState['expired'];
-        $relativeExpiration = $expired
-            ? null
-            : (int)($accountState['remaining_days'] ?? -1) + $validityDays + (int)($context['gift_days'] ?? 0);
-        if (!$expired && (int)($accountState['remaining_days'] ?? -1) < 0) {
-            throw new RuntimeException('Remaining validity for this active IBSng account is not verified.');
-        }
-
-        $result = IBSngRenewal::executeClientRenewal(
-            $this->client,
+        $result = (new IBSngService($this->db))->renewWithVerifiedState(
+            $serverId,
             $userId,
             $username,
-            $relativeExpiration,
-            $expired,
-            (string)($context['comment'] ?? 'RouteBox renewal'),
-            $groupId,
-            $groupName
+            $planId,
+            $accountState,
+            $idempotencyKey
         );
 
-        return ['provider_reference' => (string)$userId, 'user_id' => (string)$userId, 'raw' => $result];
+        return [
+            'provider_reference' => (string)$userId,
+            'user_id' => (string)$userId,
+            'renewal' => $result,
+        ];
     }
 
     public function getSubscription(array $context): array
