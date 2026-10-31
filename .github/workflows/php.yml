@@ -44,7 +44,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: curl,mbstring,pdo_sqlite,sodium
+          extensions: curl,mbstring,pdo_sqlite,sodium,xml
           coverage: none
 
       - name: Validate PHP files
@@ -54,6 +54,12 @@ jobs:
           while IFS= read -r -d '' file; do
             php -l "$file"
           done < <(find . -type f -name '*.php' -not -path './.git/*' -print0)
+
+      - name: Test IBSng renewal policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tools/ibsng-renewal-policy-test.php
 
       - name: Validate shell scripts
         shell: bash
