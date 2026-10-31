@@ -145,12 +145,13 @@ final class IBSngRenewal
             throw new RuntimeException('Remaining validity for this active IBSng account is not verified.');
         }
 
-        // IBSng Relative Expiration receives the full extension in both
-        // cases. Active accounts keep their remaining days; expired accounts
-        // start from zero. Gift days are included in either path.
-        $relativeExpiration = ($expired ? 0 : (int)$accountState['remaining_days'])
-            + $validityDays
-            + $giftDays;
+        // Product policy: an expired account only resets First Login.
+        // Do not alter Relative Expiration or Absolute Expiration for it.
+        // Active accounts preserve the verified remaining validity and add
+        // the selected plan duration plus the configured gift.
+        $relativeExpiration = $expired
+            ? null
+            : (int)$accountState['remaining_days'] + $validityDays + $giftDays;
         $accountStateLabel = $expired ? 'expired' : 'active';
         $now = time();
 
