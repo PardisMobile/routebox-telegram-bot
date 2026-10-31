@@ -501,6 +501,11 @@ final class IBSngClient
 
     public function getUserInfoByUsername(string $username): array
     {
+        $username = trim($username);
+        if ($username === '') {
+            throw new RuntimeException('IBSng username is required.');
+        }
+
         $this->ensureLogin();
         $html = $this->request('/admin/user/user_info.php?normal_username=' . rawurlencode($username))['body'];
 
@@ -514,22 +519,49 @@ final class IBSngClient
             $plain = $this->textFromHtml($html);
         }
 
-        if (stripos($plain, 'User Information') === false
-            && stripos($plain, 'User Informations') === false
-            && stripos($plain, 'Username') === false
-            && stripos($plain, 'Normal Username') === false) {
-            throw new RuntimeException('IBSng user was not found or the Web Panel returned an unexpected page.');
+        // A second login form means authentication/session failure, not a
+        // missing IBSng account. Keep this error distinct for the caller.
+        if (
+            stripos($html, 'name="username"') !== false
+            && stripos($html, 'name="password"') !== false
+        ) {
+            $this->loggedIn = false;
+            throw new RuntimeException('IBSng admin session could not be authenticated.');
         }
 
-        $result = ['username' => $username, 'html' => $html, 'text' => $plain];
-        if (($uid = $this->firstMatch(
-            "/name=[\"']user_id[\"'][^>]*value=[\"']([^\"']+)[\"']/i",
+        $hasUserInfoPage = stripos($plain, 'User Information') !== false
+            || stripos($plain, 'User Informations') !== false;
+        $userId = $this->firstMatch(
+            "/name=[\\"']user_id[\\"'][^>]*value=[\\"']([^\\"']+)[\\"']/i",
             $html
-        )) !== null) {
-            $result['user_id'] = $uid;
+        );
+
+        if ($userId === null) {
+            $knownMissingUser = preg_match(
+                '/(?:user\\s+not\\s+found|no\\s+such\\s+user|user\\s+does\\s+not\\s+exist|USER_NOT_FOUND)/i',
+                $plain
+            ) === 1;
+
+            // A1.24's user-info route should include the hidden user_id on a
+            // real account page. An authenticated user-info/search response
+            // without that ID is a definitive lookup miss; unrelated pages
+            // remain unexpected-response errors rather than false misses.
+            if ($knownMissingUser || $hasUserInfoPage) {
+                throw new IBSngUserNotFoundException('IBSng user was not found.');
+            }
+            throw new RuntimeException('IBSng Web Panel returned an unexpected user-information page.');
         }
 
-        return $result;
+        if (!$hasUserInfoPage) {
+            throw new RuntimeException('IBSng Web Panel returned an unexpected user-information page.');
+        }
+
+        return [
+            'username' => $username,
+            'user_id' => $userId,
+            'html' => $html,
+            'text' => $plain,
+        ];
     }
 
     public function createUser(string $ispName, string $groupName, int $credit = 0): array
