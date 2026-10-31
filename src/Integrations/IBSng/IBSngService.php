@@ -188,12 +188,17 @@ final class IBSngService
     }
 
     /**
-     * Legacy renewal entry point retained for compatibility. The old adapter
-     * had no verified renewal workflow; do not bypass the central policy module.
+     * Legacy signature cannot safely renew because it lacks the selected plan,
+     * verified account state and idempotency key. Keep it fail-closed rather
+     * than passing its comment as a username to the IBSng HTTP adapter.
+     *
+     * Use renewWithVerifiedState() for the central policy and ledger workflow.
      */
     public function renew(int $serverId, string $userId, string $comment = ''): mixed
     {
-        return $this->client($serverId)->renewUser($userId, $comment);
+        throw new RuntimeException(
+            'IBSng renewal requires verified account state, a configured plan and an idempotency key; use renewWithVerifiedState().'
+        );
     }
 
     /**
