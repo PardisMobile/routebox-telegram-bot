@@ -24,7 +24,7 @@ $cases = [
 ];
 
 foreach ($cases as $case) {
-    $actual = \\RouteBox\\Integrations\\IBSng\\IBSngRenewal::calculateRelativeExpiration(...$case['input']);
+    $actual = \RouteBox\Integrations\IBSng\IBSngRenewal::calculateRelativeExpiration(...$case['input']);
     if ($actual !== $case['expected']) {
         fwrite(STDERR, $case['name'] . " failed: " . json_encode($actual) . PHP_EOL);
         exit(1);
@@ -33,7 +33,7 @@ foreach ($cases as $case) {
 }
 
 try {
-    IBSngRenewal::calculateRelativeExpiration(false, -1, 30, 0);
+    \\RouteBox\\Integrations\\IBSng\\IBSngRenewal::calculateRelativeExpiration(false, -1, 30, 0);
     fwrite(STDERR, "Invalid negative remaining days were accepted." . PHP_EOL);
     exit(1);
 } catch (RuntimeException $e) {
