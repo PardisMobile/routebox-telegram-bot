@@ -438,32 +438,34 @@ final class IBSngClient
     }
 
     /**
-     * Fetch and normalize the verified account state required by the renewal
-     * policy. Nearest Expiration Date is read as IBSng displays it; dates are
-     * never guessed from Relative/Absolute Expiration labels.
+     * Convert the fields extracted from the A1.24 user-info page into the
+     * strict state consumed by IBSngRenewal. Kept pure for deterministic tests.
      *
      * @return array{user_id:string,expired:bool,remaining_days:int,first_login:?string,nearest_exp_date:?string}
      */
-    public function getUserRenewalStateByUsername(string $username): array
-    {
-        $info = $this->getUserInfoByUsername($username);
-        $html = (string)$info['html'];
-        $userId = trim((string)($info['user_id'] ?? ''));
+    public static function normalizeRenewalState(
+        string $userId,
+        ?string $firstLogin,
+        ?string $relativeExpiration,
+        ?string $nearestExpiration,
+        ?int $now = null
+    ): array {
+        $userId = trim($userId);
         if ($userId === '') {
             throw new IBSngUserNotFoundException('IBSng user was not found.');
         }
 
-        $firstLogin = trim((string)($this->attributeValue($html, 'first_login') ?? ''));
-        $relativeExpiration = trim((string)($this->attributeValue($html, 'rel_exp') ?? ''));
-        $nearestExpiration = trim((string)($this->displayedLabelValue($html, 'Nearest Expiration Date') ?? ''));
-
         $emptyValues = ['', '---------------', 'N/A', '-'];
+        $firstLogin = trim((string)$firstLogin);
+        $relativeExpiration = trim((string)$relativeExpiration);
+        $nearestExpiration = trim((string)$nearestExpiration);
         $firstLoginValue = in_array($firstLogin, $emptyValues, true) ? null : $firstLogin;
         $nearestValue = in_array($nearestExpiration, $emptyValues, true) ? null : $nearestExpiration;
+        $now ??= time();
 
-        // An account that has not had its First Login yet has not started its
-        // relative-expiration countdown. Preserve the configured remaining
-        // relative duration when renewing such an account.
+        // Before the first successful login, Relative Expiration is a duration,
+        // not a running deadline. Keep it as remaining validity and do not reset
+        // First Login for this not-yet-started account.
         if ($firstLoginValue === null && $nearestValue === null) {
             if (!preg_match('/^\\s*(\\d+)\\s*(?:days?|روز)?\\s*$/iu', $relativeExpiration, $m)) {
                 throw new RuntimeException('IBSng account expiry state could not be verified from its user-information page.');
@@ -486,17 +488,44 @@ final class IBSngClient
             throw new RuntimeException('IBSng nearest expiration date could not be parsed; renewal was stopped safely.');
         }
 
-        $remainingSeconds = $expiryTimestamp - time();
+        $remainingSeconds = $expiryTimestamp - $now;
         $expired = $remainingSeconds <= 0;
-        $remainingDays = $expired ? 0 : (int)ceil($remainingSeconds / 86400);
 
         return [
             'user_id' => $userId,
             'expired' => $expired,
-            'remaining_days' => $remainingDays,
+            'remaining_days' => $expired ? 0 : (int)ceil($remainingSeconds / 86400),
             'first_login' => $firstLoginValue,
             'nearest_exp_date' => $nearestValue,
         ];
+    }
+
+    /**
+     * Fetch and normalize the verified account state required by the renewal
+     * policy. Nearest Expiration Date is read as IBSng displays it; dates are
+     * never guessed from Relative/Absolute Expiration labels.
+     *
+     * @return array{user_id:string,expired:bool,remaining_days:int,first_login:?string,nearest_exp_date:?string}
+     */
+    public function getUserRenewalStateByUsername(string $username): array
+    {
+        $info = $this->getUserInfoByUsername($username);
+        $html = (string)$info['html'];
+        $userId = trim((string)($info['user_id'] ?? ''));
+        if ($userId === '') {
+            throw new IBSngUserNotFoundException('IBSng user was not found.');
+        }
+
+        $firstLogin = trim((string)($this->attributeValue($html, 'first_login') ?? ''));
+        $relativeExpiration = trim((string)($this->attributeValue($html, 'rel_exp') ?? ''));
+        $nearestExpiration = trim((string)($this->displayedLabelValue($html, 'Nearest Expiration Date') ?? ''));
+
+        return self::normalizeRenewalState(
+            $userId,
+            $firstLogin,
+            $relativeExpiration,
+            $nearestExpiration
+        );
     }
 
     public function getUserInfoByUsername(string $username): array
