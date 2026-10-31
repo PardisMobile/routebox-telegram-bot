@@ -281,7 +281,7 @@ final class IBSngClient
                 if (!$cell instanceof \DOMElement) {
                     continue;
                 }
-                $label = trim($this->textFromHtml($cell->textContent), " \\t\\n\\r\\0\\x0B:");
+                $label = trim($this->textFromHtml($cell->textContent), " :");
                 if (strcasecmp($label, $wantedLabel) !== 0) {
                     continue;
                 }
