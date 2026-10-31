@@ -269,16 +269,16 @@ final class IBSngClient
 
         $previous = libxml_use_internal_errors(true);
         try {
-            $dom = new \\DOMDocument();
+            $dom = new \DOMDocument();
             $dom->loadHTML('<?xml encoding="UTF-8">' . $html);
-            $xpath = new \\DOMXPath($dom);
+            $xpath = new \DOMXPath($dom);
             $cells = $xpath->query('//td');
             if (!$cells) {
                 return null;
             }
 
             foreach ($cells as $cell) {
-                if (!$cell instanceof \\DOMElement) {
+                if (!$cell instanceof \DOMElement) {
                     continue;
                 }
                 $label = trim($this->textFromHtml($cell->textContent), " \\t\\n\\r\\0\\x0B:");
@@ -286,13 +286,13 @@ final class IBSngClient
                     continue;
                 }
                 $row = $cell->parentNode;
-                if (!$row instanceof \\DOMElement || strtolower($row->tagName) !== 'tr') {
+                if (!$row instanceof \DOMElement || strtolower($row->tagName) !== 'tr') {
                     continue;
                 }
 
                 $seenLabel = false;
                 foreach ($row->childNodes as $sibling) {
-                    if (!$sibling instanceof \\DOMElement || strtolower($sibling->tagName) !== 'td') {
+                    if (!$sibling instanceof \DOMElement || strtolower($sibling->tagName) !== 'td') {
                         continue;
                     }
                     if ($sibling->isSameNode($cell)) {
@@ -322,7 +322,7 @@ final class IBSngClient
                             : $select->item(0)->textContent));
                     }
                     $input = $xpath->query('.//input[not(@type="checkbox") and not(@type="hidden")]', $sibling);
-                    if ($input && $input->length > 0 && $input->item(0) instanceof \\DOMElement) {
+                    if ($input && $input->length > 0 && $input->item(0) instanceof \DOMElement) {
                         return $this->textFromHtml($input->item(0)->getAttribute('value'));
                     }
                     return $this->textFromHtml($sibling->textContent);
@@ -347,16 +347,16 @@ final class IBSngClient
 
         $previous = libxml_use_internal_errors(true);
         try {
-            $dom = new \\DOMDocument();
+            $dom = new \DOMDocument();
             $dom->loadHTML('<?xml encoding="UTF-8">' . $html);
-            $xpath = new \\DOMXPath($dom);
+            $xpath = new \DOMXPath($dom);
             $checkboxes = $xpath->query('//input[starts-with(@name, "attr_edit_checkbox_")]');
             if (!$checkboxes) {
                 return null;
             }
 
             foreach ($checkboxes as $checkbox) {
-                if (!$checkbox instanceof \\DOMElement
+                if (!$checkbox instanceof \DOMElement
                     || trim($checkbox->getAttribute('value')) !== $attributeName) {
                     continue;
                 }
@@ -393,7 +393,7 @@ final class IBSngClient
 
                     for ($i = $checkboxCellIndex + 1; $i < $cells->length; $i++) {
                         $cell = $cells->item($i);
-                        $class = $cell instanceof \\DOMElement ? $cell->getAttribute('class') : '';
+                        $class = $cell instanceof \DOMElement ? $cell->getAttribute('class') : '';
                         if (
                             strpos($class, 'Form_Content_Row_Right') === false
                             && strpos($class, 'Form_Content_Row_Right_Textarea') === false
@@ -425,7 +425,7 @@ final class IBSngClient
                         : $select->item(0)->textContent));
                 }
                 $input = $xpath->query('.//input[not(@type="checkbox") and not(@type="hidden")]', $valueCell);
-                if ($input && $input->length > 0 && $input->item(0) instanceof \\DOMElement) {
+                if ($input && $input->length > 0 && $input->item(0) instanceof \DOMElement) {
                     return $this->textFromHtml($input->item(0)->getAttribute('value'));
                 }
                 return $this->textFromHtml($valueCell->textContent);
