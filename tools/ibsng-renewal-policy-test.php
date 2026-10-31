@@ -33,7 +33,7 @@ foreach ($cases as $case) {
 }
 
 try {
-    \\RouteBox\\Integrations\\IBSng\\IBSngRenewal::calculateRelativeExpiration(false, -1, 30, 0);
+    \RouteBox\Integrations\IBSng\IBSngRenewal::calculateRelativeExpiration(false, -1, 30, 0);
     fwrite(STDERR, "Invalid negative remaining days were accepted." . PHP_EOL);
     exit(1);
 } catch (RuntimeException $e) {
