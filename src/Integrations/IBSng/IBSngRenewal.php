@@ -56,6 +56,28 @@ final class IBSngRenewal
         );
     }
 
+    /**
+     * Pure renewal-policy calculation. Kept separate from HTTP and persistence
+     * so the two account states and the intentional zero-gift case are testable.
+     *
+     * @return array{relative_expiration:int,reset_first_login:bool}
+     */
+    public static function calculateRelativeExpiration(
+        bool $expired,
+        int $remainingDays,
+        int $validityDays,
+        int $giftDays
+    ): array {
+        if ($remainingDays < 0 || $validityDays < 1 || $giftDays < 0) {
+            throw new RuntimeException('IBSng renewal duration values are invalid.');
+        }
+
+        return [
+            'relative_expiration' => ($expired ? 0 : $remainingDays) + $validityDays + $giftDays,
+            'reset_first_login' => $expired,
+        ];
+    }
+
     public function __construct(private readonly PDO $db)
     {
         IBSngSchema::ensure($db);
@@ -145,15 +167,16 @@ final class IBSngRenewal
             throw new RuntimeException('Remaining validity for this active IBSng account is not verified.');
         }
 
-        // IBSng A1.24 renewal policy:
-        // - Expired: reset First Login and start Relative Expiration from zero,
-        //   granting the selected plan validity plus the configured gift.
-        // - Active: preserve remaining validity, then add plan validity + gift.
-        // Absolute Expiration is never changed by this operation.
-        // A configured gift of 0 is intentional and must remain 0.
-        $relativeExpiration = ($expired ? 0 : (int)$accountState['remaining_days'])
-            + $validityDays
-            + $giftDays;
+        // IBSng A1.24 renewal policy is calculated in one pure function.
+        // Absolute Expiration is never included in or changed by this operation.
+        $policy = self::calculateRelativeExpiration(
+            $expired,
+            $expired ? 0 : (int)$accountState['remaining_days'],
+            $validityDays,
+            $giftDays
+        );
+        $relativeExpiration = $policy['relative_expiration'];
+        $resetFirstLogin = $policy['reset_first_login'];
         $accountStateLabel = $expired ? 'expired' : 'active';
         $now = time();
 
@@ -201,7 +224,7 @@ final class IBSngRenewal
                 $userId,
                 $username,
                 $relativeExpiration,
-                $expired,
+                $resetFirstLogin,
                 'RouteBox renewal ' . $idempotencyKey,
                 (string)$groupId,
                 $groupName
@@ -214,7 +237,7 @@ final class IBSngRenewal
                 'validity_days' => $validityDays,
                 'gift_days' => $giftDays,
                 'relative_expiration' => $relativeExpiration,
-                'first_login_reset' => $expired,
+                'first_login_reset' => $resetFirstLogin,
                 'raw' => $result,
             ];
             $finish = $this->db->prepare(
